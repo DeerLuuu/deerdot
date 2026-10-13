@@ -510,6 +510,9 @@ msgstr "剪切"
 msgid "Copy"
 msgstr "复制"
 
+msgid "Copy All"
+msgstr "全部复制"
+
 msgid "Paste"
 msgstr "粘贴"
 
