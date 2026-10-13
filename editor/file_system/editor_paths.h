@@ -47,6 +47,7 @@ class EditorPaths : public Object {
 	String export_templates_folder = "export_templates";
 	String text_editor_themes_folder = "text_editor_themes";
 	String script_templates_folder = "script_templates";
+	String snippets_folder = "snippets";
 	String feature_profiles_folder = "feature_profiles";
 
 	static EditorPaths *singleton;
@@ -70,6 +71,8 @@ public:
 	String get_text_editor_themes_dir() const;
 	String get_script_templates_dir() const;
 	String get_project_script_templates_dir() const;
+	String get_snippets_dir() const;
+	String get_project_snippets_dir() const;
 	String get_feature_profiles_dir() const;
 
 	bool is_self_contained() const;

@@ -44,6 +44,11 @@
 #include "core/templates/rb_set.h"
 
 #ifdef TOOLS_ENABLED
+#include "core/io/dir_access.h"
+#include "core/io/file_access.h"
+#include "core/io/json.h"
+#include "core/os/os.h"
+#include "editor/file_system/editor_paths.h"
 #include "editor/gdscript_docgen.h"
 #endif
 
@@ -2959,3 +2964,141 @@ Ref<GDScript> GDScriptLanguage::get_orphan_subclass(const String &p_qualified_na
 	}
 	return Ref<GDScript>(Object::cast_to<GDScript>(obj));
 }
+
+#ifdef TOOLS_ENABLED
+
+void GDScriptLanguage::_scan_snippets_dir(const String &p_dir, bool p_load, uint64_t &r_latest) {
+	if (p_dir.is_empty() || !DirAccess::exists(p_dir)) {
+		return;
+	}
+
+	Ref<DirAccess> dir = DirAccess::open(p_dir);
+	if (dir.is_null()) {
+		return;
+	}
+
+	dir->list_dir_begin();
+	String file_name = dir->get_next();
+	while (!file_name.is_empty()) {
+		if (!dir->current_is_dir() && (file_name.ends_with(".json") || file_name.ends_with(".code-snippets"))) {
+			String file_path = p_dir.path_join(file_name);
+			uint64_t file_time = FileAccess::get_modified_time(file_path);
+			if (file_time > r_latest) {
+				r_latest = file_time;
+			}
+			if (p_load) {
+				_load_snippet_file(file_path);
+			}
+		}
+		file_name = dir->get_next();
+	}
+	dir->list_dir_end();
+}
+
+void GDScriptLanguage::load_snippets() {
+	snippets.clear();
+
+	uint64_t latest = 0;
+	String global_dir = EditorPaths::get_singleton() ? EditorPaths::get_singleton()->get_snippets_dir() : String();
+	String project_dir = EditorPaths::get_singleton() ? EditorPaths::get_singleton()->get_project_snippets_dir() : "res://snippets";
+
+	// Global snippets are loaded first, so project snippets override them per prefix.
+	_scan_snippets_dir(global_dir, true, latest);
+	_scan_snippets_dir(project_dir, true, latest);
+
+	snippets_dirs_timestamp = latest;
+}
+
+void GDScriptLanguage::_load_snippet_file(const String &p_path) {
+	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ);
+	if (f.is_null()) {
+		return;
+	}
+
+	JSON json;
+	if (json.parse(f->get_as_text()) != OK) {
+		ERR_PRINT(vformat("GDScript snippets: Could not parse \"%s\" (line %d): %s",
+				p_path, json.get_error_line(), json.get_error_message()));
+		return;
+	}
+
+	Dictionary file_data = json.get_data();
+	if (file_data.is_empty()) {
+		return;
+	}
+
+	for (const KeyValue<Variant, Variant> &E : file_data) {
+		String snippet_name = E.key;
+		Dictionary snippet_data = E.value;
+		if (!snippet_data.has("prefix") || !snippet_data.has("body")) {
+			continue;
+		}
+
+		// `.code-snippets` files can target several languages; skip snippets
+		// that do not list GDScript. Plain JSON files are assumed to be
+		// GDScript-only.
+		if (snippet_data.has("scope")) {
+			bool matches_gdscript = false;
+			PackedStringArray scopes = String(snippet_data["scope"]).split(",", false);
+			for (const String &lang : scopes) {
+				if (lang.strip_edges().to_lower() == "gdscript") {
+					matches_gdscript = true;
+					break;
+				}
+			}
+			if (!matches_gdscript) {
+				continue;
+			}
+		}
+
+		Array prefixes;
+		if (snippet_data["prefix"].get_type() == Variant::ARRAY) {
+			prefixes = snippet_data["prefix"];
+		} else {
+			prefixes.push_back(snippet_data["prefix"]);
+		}
+
+		String body;
+		if (snippet_data["body"].get_type() == Variant::ARRAY) {
+			Array body_lines = snippet_data["body"];
+			for (int i = 0; i < body_lines.size(); i++) {
+				if (i > 0) {
+					body += "\n";
+				}
+				body += String(body_lines[i]);
+			}
+		} else {
+			body = snippet_data["body"];
+		}
+
+		String description = snippet_data.get("description", "");
+
+		for (int i = 0; i < prefixes.size(); i++) {
+			String prefix = prefixes[i];
+			if (prefix.is_empty() || body.is_empty()) {
+				continue;
+			}
+			snippets[prefix] = SnippetConfig(snippet_name, prefix, body, description);
+		}
+	}
+}
+
+void GDScriptLanguage::check_snippets_reload() {
+	uint64_t current_time = OS::get_singleton()->get_ticks_usec();
+	if (current_time - snippets_last_check_time < 1000000) {
+		return;
+	}
+	snippets_last_check_time = current_time;
+
+	uint64_t latest = 0;
+	String global_dir = EditorPaths::get_singleton() ? EditorPaths::get_singleton()->get_snippets_dir() : String();
+	String project_dir = EditorPaths::get_singleton() ? EditorPaths::get_singleton()->get_project_snippets_dir() : "res://snippets";
+	_scan_snippets_dir(global_dir, false, latest);
+	_scan_snippets_dir(project_dir, false, latest);
+
+	if (latest != snippets_dirs_timestamp) {
+		load_snippets();
+	}
+}
+
+#endif // TOOLS_ENABLED

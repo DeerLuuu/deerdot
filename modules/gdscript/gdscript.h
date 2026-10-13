@@ -462,6 +462,36 @@ class GDScriptLanguage : public ScriptLanguage {
 	void _extension_unloading(const Ref<GDExtension> &p_extension);
 #endif
 
+#ifdef TOOLS_ENABLED
+public:
+	// A user-defined code snippet, loaded from a VSCode-style JSON file in the
+	// global or project snippet directory.
+	struct SnippetConfig {
+		String name;
+		String prefix;
+		String body;
+		String description;
+
+		SnippetConfig() {}
+
+		SnippetConfig(const String &p_name, const String &p_prefix, const String &p_body, const String &p_description) :
+				name(p_name), prefix(p_prefix), body(p_body), description(p_description) {}
+	};
+
+private:
+	HashMap<String, SnippetConfig> snippets; // Key: prefix.
+	uint64_t snippets_dirs_timestamp = 0;
+	uint64_t snippets_last_check_time = 0;
+
+	void _scan_snippets_dir(const String &p_dir, bool p_load, uint64_t &r_latest);
+	void _load_snippet_file(const String &p_path);
+
+public:
+	void load_snippets();
+	const HashMap<String, SnippetConfig> &_get_snippets() const { return snippets; }
+	void check_snippets_reload();
+#endif
+
 public:
 	bool debug_break(const String &p_error, bool p_allow_continue = true);
 	bool debug_break_parse(const String &p_file, int p_line, const String &p_error);
