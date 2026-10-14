@@ -3552,6 +3552,7 @@ static void _find_call_arguments(GDScriptParser::CompletionContext &p_context, c
 }
 
 ::Error GDScriptEditorLanguage::complete_code(const String &p_code, const String &p_path, Object *p_owner, List<EditorLanguage::CompletionOption> *r_options, bool &r_forced, String &r_call_hint) {
+	GDScriptLanguage::get_singleton()->check_snippets_reload();
 	const String quote_style = EDITOR_GET("text_editor/completion/use_single_quotes") ? "'" : "\"";
 
 	GDScriptParser parser;
@@ -3968,6 +3969,21 @@ static void _find_call_arguments(GDScriptParser::CompletionContext &p_context, c
 			}
 			_find_identifiers_in_class(completion_context.current_class, true, false, false, true, !_guess_expecting_callable(completion_context), options, 0);
 		} break;
+	}
+
+	// Offer user-defined snippets (loaded from JSON files) as completion
+	// options wherever an identifier could appear.
+	if (completion_context.type == GDScriptParser::COMPLETION_IDENTIFIER ||
+			completion_context.type == GDScriptParser::COMPLETION_METHOD ||
+			completion_context.type == GDScriptParser::COMPLETION_NONE) {
+		const HashMap<String, GDScriptLanguage::SnippetConfig> &snippets = GDScriptLanguage::get_singleton()->_get_snippets();
+		for (const KeyValue<String, GDScriptLanguage::SnippetConfig> &E : snippets) {
+			const GDScriptLanguage::SnippetConfig &snippet = E.value;
+			EditorLanguage::CompletionOption option;
+			option.insert_text = snippet.body;
+			option.display = snippet.prefix + "\t[snippet] " + snippet.description;
+			options.insert(option.display, option);
+		}
 	}
 
 	for (const KeyValue<String, EditorLanguage::CompletionOption> &E : options) {
