@@ -31,8 +31,13 @@
 #include "snippet_json_highlighter.h"
 
 #include "../gdscript.h"
+#include "bracket_palette.h"
 
+#include "core/config/project_settings.h"
+#include "core/core_constants.h"
 #include "core/object/class_db.h"
+#include "core/object/script_language.h"
+#include "core/variant/variant.h"
 #include "editor/settings/editor_settings.h"
 #include "scene/gui/text_edit.h"
 
@@ -69,6 +74,55 @@ void SnippetJSONHighlighter::_load_colors() {
 		Vector<String> words = GDScriptLanguage::get_singleton()->get_reserved_words();
 		for (const String &word : words) {
 			reserved_words.insert(word);
+		}
+	}
+
+	/* Type names, following the regular script editor highlighter. */
+	type_colors.clear();
+	const Color engine_type_color = EDITOR_GET("text_editor/theme/highlighting/engine_type_color");
+	LocalVector<StringName> engine_types;
+	ClassDB::get_class_list(engine_types);
+	for (const StringName &type : engine_types) {
+		if (ClassDB::is_class_exposed(type)) {
+			type_colors[type] = engine_type_color;
+		}
+	}
+
+	List<StringName> global_enums;
+	CoreConstants::get_global_enums(&global_enums);
+	for (const StringName &enum_name : global_enums) {
+		type_colors[enum_name] = engine_type_color;
+	}
+
+	const Color user_type_color = EDITOR_GET("text_editor/theme/highlighting/user_type_color");
+	LocalVector<StringName> global_classes;
+	ScriptServer::get_global_class_list(global_classes);
+	for (const StringName &global_class : global_classes) {
+		type_colors[global_class] = user_type_color;
+	}
+
+	for (const KeyValue<StringName, ProjectSettings::AutoloadInfo> &E : ProjectSettings::get_singleton()->get_autoload_list()) {
+		if (E.value.is_singleton) {
+			type_colors[E.key] = user_type_color;
+		}
+	}
+
+	const Color base_type_color = EDITOR_GET("text_editor/theme/highlighting/base_type_color");
+	for (int type = 0; type < Variant::Type::VARIANT_MAX; type++) {
+		if (type != Variant::Type::NIL && type != Variant::Type::OBJECT) {
+			type_colors[Variant::get_type_name((Variant::Type)type)] = base_type_color;
+		}
+	}
+	type_colors[SNAME("Variant")] = base_type_color;
+	type_colors[SNAME("void")] = base_type_color;
+
+	control_flow_keywords.clear();
+	control_flow_keyword_color = EDITOR_GET("text_editor/theme/highlighting/control_flow_keyword_color");
+	if (GDScriptLanguage::get_singleton()) {
+		for (const String &word : GDScriptLanguage::get_singleton()->get_reserved_words()) {
+			if (GDScriptLanguage::get_singleton()->is_control_flow_keyword(word)) {
+				control_flow_keywords.insert(word);
+			}
 		}
 	}
 }
@@ -239,7 +293,11 @@ void SnippetJSONHighlighter::_parse_text() {
 								break;
 							}
 						}
-						if (reserved_words.has(word)) {
+						if (type_colors.has(word)) {
+							word_color = type_colors[word];
+						} else if (control_flow_keywords.has(word)) {
+							word_color = control_flow_keyword_color;
+						} else if (reserved_words.has(word)) {
 							word_color = keyword_color;
 						} else if (all_digits) {
 							word_color = number_color;

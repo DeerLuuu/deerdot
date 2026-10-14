@@ -68,6 +68,9 @@ class SnippetJSONHighlighter : public SyntaxHighlighter {
 	Color bracket_palette[BRACKET_PALETTE_SIZE];
 
 	HashSet<StringName> reserved_words;
+	HashSet<StringName> control_flow_keywords;
+	HashMap<StringName, Color> type_colors; // Engine, user, autoload and Variant type names.
+	Color control_flow_keyword_color;
 
 	void _load_colors();
 	void _parse_text();
