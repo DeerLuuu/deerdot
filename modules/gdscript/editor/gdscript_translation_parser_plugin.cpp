@@ -147,6 +147,9 @@ void GDScriptEditorTranslationParserPlugin::_traverse_class(const GDScriptParser
 			case GDScriptParser::ClassNode::Member::CLASS:
 				_traverse_class(m.m_class);
 				break;
+			case GDScriptParser::ClassNode::Member::TRAIT:
+				_traverse_class(m.m_class);
+				break;
 			case GDScriptParser::ClassNode::Member::FUNCTION:
 				_traverse_function(m.function);
 				break;

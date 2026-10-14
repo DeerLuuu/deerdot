@@ -120,6 +120,7 @@ static const char *token_names[] = {
 	"static", // STATIC,
 	"super", // SUPER,
 	"trait", // TRAIT,
+	"uses", // TK_USES,
 	"var", // VAR,
 	"void", // TK_VOID,
 	"yield", // YIELD,
@@ -528,6 +529,8 @@ GDScriptTokenizer::Token GDScriptTokenizerText::annotation() {
 	KEYWORD("super", Token::SUPER) \
 	KEYWORD_GROUP('t') \
 	KEYWORD("trait", Token::TRAIT) \
+	KEYWORD_GROUP('u') \
+	KEYWORD("uses", Token::TK_USES) \
 	KEYWORD_GROUP('v') \
 	KEYWORD("var", Token::VAR) \
 	KEYWORD("void", Token::TK_VOID) \

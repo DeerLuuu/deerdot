@@ -2697,7 +2697,8 @@ Vector<String> GDScriptLanguage::get_reserved_words() const {
 		"namespace", // Reserved for potential future use.
 		"signal",
 		"static",
-		"trait", // Reserved for potential future use.
+		"trait",
+		"uses",
 		"var",
 		// Other keywords.
 		"await",

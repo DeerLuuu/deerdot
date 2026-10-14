@@ -183,6 +183,13 @@ GDScriptDataType GDScriptCompiler::_gdtype_from_datatype(const GDScriptParser::D
 				result.native_type = p_datatype.native_type;
 			}
 		} break;
+		case GDScriptParser::DataType::TRAIT: {
+			// A trait's members are flattened into the using class, so at runtime
+			// it behaves like that class. Reuse the class conversion above.
+			GDScriptParser::DataType as_class = p_datatype;
+			as_class.kind = GDScriptParser::DataType::CLASS;
+			return _gdtype_from_datatype(as_class, p_owner, p_handle_metatype);
+		}
 		case GDScriptParser::DataType::ENUM:
 			if (p_handle_metatype && p_datatype.is_meta_type) {
 				result.kind = GDScriptDataType::BUILTIN;

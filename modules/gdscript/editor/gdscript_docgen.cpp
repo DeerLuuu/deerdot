@@ -146,6 +146,13 @@ void GDScriptDocGen::_doctype_from_datatype(const DataType &p_datatype, String &
 			}
 			r_type = _get_class_name(*p_datatype.class_type);
 			return;
+		case DataType::TRAIT:
+			if (p_datatype.is_meta_type) {
+				r_type = GDScript::get_class_static();
+				return;
+			}
+			r_type = _get_class_name(*p_datatype.class_type);
+			return;
 		case DataType::ENUM:
 			if (p_datatype.is_meta_type) {
 				r_type = "Dictionary";
@@ -377,6 +384,8 @@ void GDScriptDocGen::_generate_docs(GDScript *p_script, const GDP::ClassNode *p_
 
 	for (const GDP::ClassNode::Member &member : p_class->members) {
 		switch (member.type) {
+			case GDP::ClassNode::Member::TRAIT:
+				break; // Traits are flattened into the using class.
 			case GDP::ClassNode::Member::CLASS: {
 				const GDP::ClassNode *inner_class = member.m_class;
 				const StringName &class_name = inner_class->identifier->name;

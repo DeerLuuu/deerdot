@@ -904,7 +904,7 @@ GDScriptParser::ClassNode *GDScriptParser::find_class(const String &p_qualified_
 	} else if (head->has_member(first)) {
 		class_names = p_qualified_name.split("::");
 		GDScriptParser::ClassNode::Member member = head->get_member(first);
-		if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
+		if (member.type == GDScriptParser::ClassNode::Member::CLASS || member.type == GDScriptParser::ClassNode::Member::TRAIT) {
 			result = member.m_class;
 		}
 	}
@@ -915,7 +915,7 @@ GDScriptParser::ClassNode *GDScriptParser::find_class(const String &p_qualified_
 		GDScriptParser::ClassNode *next = nullptr;
 		if (result->has_member(current_name)) {
 			GDScriptParser::ClassNode::Member member = result->get_member(current_name);
-			if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
+			if (member.type == GDScriptParser::ClassNode::Member::CLASS || member.type == GDScriptParser::ClassNode::Member::TRAIT) {
 				next = member.m_class;
 			}
 		}
@@ -988,6 +988,79 @@ GDScriptParser::ClassNode *GDScriptParser::parse_class(bool p_is_static) {
 
 	current_class = previous_class;
 	return n_class;
+}
+
+GDScriptParser::TraitNode *GDScriptParser::parse_trait(bool p_is_static) {
+	TraitNode *n_trait = alloc_node<TraitNode>();
+
+	make_completion_context(COMPLETION_DECLARATION, n_trait);
+
+	ClassNode *previous_class = current_class;
+	current_class = n_trait;
+	n_trait->outer = previous_class;
+
+	if (consume(GDScriptTokenizer::Token::IDENTIFIER, R"(Expected identifier for the trait name after "trait".)")) {
+		n_trait->identifier = parse_identifier();
+		if (n_trait->outer) {
+			String fqcn = n_trait->outer->fqcn;
+			if (fqcn.is_empty()) {
+				fqcn = GDScript::canonicalize_path(script_path);
+			}
+			n_trait->fqcn = fqcn + "::" + n_trait->identifier->name;
+		} else {
+			n_trait->fqcn = n_trait->identifier->name;
+		}
+	}
+
+	consume(GDScriptTokenizer::Token::COLON, R"(Expected ":" after trait declaration.)");
+
+	bool multiline = match(GDScriptTokenizer::Token::NEWLINE);
+
+	if (multiline && !consume(GDScriptTokenizer::Token::INDENT, R"(Expected indented block after trait declaration.)")) {
+		current_class = previous_class;
+		complete_extents(n_trait);
+		return n_trait;
+	}
+
+	parse_class_body(multiline);
+	complete_extents(n_trait);
+
+	if (multiline) {
+		consume(GDScriptTokenizer::Token::DEDENT, R"(Missing unindent at the end of the trait body.)");
+	}
+
+	current_class = previous_class;
+	return n_trait;
+}
+
+GDScriptParser::UsesNode *GDScriptParser::parse_uses() {
+	UsesNode *n_uses = alloc_node<UsesNode>();
+
+	make_completion_context(COMPLETION_USES_TYPE, n_uses);
+
+	current_class->traits.push_back(n_uses);
+
+	// A trait path is a dotted identifier chain: `uses A.B.C`.
+	while (true) {
+		if (!consume(GDScriptTokenizer::Token::IDENTIFIER, R"(Expected trait name after "uses".)")) {
+			break;
+		}
+		n_uses->name.push_back(parse_identifier());
+		if (!match(GDScriptTokenizer::Token::PERIOD)) {
+			break;
+		}
+	}
+
+	// Build the fully-qualified name from the parsed path.
+	for (int i = 0; i < (int)n_uses->name.size(); i++) {
+		if (i > 0) {
+			n_uses->fqtn += ".";
+		}
+		n_uses->fqtn += String(n_uses->name[i]->name);
+	}
+
+	complete_extents(n_uses);
+	return n_uses;
 }
 
 void GDScriptParser::parse_class_name() {
@@ -1090,7 +1163,7 @@ void GDScriptParser::parse_class_member(T *(GDScriptParser::*p_parse_function)(b
 	}
 
 #ifdef TOOLS_ENABLED
-	if constexpr (std::is_same_v<T, ClassNode>) {
+	if constexpr (std::is_same_v<T, ClassNode> || std::is_same_v<T, TraitNode>) {
 		if (has_comment(member->start_line, true)) {
 			// Inline doc comment.
 			member->doc_data = parse_class_doc_comment(member->start_line, true);
@@ -1147,7 +1220,27 @@ void GDScriptParser::parse_class_body(bool p_is_multiline) {
 				parse_class_member(&GDScriptParser::parse_function, AnnotationInfo::FUNCTION, "function", next_is_static);
 				break;
 			case GDScriptTokenizer::Token::CLASS:
+				if (current_class != nullptr && current_class->type == Node::TRAIT) {
+					push_error(R"(Traits cannot contain inner classes.)");
+					advance();
+					// Still parse the declaration to recover from the error.
+					parse_class(false);
+					end_statement("class");
+					break;
+				}
 				parse_class_member(&GDScriptParser::parse_class, AnnotationInfo::CLASS, "class");
+				break;
+			case GDScriptTokenizer::Token::TRAIT:
+				if (current_class != nullptr && current_class->type == Node::TRAIT) {
+					push_error(R"(Traits cannot contain other traits.)");
+				}
+				parse_class_member(&GDScriptParser::parse_trait, AnnotationInfo::NONE, "trait");
+				break;
+			case GDScriptTokenizer::Token::TK_USES:
+				// `uses` is not a member, it brings in a trait's members.
+				advance();
+				parse_uses();
+				end_statement("uses");
 				break;
 			case GDScriptTokenizer::Token::ENUM:
 				parse_class_member(&GDScriptParser::parse_enum, AnnotationInfo::NONE, "enum");
@@ -4319,6 +4412,7 @@ GDScriptParser::ParseRule *GDScriptParser::get_rule(GDScriptTokenizer::Token::Ty
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // STATIC,
 		{ &GDScriptParser::parse_call,						nullptr,                                        PREC_NONE }, // SUPER,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // TRAIT,
+		{ nullptr,                                          nullptr,                                        PREC_NONE }, // TK_USES,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // VAR,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // TK_VOID,
 		{ &GDScriptParser::parse_yield,                     nullptr,                                        PREC_NONE }, // YIELD,
@@ -5358,6 +5452,11 @@ String GDScriptParser::DataType::to_string() const {
 				return class_type->identifier->name.string();
 			}
 			return class_type->fqcn;
+		case TRAIT:
+			if (class_type != nullptr && class_type->identifier != nullptr) {
+				return class_type->identifier->name.string();
+			}
+			return class_type != nullptr ? class_type->fqcn : String("<trait>");
 		case SCRIPT: {
 			if (is_meta_type) {
 				return script_type.is_valid() ? script_type->get_class_name().string() : "";
@@ -5400,6 +5499,14 @@ String GDScriptParser::DataType::to_property_info_hint_string() const {
 		case CLASS:
 			if (class_type != nullptr && class_type->get_global_name() != StringName()) {
 				return class_type->get_global_name();
+			} else {
+				return native_type;
+			}
+		case TRAIT:
+			if (class_type != nullptr && class_type->get_global_name() != StringName()) {
+				return class_type->get_global_name();
+			} else if (class_type != nullptr && class_type->identifier != nullptr) {
+				return class_type->identifier->name;
 			} else {
 				return native_type;
 			}
@@ -5470,6 +5577,16 @@ PropertyInfo GDScriptParser::DataType::to_property_info(const String &p_name) co
 				result.class_name = GDScript::get_class_static();
 			} else if (class_type != nullptr && class_type->get_global_name() != StringName()) {
 				result.class_name = class_type->get_global_name();
+			} else {
+				result.class_name = native_type;
+			}
+			break;
+		case TRAIT:
+			result.type = Variant::OBJECT;
+			if (is_meta_type) {
+				result.class_name = GDScript::get_class_static();
+			} else if (class_type != nullptr && class_type->identifier != nullptr) {
+				result.class_name = class_type->identifier->name;
 			} else {
 				result.class_name = native_type;
 			}
@@ -5892,6 +6009,8 @@ void GDScriptParser::TreePrinter::print_class(const ClassNode *p_class) {
 				break; // Nothing. Will be printed by enum.
 			case ClassNode::Member::GROUP:
 				break; // Nothing. Groups are only used by inspector.
+			case ClassNode::Member::TRAIT:
+				break; // Nothing. Traits are printed as classes.
 			case ClassNode::Member::UNDEFINED:
 				push_line("<unknown member>");
 				break;

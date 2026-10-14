@@ -68,6 +68,8 @@ public:
 	struct CallNode;
 	struct CastNode;
 	struct ClassNode;
+	struct TraitNode;
+	struct UsesNode;
 	struct ConstantNode;
 	struct ContinueNode;
 	struct DictionaryNode;
@@ -107,6 +109,7 @@ public:
 			NATIVE,
 			SCRIPT,
 			CLASS, // GDScript.
+			TRAIT, // GDScript trait.
 			ENUM, // Enumeration.
 			VARIANT, // Can be any type.
 			RESOLVING, // Currently resolving.
@@ -321,6 +324,8 @@ public:
 			CALL,
 			CAST,
 			CLASS,
+			TRAIT,
+			USES,
 			CONSTANT,
 			CONTINUE,
 			DICTIONARY,
@@ -359,6 +364,9 @@ public:
 		int end_column = -1;
 		Node *next = nullptr;
 		List<AnnotationNode *> annotations;
+		// If this node was copied over from a trait, holds the trait's fully-qualified
+		// class name. Empty for nodes declared directly in a class or trait.
+		Vector<String> trait_origin;
 
 		virtual bool is_expression() const { return false; }
 
@@ -578,6 +586,7 @@ public:
 			enum Type {
 				UNDEFINED,
 				CLASS,
+				TRAIT,
 				CONSTANT,
 				FUNCTION,
 				SIGNAL,
@@ -607,6 +616,9 @@ public:
 					case CLASS:
 						// All class-type members have an id.
 						return m_class->identifier->name;
+					case TRAIT:
+						// All trait-type members have an id.
+						return m_class->identifier->name;
 					case CONSTANT:
 						return constant->identifier->name;
 					case FUNCTION:
@@ -632,6 +644,8 @@ public:
 						return "???";
 					case CLASS:
 						return "class";
+					case TRAIT:
+						return "trait";
 					case CONSTANT:
 						return "constant";
 					case FUNCTION:
@@ -653,6 +667,8 @@ public:
 			int get_line() const {
 				switch (type) {
 					case CLASS:
+						return m_class->start_line;
+					case TRAIT:
 						return m_class->start_line;
 					case CONSTANT:
 						return constant->start_line;
@@ -678,6 +694,8 @@ public:
 				switch (type) {
 					case CLASS:
 						return m_class->self_type;
+					case TRAIT:
+						return m_class->self_type;
 					case CONSTANT:
 						return constant->type_constraint;
 					case FUNCTION:
@@ -701,6 +719,8 @@ public:
 			Node *get_source_node() const {
 				switch (type) {
 					case CLASS:
+						return m_class;
+					case TRAIT:
 						return m_class;
 					case CONSTANT:
 						return constant;
@@ -776,6 +796,13 @@ public:
 		DataType self_type;
 		String fqcn; // Fully-qualified class name. Identifies uniquely any class in the project.
 
+		// Traits used by this class (`uses A, B.C`).
+		LocalVector<UsesNode *> traits;
+		// Fully-qualified trait names. Identifies uniquely any trait used by this class.
+		Vector<String> traits_fqtn;
+		bool resolved_uses = false;
+		bool is_bodyless = false; // Traits declared with no body.
+
 		// Range for a class's "extends <CLASS_NAME>" line.
 		// Used as range for some warnings/errors.
 		int extends_start_line = -1;
@@ -813,6 +840,14 @@ public:
 			members_indices[p_member_node->identifier->name] = members.size();
 			members.push_back(Member(p_member_node));
 		}
+		// Traits are class-like members, but are tracked with their own member type.
+		void add_member(TraitNode *p_trait_node) {
+			members_indices[p_trait_node->identifier->name] = members.size();
+			Member member;
+			member.type = Member::TRAIT;
+			member.m_class = p_trait_node;
+			members.push_back(member);
+		}
 		void add_member(const EnumNode::Value &p_enum_value) {
 			members_indices[p_enum_value.identifier->name] = members.size();
 			members.push_back(Member(p_enum_value));
@@ -826,6 +861,29 @@ public:
 
 		ClassNode() {
 			type = CLASS;
+		}
+	};
+
+	// A trait is a reusable bundle of members that classes can `use`.
+	// Extends ClassNode so it's parsed by the same logic without duplication.
+	struct TraitNode : public ClassNode {
+		TraitNode() {
+			type = TRAIT;
+		}
+	};
+
+	// A `uses A, B.C` statement inside a class or trait body.
+	struct UsesNode : public Node {
+		String path;
+		// List for indexing trait paths: `uses A.B.C`.
+		LocalVector<IdentifierNode *> name;
+		// Fully-qualified name of the referenced trait.
+		String fqtn;
+		// Fully-qualified names of traits used by the referenced trait.
+		Vector<String> traits_fqtn;
+
+		UsesNode() {
+			type = USES;
 		}
 	};
 
@@ -1348,6 +1406,7 @@ public:
 		COMPLETION_SUBSCRIPT, // Inside id[|].
 		COMPLETION_SUPER, // super(), used for lookup.
 		COMPLETION_SUPER_METHOD, // After super.
+		COMPLETION_USES_TYPE, // Type after `uses`. Includes traits and sub-traits using the argument index.
 		COMPLETION_TYPE_ATTRIBUTE, // Attribute in type name (Type.|).
 		COMPLETION_TYPE_NAME, // Name of type (after :).
 		COMPLETION_TYPE_NAME_OR_VOID, // Same as TYPE_NAME, but allows void (in function return type).
@@ -1592,6 +1651,8 @@ private:
 	// Main blocks.
 	void parse_program();
 	ClassNode *parse_class(bool p_is_static);
+	TraitNode *parse_trait(bool p_is_static);
+	UsesNode *parse_uses();
 	void parse_class_name();
 	void parse_extends();
 	void parse_class_body(bool p_is_multiline);

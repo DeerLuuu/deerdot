@@ -1239,6 +1239,13 @@ static void _list_available_types(bool p_inherit_only, GDScriptParser::Completio
 							EditorLanguage::CompletionOption option(member.m_class->identifier->name, EditorLanguage::CompletionKind::CLASS, EditorLanguage::CompletionLocation::LOCAL + location_offset);
 							r_result.insert(option.display, option);
 						} break;
+						case GDScriptParser::ClassNode::Member::TRAIT: {
+							if (p_inherit_only && member.m_class == p_context.current_class) {
+								break;
+							}
+							EditorLanguage::CompletionOption option(member.m_class->identifier->name, EditorLanguage::CompletionKind::CLASS, EditorLanguage::CompletionLocation::LOCAL + location_offset);
+							r_result.insert(option.display, option);
+						} break;
 						case GDScriptParser::ClassNode::Member::ENUM: {
 							if (!p_inherit_only) {
 								EditorLanguage::CompletionOption option(member.m_enum->identifier->name, EditorLanguage::CompletionKind::ENUM, EditorLanguage::CompletionLocation::LOCAL + location_offset);
@@ -1345,6 +1352,12 @@ static void _find_identifiers_in_class(const GDScriptParser::ClassNode *p_class,
 						}
 						option = EditorLanguage::CompletionOption(member.m_class->identifier->name, EditorLanguage::CompletionKind::CLASS, location);
 						break;
+					case GDScriptParser::ClassNode::Member::TRAIT:
+						if (p_only_functions) {
+							continue;
+						}
+						option = EditorLanguage::CompletionOption(member.m_class->identifier->name, EditorLanguage::CompletionKind::CLASS, location);
+						break;
 					case GDScriptParser::ClassNode::Member::ENUM_VALUE:
 						if (p_types_only || p_only_functions) {
 							continue;
@@ -1423,6 +1436,10 @@ static void _find_identifiers_in_base(const GDScriptCompletionIdentifier &p_base
 			case GDScriptParser::DataType::CLASS: {
 				_find_identifiers_in_class(base_type.class_type, p_only_functions, p_types_only, base_type.is_meta_type, false, p_add_braces, r_result, p_recursion_depth);
 				// This already finds all parent identifiers, so we are done.
+				base_type = GDScriptParser::DataType();
+			} break;
+			case GDScriptParser::DataType::TRAIT: {
+				_find_identifiers_in_class(base_type.class_type, p_only_functions, p_types_only, base_type.is_meta_type, false, p_add_braces, r_result, p_recursion_depth);
 				base_type = GDScriptParser::DataType();
 			} break;
 			case GDScriptParser::DataType::SCRIPT: {
@@ -2785,6 +2802,12 @@ static bool _guess_identifier_type_from_base(GDScriptParser::CompletionContext &
 							r_type.type.class_type = member.m_class;
 							r_type.type.is_meta_type = true;
 							return true;
+						case GDScriptParser::ClassNode::Member::TRAIT:
+							r_type.type.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
+							r_type.type.kind = GDScriptParser::DataType::TRAIT;
+							r_type.type.class_type = member.m_class;
+							r_type.type.is_meta_type = true;
+							return true;
 						case GDScriptParser::ClassNode::Member::GROUP:
 							return false; // No-op, but silences warnings.
 						case GDScriptParser::ClassNode::Member::UNDEFINED:
@@ -3158,6 +3181,19 @@ static void _list_call_arguments(GDScriptParser::CompletionContext &p_context, c
 				}
 
 				base_type = base_type.class_type->base_type;
+			} break;
+			case GDScriptParser::DataType::TRAIT: {
+				// A trait is flattened into the using class, so treat it as that class.
+				if (base_type.class_type != nullptr && base_type.class_type->has_member(method)) {
+					const GDScriptParser::ClassNode::Member &member = base_type.class_type->get_member(method);
+
+					if (member.type == GDScriptParser::ClassNode::Member::FUNCTION) {
+						r_arghint = _make_arguments_hint(member.function, p_argidx);
+						return;
+					}
+				}
+
+				base_type = base_type.class_type != nullptr ? base_type.class_type->base_type : GDScriptParser::DataType();
 			} break;
 			case GDScriptParser::DataType::SCRIPT: {
 				if (base_type.script_type->is_script_valid() && base_type.script_type->has_method(method)) {
@@ -4104,6 +4140,14 @@ static Error _lookup_symbol_from_base(const GDScriptParser::DataType &p_base, co
 						r_result.type = EditorLanguage::LookupResult::Type::CLASS;
 						r_result.class_name = doc_type_name;
 					} break;
+					case GDScriptParser::ClassNode::Member::TRAIT: {
+						String doc_type_name;
+						String doc_enum_name;
+						GDScriptDocGen::doctype_from_datatype(GDScriptAnalyzer::type_from_metatype(member.get_datatype()), doc_type_name, doc_enum_name);
+
+						r_result.type = EditorLanguage::LookupResult::Type::CLASS;
+						r_result.class_name = doc_type_name;
+					} break;
 					case GDScriptParser::ClassNode::Member::CONSTANT:
 						r_result.type = EditorLanguage::LookupResult::Type::CLASS_CONSTANT;
 						break;
@@ -4411,6 +4455,68 @@ static Error _lookup_symbol_from_base(const GDScriptParser::DataType &p_base, co
 				}
 
 				return ERR_CANT_RESOLVE;
+			} break;
+			case GDScriptParser::DataType::TRAIT: {
+				// A trait's members are flattened into the using class, so a symbol
+				// lookup walks the trait as if it were that class.
+				ERR_FAIL_NULL_V(base_type.class_type, ERR_BUG);
+
+				String name = p_symbol;
+				if (name == "new") {
+					name = "_init";
+				}
+
+				if (!base_type.class_type->has_member(name)) {
+					base_type = base_type.class_type->base_type;
+					break;
+				}
+
+				const GDScriptParser::ClassNode::Member &member = base_type.class_type->get_member(name);
+
+				switch (member.type) {
+					case GDScriptParser::ClassNode::Member::UNDEFINED:
+					case GDScriptParser::ClassNode::Member::GROUP:
+						return ERR_BUG;
+					case GDScriptParser::ClassNode::Member::CLASS:
+					case GDScriptParser::ClassNode::Member::TRAIT: {
+						String doc_type_name;
+						String doc_enum_name;
+						GDScriptDocGen::doctype_from_datatype(GDScriptAnalyzer::type_from_metatype(member.get_datatype()), doc_type_name, doc_enum_name);
+
+						r_result.type = EditorLanguage::LookupResult::Type::CLASS;
+						r_result.class_name = doc_type_name;
+					} break;
+					case GDScriptParser::ClassNode::Member::CONSTANT:
+					case GDScriptParser::ClassNode::Member::ENUM_VALUE:
+						r_result.type = EditorLanguage::LookupResult::Type::CLASS_CONSTANT;
+						break;
+					case GDScriptParser::ClassNode::Member::FUNCTION:
+						r_result.type = EditorLanguage::LookupResult::Type::CLASS_METHOD;
+						break;
+					case GDScriptParser::ClassNode::Member::SIGNAL:
+						r_result.type = EditorLanguage::LookupResult::Type::CLASS_SIGNAL;
+						break;
+					case GDScriptParser::ClassNode::Member::VARIABLE:
+						r_result.type = EditorLanguage::LookupResult::Type::CLASS_PROPERTY;
+						break;
+					case GDScriptParser::ClassNode::Member::ENUM:
+						r_result.type = EditorLanguage::LookupResult::Type::CLASS_ENUM;
+						break;
+				}
+
+				if (member.type != GDScriptParser::ClassNode::Member::CLASS &&
+						member.type != GDScriptParser::ClassNode::Member::TRAIT) {
+					String doc_type_name;
+					String doc_enum_name;
+					GDScriptDocGen::doctype_from_datatype(GDScriptAnalyzer::type_from_metatype(base_type), doc_type_name, doc_enum_name);
+
+					r_result.class_name = doc_type_name;
+					r_result.class_member = name;
+				}
+
+				r_result.script_path = base_type.script_path;
+				r_result.location = member.get_line();
+				return OK;
 			} break;
 			case GDScriptParser::DataType::RESOLVING:
 			case GDScriptParser::DataType::UNRESOLVED: {
