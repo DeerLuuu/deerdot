@@ -38,9 +38,11 @@
 #include "core/io/file_access.h"
 #include "core/io/json.h"
 #include "core/object/callable_mp.h"
+#include "core/object/class_db.h"
 #include "core/os/os.h"
 #include "editor/editor_node.h"
 #include "editor/file_system/editor_paths.h"
+#include "editor/settings/editor_settings.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/code_edit.h"
@@ -117,6 +119,9 @@ void GDScriptSnippetEditor::_build_tab(int p_index, const String &p_title, const
 	Ref<GDScriptSyntaxHighlighter> highlighter;
 	highlighter.instantiate();
 	tab.code_edit->set_syntax_highlighter(highlighter);
+
+	tab.code_edit->set_code_completion_enabled(true);
+	tab.code_edit->connect("code_completion_requested", callable_mp(this, &GDScriptSnippetEditor::_on_code_completion_requested).bind(p_index));
 
 	tab.code_edit->connect("text_changed", callable_mp(this, &GDScriptSnippetEditor::_on_text_changed).bind(p_index));
 	split->add_child(tab.code_edit);
@@ -278,6 +283,69 @@ void GDScriptSnippetEditor::_on_open_dir_pressed(int p_tab) {
 		_refresh_tab(p_tab);
 	}
 	OS::get_singleton()->shell_open(os_path);
+}
+
+void GDScriptSnippetEditor::_on_code_completion_requested(int p_tab) {
+	SnippetDirTab &tab = get_tab(p_tab);
+	CodeEdit *code_edit = tab.code_edit;
+
+	String prefix = code_edit->get_word_under_caret().to_lower();
+	if (prefix.is_empty()) {
+		return;
+	}
+
+	Color font_color = EDITOR_GET("text_editor/theme/highlighting/completion_font_color");
+
+	HashSet<String> seen;
+	int count = 0;
+	const int max_options = 60;
+
+	auto add_candidate = [&](const String &p_name, CodeEdit::CodeCompletionKind p_kind) {
+		if (count >= max_options || seen.has(p_name) || !p_name.to_lower().begins_with(prefix)) {
+			return;
+		}
+		seen.insert(p_name);
+		code_edit->add_code_completion_option(p_kind, p_name, p_name, font_color);
+		count++;
+	};
+
+	if (GDScriptLanguage::get_singleton()) {
+		Vector<String> keywords = GDScriptLanguage::get_singleton()->get_reserved_words();
+		keywords.sort();
+		for (const String &keyword : keywords) {
+			add_candidate(keyword, CodeEdit::KIND_KEYWORD);
+		}
+
+		Vector<String> names;
+		for (const KeyValue<StringName, int> &E : GDScriptLanguage::get_singleton()->get_global_map()) {
+			names.push_back(E.key);
+		}
+		for (const KeyValue<StringName, Variant> &E : GDScriptLanguage::get_singleton()->get_named_globals_map()) {
+			names.push_back(E.key);
+		}
+		names.sort();
+		for (const String &name : names) {
+			// Class and singleton names are conventionally PascalCase,
+			// global functions are snake_case.
+			bool is_type = ClassDB::class_exists(name) || (name.length() > 0 && name[0] >= 'A' && name[0] <= 'Z');
+			add_candidate(name, is_type ? CodeEdit::KIND_CLASS : CodeEdit::KIND_FUNCTION);
+		}
+	}
+
+	LocalVector<StringName> native_classes;
+	ClassDB::get_class_list(native_classes);
+	for (const StringName &native_class : native_classes) {
+		if (count >= max_options) {
+			break;
+		}
+		String name = native_class;
+		if (name.begins_with("_")) {
+			continue;
+		}
+		add_candidate(name, CodeEdit::KIND_CLASS);
+	}
+
+	code_edit->update_code_completion_options();
 }
 
 void GDScriptSnippetEditor::_revert_selection(int p_tab) {

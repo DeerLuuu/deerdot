@@ -101,6 +101,7 @@ class GDScriptSnippetEditor : public AcceptDialog {
 	void _on_save_pressed(int p_tab);
 	void _on_refresh_pressed(int p_tab);
 	void _on_open_dir_pressed(int p_tab);
+	void _on_code_completion_requested(int p_tab);
 	void _on_switch_confirm_confirmed();
 	void _on_switch_confirm_discard(const String &p_action);
 	void _on_switch_confirm_cancelled();
