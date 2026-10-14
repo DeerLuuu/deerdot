@@ -31,6 +31,7 @@
 #include "gdscript_snippet_editor.h"
 
 #include "../gdscript.h"
+#include "gdscript_highlighter.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
@@ -110,6 +111,13 @@ void GDScriptSnippetEditor::_build_tab(int p_index, const String &p_title, const
 	tab.code_edit->set_draw_line_numbers(true);
 	tab.code_edit->set_highlight_current_line(true);
 	tab.code_edit->set_draw_tabs(true);
+
+	// Snippet bodies are GDScript fragments: reuse the regular script editor
+	// highlighter for them.
+	Ref<GDScriptSyntaxHighlighter> highlighter;
+	highlighter.instantiate();
+	tab.code_edit->set_syntax_highlighter(highlighter);
+
 	tab.code_edit->connect("text_changed", callable_mp(this, &GDScriptSnippetEditor::_on_text_changed).bind(p_index));
 	split->add_child(tab.code_edit);
 
