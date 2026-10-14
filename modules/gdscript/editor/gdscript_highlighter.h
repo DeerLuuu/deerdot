@@ -56,6 +56,7 @@ private:
 	};
 	LocalVector<ColorRegion> color_regions;
 	HashMap<int, int> color_region_cache;
+	HashMap<int, int> bracket_depth_cache;
 
 	HashMap<StringName, Color> class_names;
 	HashMap<StringName, Color> reserved_keywords;

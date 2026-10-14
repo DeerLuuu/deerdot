@@ -32,6 +32,7 @@
 
 #include "../gdscript.h"
 #include "../gdscript_tokenizer.h"
+#include "bracket_palette.h"
 
 #include "core/config/project_settings.h"
 #include "core/core_constants.h"
@@ -93,6 +94,22 @@ Dictionary GDScriptSyntaxHighlighter::_get_line_syntax_highlighting_impl(int p_l
 			get_line_syntax_highlighting(p_line - 1);
 		}
 		in_region = color_region_cache[p_line - 1];
+	}
+
+	// Bracket nesting depth at the line start, for multicolored brackets.
+	int bracket_depth = 0;
+	if (p_line != 0) {
+		int prev_depth_line = p_line - 1;
+		while (prev_depth_line > 0 && !bracket_depth_cache.has(prev_depth_line)) {
+			prev_depth_line--;
+		}
+		for (int i = prev_depth_line; i < p_line - 1; i++) {
+			get_line_syntax_highlighting(i);
+		}
+		if (!bracket_depth_cache.has(p_line - 1)) {
+			get_line_syntax_highlighting(p_line - 1);
+		}
+		bracket_depth = bracket_depth_cache[p_line - 1];
 	}
 
 	const String &str = text_edit->get_line_with_ime(p_line);
@@ -701,6 +718,19 @@ Dictionary GDScriptSyntaxHighlighter::_get_line_syntax_highlighting_impl(int p_l
 		} else if (is_a_symbol) {
 			next_type = SYMBOL;
 			color = symbol_color;
+			// Multicolored brackets outside strings and comments.
+			if (in_region == -1) {
+				const char32_t symbol_char = str[j];
+				if (symbol_char == '(' || symbol_char == '[' || symbol_char == '{') {
+					color = bracket_palette_color(bracket_depth);
+					bracket_depth++;
+				} else if (symbol_char == ')' || symbol_char == ']' || symbol_char == '}') {
+					if (bracket_depth > 0) {
+						bracket_depth--;
+					}
+					color = bracket_palette_color(bracket_depth);
+				}
+			}
 		} else if (expect_type) {
 			next_type = TYPE;
 			color = type_color;
@@ -745,6 +775,7 @@ Dictionary GDScriptSyntaxHighlighter::_get_line_syntax_highlighting_impl(int p_l
 		}
 	}
 	color_map.sort(); // Prevents e.g. escape sequences from being overridden by string placeholders.
+	bracket_depth_cache[p_line] = bracket_depth;
 	return color_map;
 }
 
@@ -765,6 +796,7 @@ void GDScriptSyntaxHighlighter::_update_cache() {
 	global_functions.clear();
 	color_regions.clear();
 	color_region_cache.clear();
+	bracket_depth_cache.clear();
 
 	font_color = text_edit->get_theme_color(SceneStringName(font_color));
 	symbol_color = EDITOR_GET("text_editor/theme/highlighting/symbol_color");

@@ -62,13 +62,6 @@ void SnippetJSONHighlighter::_load_colors() {
 	placeholder_color = EDITOR_GET("text_editor/theme/highlighting/string_placeholder_color");
 	function_color = EDITOR_GET("text_editor/theme/highlighting/function_color");
 
-	// Fixed palette (amber, cyan, pink, green), readable on both dark and
-	// light editor themes.
-	bracket_palette[0] = Color(1.0, 0.8, 0.3);
-	bracket_palette[1] = Color(0.4, 0.78, 1.0);
-	bracket_palette[2] = Color(1.0, 0.55, 0.85);
-	bracket_palette[3] = Color(0.6, 0.9, 0.45);
-
 	reserved_words.clear();
 	if (GDScriptLanguage::get_singleton()) {
 		Vector<String> words = GDScriptLanguage::get_singleton()->get_reserved_words();
@@ -182,7 +175,7 @@ void SnippetJSONHighlighter::_parse_text() {
 		}
 	};
 	auto bracket_color = [&](int p_depth) -> Color {
-		return bracket_palette[((p_depth % BRACKET_PALETTE_SIZE) + BRACKET_PALETTE_SIZE) % BRACKET_PALETTE_SIZE];
+		return bracket_palette_color(p_depth);
 	};
 
 	PackedStringArray lines = text.split("\n");
