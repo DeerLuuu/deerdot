@@ -66,6 +66,9 @@ class GDScriptAnalyzer {
 
 	Error resolve_class_inheritance(GDScriptParser::ClassNode *p_class, const GDScriptParser::Node *p_source = nullptr);
 	Error resolve_class_inheritance(GDScriptParser::ClassNode *p_class, bool p_recursive);
+	// Resolves `uses` statements, copying the referenced traits' members into the class.
+	Error resolve_class_uses(GDScriptParser::ClassNode *p_class, const GDScriptParser::Node *p_source = nullptr);
+	Error resolve_class_uses(GDScriptParser::ClassNode *p_class, bool p_recursive);
 	GDScriptParser::DataType resolve_datatype(GDScriptParser::TypeNode *p_type);
 
 	void resolve_annotation(GDScriptParser::AnnotationNode *p_annotation);
