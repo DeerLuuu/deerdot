@@ -198,6 +198,8 @@ class DocumentEditorContainer : public MarginContainer {
 		FILE_MENU_MOVE_DOWN,
 		FILE_MENU_SORT,
 
+		FILE_MENU_SNIPPETS,
+
 		// Search.
 		HELP_SEARCH_FIND,
 		HELP_SEARCH_FIND_NEXT,
@@ -498,6 +500,12 @@ public:
 	void unregister_syntax_highlighter(const Ref<EditorSyntaxHighlighter> &p_syntax_highlighter);
 
 	static void register_create_script_editor_function(CreateScriptEditorFunc p_func);
+
+	// Modules can register an opener (e.g. GDScript's code snippets editor
+	// window); when set, the File menu shows a "Code Snippets..." entry
+	// calling it.
+	static void register_snippets_opener(void (*p_opener)()) { snippets_opener = p_opener; }
+	inline static void (*snippets_opener)() = nullptr;
 
 	DocumentEditorContainer(bool p_is_main_editor, const String &p_config_section, const String &p_cache_path);
 };

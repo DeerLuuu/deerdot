@@ -2041,6 +2041,11 @@ void DocumentEditorContainer::_menu_option(int p_option) {
 
 				EditorNode::get_singleton()->run_editor_script(scr);
 			} break;
+			case FILE_MENU_SNIPPETS: {
+				if (snippets_opener) {
+					snippets_opener();
+				}
+			} break;
 			case FILE_MENU_COPY_PATH: {
 				_copy_script_path();
 			} break;
@@ -4135,6 +4140,10 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	if (is_main_editor) {
 		file_menu->get_popup()->add_shortcut(ED_GET_SHORTCUT("script_editor/reload_script_soft"), FILE_MENU_SOFT_RELOAD_TOOL);
 		file_menu->get_popup()->add_shortcut(ED_GET_SHORTCUT("script_editor/run_file"), FILE_MENU_RUN);
+		if (snippets_opener) {
+			file_menu->get_popup()->add_separator();
+			file_menu->get_popup()->add_shortcut(ED_SHORTCUT("script_editor/code_snippets", TTRC("Code Snippets...")), FILE_MENU_SNIPPETS);
+		}
 		file_menu->get_popup()->add_separator();
 	}
 	file_menu->get_popup()->add_submenu_node_item(TTRC("Theme"), theme_submenu, FILE_MENU_THEME_SUBMENU);

@@ -40,6 +40,7 @@
 #ifdef TOOLS_ENABLED
 #include "editor/gdscript_editor_language.h"
 #include "editor/gdscript_highlighter.h"
+#include "editor/gdscript_snippet_editor.h"
 #include "editor/gdscript_translation_parser_plugin.h"
 #include "editor/script/script_editor_plugin.h"
 
@@ -157,6 +158,9 @@ void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 #ifdef TOOLS_ENABLED
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		EditorNode::add_init_callback(_editor_init);
+
+		// Must happen before the script editor builds its File menu.
+		DocumentEditorContainer::register_snippets_opener(&GDScriptSnippetEditor::open_snippets_editor);
 
 		gdscript_translation_parser_plugin.instantiate();
 		EditorTranslationParser::get_singleton()->add_parser(gdscript_translation_parser_plugin, EditorTranslationParser::STANDARD);
