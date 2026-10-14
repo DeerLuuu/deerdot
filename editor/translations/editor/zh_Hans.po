@@ -513,6 +513,45 @@ msgstr "复制"
 msgid "Copy All"
 msgstr "全部复制"
 
+msgid "Code Snippets"
+msgstr "代码片段"
+
+msgid "Code Snippets..."
+msgstr "代码片段..."
+
+msgid "Global Snippets"
+msgstr "全局代码片段"
+
+msgid "Project Snippets"
+msgstr "项目代码片段"
+
+msgid "Open Directory"
+msgstr "打开目录"
+
+msgid "No snippet files (.json, .code-snippets) in this directory."
+msgstr "此目录中没有代码片段文件（.json、.code-snippets）。"
+
+msgid "This directory does not exist yet. Use \"Open Directory\" to create it, then add .json snippet files."
+msgstr "此目录尚不存在。请使用“打开目录”创建它，然后添加 .json 代码片段文件。"
+
+msgid "Could not open \"%s\"."
+msgstr "无法打开“%s”。"
+
+msgid "Could not write \"%s\"."
+msgstr "无法写入“%s”。"
+
+msgid "Could not create directory \"%s\" (error %d)."
+msgstr "无法创建目录“%s”（错误 %d）。"
+
+msgid "Invalid JSON in \"%s\" (line %d): %s\nFix the error to save."
+msgstr "“%s”的 JSON 无效（第 %d 行）：%s\n修正错误后方可保存。"
+
+msgid "Save changes to \"%s\"?"
+msgstr "保存对“%s”的更改？"
+
+msgid "Previous Scene in History"
+msgstr "历史记录中的上一个场景"
+
 msgid "Paste"
 msgstr "粘贴"
 
