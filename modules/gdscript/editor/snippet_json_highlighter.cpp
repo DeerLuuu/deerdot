@@ -57,6 +57,13 @@ void SnippetJSONHighlighter::_load_colors() {
 	placeholder_color = EDITOR_GET("text_editor/theme/highlighting/string_placeholder_color");
 	function_color = EDITOR_GET("text_editor/theme/highlighting/function_color");
 
+	// Fixed palette (amber, cyan, pink, green), readable on both dark and
+	// light editor themes.
+	bracket_palette[0] = Color(1.0, 0.8, 0.3);
+	bracket_palette[1] = Color(0.4, 0.78, 1.0);
+	bracket_palette[2] = Color(1.0, 0.55, 0.85);
+	bracket_palette[3] = Color(0.6, 0.9, 0.45);
+
 	reserved_words.clear();
 	if (GDScriptLanguage::get_singleton()) {
 		Vector<String> words = GDScriptLanguage::get_singleton()->get_reserved_words();
@@ -91,6 +98,7 @@ void SnippetJSONHighlighter::_parse_text() {
 	bool inner_string = false; // Inside \" ... \" within a code string.
 	int string_line = 0;
 	int string_start_col = 0;
+	int code_depth = 0; // Bracket nesting depth inside the current code string.
 	String key_builder;
 
 	// Color run tracking: line_cache entries mark where a color starts.
@@ -118,6 +126,9 @@ void SnippetJSONHighlighter::_parse_text() {
 			run_color = p_color;
 			run_open = true;
 		}
+	};
+	auto bracket_color = [&](int p_depth) -> Color {
+		return bracket_palette[((p_depth % BRACKET_PALETTE_SIZE) + BRACKET_PALETTE_SIZE) % BRACKET_PALETTE_SIZE];
 	};
 
 	PackedStringArray lines = text.split("\n");
@@ -199,6 +210,20 @@ void SnippetJSONHighlighter::_parse_text() {
 						col = j;
 						continue;
 					}
+					if (ch == '(' || ch == '[' || ch == '{') {
+						ensure_run(line_idx, col, bracket_color(code_depth));
+						code_depth++;
+						col++;
+						continue;
+					}
+					if (ch == ')' || ch == ']' || ch == '}') {
+						if (code_depth > 0) {
+							code_depth--;
+						}
+						ensure_run(line_idx, col, bracket_color(code_depth));
+						col++;
+						continue;
+					}
 					if (is_snippet_word_char(ch)) {
 						int j = col;
 						while (j < line_len && is_snippet_word_char(line[j])) {
@@ -252,6 +277,7 @@ void SnippetJSONHighlighter::_parse_text() {
 				case '"': {
 					in_string = true;
 					inner_string = false;
+					code_depth = 0;
 					string_is_key = expect_key;
 					string_is_code = !string_is_key && (value_is_body || !body_frames.is_empty());
 					string_line = line_idx;
@@ -274,7 +300,7 @@ void SnippetJSONHighlighter::_parse_text() {
 				case '{': {
 					stack.push_back(true);
 					expect_key = true;
-					ensure_run(line_idx, col, symbol_color);
+					ensure_run(line_idx, col, bracket_color(stack.size() - 1));
 					col++;
 				} break;
 				case '}': {
@@ -282,7 +308,7 @@ void SnippetJSONHighlighter::_parse_text() {
 						stack.remove_at(stack.size() - 1);
 					}
 					expect_key = true;
-					ensure_run(line_idx, col, symbol_color);
+					ensure_run(line_idx, col, bracket_color(stack.size()));
 					col++;
 				} break;
 				case '[': {
@@ -291,7 +317,7 @@ void SnippetJSONHighlighter::_parse_text() {
 						body_frames.push_back(stack.size() - 1);
 					}
 					expect_key = false;
-					ensure_run(line_idx, col, symbol_color);
+					ensure_run(line_idx, col, bracket_color(stack.size() - 1));
 					col++;
 				} break;
 				case ']': {
@@ -302,7 +328,7 @@ void SnippetJSONHighlighter::_parse_text() {
 						body_frames.remove_at(body_frames.size() - 1);
 					}
 					expect_key = false;
-					ensure_run(line_idx, col, symbol_color);
+					ensure_run(line_idx, col, bracket_color(stack.size()));
 					col++;
 				} break;
 				default: {

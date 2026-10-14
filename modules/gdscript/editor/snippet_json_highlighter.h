@@ -63,6 +63,10 @@ class SnippetJSONHighlighter : public SyntaxHighlighter {
 	Color placeholder_color;
 	Color function_color;
 
+	// Cycling palette used to color bracket pairs by nesting depth.
+	enum { BRACKET_PALETTE_SIZE = 4 };
+	Color bracket_palette[BRACKET_PALETTE_SIZE];
+
 	HashSet<StringName> reserved_words;
 
 	void _load_colors();
