@@ -116,7 +116,10 @@ String EditorPaths::get_snippets_dir() const {
 }
 
 String EditorPaths::get_project_snippets_dir() const {
-	return "res://snippets";
+	// The setting is only registered in editor builds; fall back to the
+	// default location everywhere else (e.g. unit tests).
+	String dir = GLOBAL_GET("editor/snippets/search_path");
+	return dir.is_empty() ? String("res://snippets") : dir;
 }
 
 String EditorPaths::get_feature_profiles_dir() const {
