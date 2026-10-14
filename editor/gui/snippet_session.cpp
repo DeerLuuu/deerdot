@@ -70,6 +70,110 @@ void SnippetSession::begin(const Vector<SnippetTabStop> &p_stops) {
 	_apply_stop(0);
 }
 
+void SnippetSession::arm(const String &p_expanded_text, const Vector<SnippetTabStop> &p_stops) {
+	if (p_stops.is_empty()) {
+		return;
+	}
+	PendingSnippet candidate;
+	candidate.text = p_expanded_text;
+	candidate.stops = p_stops;
+	if (pending.size() >= 8) {
+		pending.remove_at(0);
+	}
+	pending.push_back(candidate);
+}
+
+Variant SnippetSession::encode_stops(const Vector<SnippetTabStop> &p_stops) {
+	Array encoded;
+	for (const SnippetTabStop &stop : p_stops) {
+		Array item;
+		item.push_back(stop.number);
+		item.push_back(stop.start_line);
+		item.push_back(stop.start_col);
+		item.push_back(stop.end_line);
+		item.push_back(stop.end_col);
+		encoded.push_back(item);
+	}
+	return encoded;
+}
+
+Vector<SnippetTabStop> SnippetSession::decode_stops(const Variant &p_value) {
+	Vector<SnippetTabStop> decoded;
+	if (p_value.get_type() != Variant::ARRAY) {
+		return decoded;
+	}
+	const Array encoded = p_value;
+	for (int i = 0; i < encoded.size(); i++) {
+		if (encoded[i].get_type() != Variant::ARRAY) {
+			continue;
+		}
+		const Array item = encoded[i];
+		if (item.size() != 5) {
+			continue;
+		}
+		SnippetTabStop stop;
+		stop.number = item[0];
+		stop.start_line = item[1];
+		stop.start_col = item[2];
+		stop.end_line = item[3];
+		stop.end_col = item[4];
+		decoded.push_back(stop);
+	}
+	return decoded;
+}
+
+bool SnippetSession::_try_begin_inserted(const PendingSnippet &p_candidate) {
+	const int caret_line = code_edit->get_caret_line();
+	const int caret_col = code_edit->get_caret_column();
+
+	const PackedStringArray lines = p_candidate.text.split("\n");
+	int origin_line = 0;
+	int origin_col = 0;
+	if (lines.size() == 1) {
+		origin_line = caret_line;
+		origin_col = caret_col - (int)p_candidate.text.length();
+	} else {
+		origin_line = caret_line - (lines.size() - 1);
+		if (origin_line < 0) {
+			return false;
+		}
+		origin_col = code_edit->get_line(origin_line).length() - lines[0].length();
+	}
+	if (origin_col < 0) {
+		return false;
+	}
+
+	// TextEdit has no ranged get_text(): slice it line by line.
+	String inserted;
+	if (origin_line == caret_line) {
+		inserted = code_edit->get_line(origin_line).substr(origin_col, caret_col - origin_col);
+	} else {
+		inserted = code_edit->get_line(origin_line).substr(origin_col);
+		for (int l = origin_line + 1; l < caret_line; l++) {
+			inserted += "\n" + code_edit->get_line(l);
+		}
+		inserted += "\n" + code_edit->get_line(caret_line).substr(0, caret_col);
+	}
+	if (inserted != p_candidate.text) {
+		return false;
+	}
+
+	Vector<SnippetTabStop> shifted = p_candidate.stops;
+	for (SnippetTabStop &stop : shifted) {
+		stop.start_line += origin_line;
+		stop.end_line += origin_line;
+		if (stop.start_line == origin_line) {
+			stop.start_col += origin_col;
+		}
+		if (stop.end_line == origin_line) {
+			stop.end_col += origin_col;
+		}
+	}
+
+	begin(shifted);
+	return true;
+}
+
 void SnippetSession::end() {
 	active = false;
 	current = -1;
@@ -146,6 +250,18 @@ void SnippetSession::_on_gui_input(const Ref<InputEvent> &p_event) {
 }
 
 void SnippetSession::_on_text_changed() {
+	if (!pending.is_empty()) {
+		// A completion option carrying tab stops may just have been inserted:
+		// match the text ending at the caret against the armed candidates.
+		for (int i = 0; i < pending.size(); i++) {
+			if (_try_begin_inserted(pending[i])) {
+				pending.clear();
+				return; // begin() applied the first stop and took a snapshot.
+			}
+		}
+		pending.clear(); // Something else was inserted; the offer expired.
+	}
+
 	if (!active || navigating) {
 		return;
 	}

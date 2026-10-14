@@ -55,11 +55,17 @@ class InputEvent;
 class SnippetSession : public RefCounted {
 	GDCLASS(SnippetSession, RefCounted);
 
+	struct PendingSnippet {
+		String text;
+		Vector<SnippetTabStop> stops;
+	};
+
 	CodeEdit *code_edit = nullptr;
 	bool active = false;
 	int current = -1;
 	Vector<SnippetTabStop> stops;
 	Vector<String> snapshot; // Line snapshot used to track edit offsets.
+	Vector<PendingSnippet> pending; // Armed by completion, consumed on insert.
 	bool navigating = false;
 
 	void _on_gui_input(const Ref<InputEvent> &p_event);
@@ -68,6 +74,7 @@ class SnippetSession : public RefCounted {
 
 	void _apply_stop(int p_index);
 	void _take_snapshot();
+	bool _try_begin_inserted(const PendingSnippet &p_candidate);
 
 public:
 	static Ref<SnippetSession> get_for(CodeEdit *p_edit);
@@ -75,6 +82,16 @@ public:
 	// Starts navigating p_stops (positions must refer to the text currently
 	// in the editor). Jumps to the first stop.
 	void begin(const Vector<SnippetTabStop> &p_stops);
+
+	// Arms a candidate snippet: when the text right before the caret becomes
+	// p_expanded_text (i.e. the completion option carrying it was accepted),
+	// a session starts automatically. Used by completion flows; several
+	// candidates can be armed at once.
+	void arm(const String &p_expanded_text, const Vector<SnippetTabStop> &p_stops);
+
+	// Tab stops travel through CompletionOption.default_value.
+	static Variant encode_stops(const Vector<SnippetTabStop> &p_stops);
+	static Vector<SnippetTabStop> decode_stops(const Variant &p_value);
 
 	// Ends the session, leaving the caret where it is.
 	void end();

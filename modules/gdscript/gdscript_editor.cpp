@@ -38,6 +38,8 @@
 #ifdef TOOLS_ENABLED
 #include "editor/gdscript_docgen.h"
 #include "editor/gdscript_editor_language.h"
+#include "editor/gui/snippet_parser.h"
+#include "editor/gui/snippet_session.h"
 #include "editor/script_templates/templates.gen.h"
 #endif
 
@@ -3972,16 +3974,37 @@ static void _find_call_arguments(GDScriptParser::CompletionContext &p_context, c
 	}
 
 	// Offer user-defined snippets (loaded from JSON files) as completion
-	// options wherever an identifier could appear.
+	// options wherever an identifier could appear. Bodies are expanded at
+	// completion time (tab stops parsed, variables resolved) and the tab
+	// stops travel in default_value, so accepting an option starts a
+	// SnippetSession with Tab navigation.
 	if (completion_context.type == GDScriptParser::COMPLETION_IDENTIFIER ||
 			completion_context.type == GDScriptParser::COMPLETION_METHOD ||
 			completion_context.type == GDScriptParser::COMPLETION_NONE) {
+		HashMap<String, String> snippet_variables;
+		if (!p_path.is_empty()) {
+			snippet_variables["TM_FILENAME"] = p_path.get_file();
+			snippet_variables["TM_FILENAME_BASE"] = p_path.get_file().get_basename();
+			snippet_variables["TM_DIRECTORY"] = p_path.get_base_dir();
+		}
+
 		const HashMap<String, GDScriptLanguage::SnippetConfig> &snippets = GDScriptLanguage::get_singleton()->_get_snippets();
 		for (const KeyValue<String, GDScriptLanguage::SnippetConfig> &E : snippets) {
 			const GDScriptLanguage::SnippetConfig &snippet = E.value;
+
+			List<SnippetTabStop> tab_stops;
+			const String expanded_body = SnippetParser::parse(snippet.body, snippet_variables, tab_stops);
+
 			EditorLanguage::CompletionOption option;
-			option.insert_text = snippet.body;
+			option.insert_text = expanded_body;
 			option.display = snippet.prefix + "\t[snippet] " + snippet.description;
+			if (!tab_stops.is_empty()) {
+				Vector<SnippetTabStop> stops_vector;
+				for (const SnippetTabStop &stop : tab_stops) {
+					stops_vector.push_back(stop);
+				}
+				option.default_value = SnippetSession::encode_stops(stops_vector);
+			}
 			options.insert(option.display, option);
 		}
 	}

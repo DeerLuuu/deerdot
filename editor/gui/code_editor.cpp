@@ -38,6 +38,7 @@
 #include "core/string/string_builder.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
+#include "editor/gui/snippet_session.h"
 #include "editor/script/script_editor_navigation_marker.h"
 #include "editor/script/syntax_highlighters.h"
 #include "editor/settings/editor_settings.h"
@@ -1034,6 +1035,15 @@ void CodeTextEditor::_complete_request() {
 	bool forced = false;
 	if (code_complete_func) {
 		code_complete_func(code_complete_ud, ctext, &entries, forced);
+	}
+
+	// Snippet options carry their tab stops in default_value: arm the session
+	// so accepting one starts Tab navigation over the inserted snippet.
+	for (const EditorLanguage::CompletionOption &e : entries) {
+		const Vector<SnippetTabStop> tab_stops = SnippetSession::decode_stops(e.default_value);
+		if (!tab_stops.is_empty()) {
+			SnippetSession::get_for(text_editor)->arm(e.insert_text, tab_stops);
+		}
 	}
 
 	for (const EditorLanguage::CompletionOption &e : entries) {
