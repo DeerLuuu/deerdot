@@ -36,6 +36,7 @@ class Button;
 class CodeEdit;
 class ItemList;
 class Label;
+class SnippetJSONHighlighter;
 class TabContainer;
 
 // A window to quickly preview and edit the user-defined code snippet files
@@ -66,6 +67,7 @@ class GDScriptSnippetEditor : public AcceptDialog {
 
 	struct SnippetDirTab {
 		String dir_path;
+		Ref<SnippetJSONHighlighter> highlighter;
 		ItemList *file_list = nullptr;
 		CodeEdit *code_edit = nullptr;
 		Label *status = nullptr;

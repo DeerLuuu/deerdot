@@ -31,7 +31,7 @@
 #include "gdscript_snippet_editor.h"
 
 #include "../gdscript.h"
-#include "gdscript_highlighter.h"
+#include "snippet_json_highlighter.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
@@ -114,11 +114,10 @@ void GDScriptSnippetEditor::_build_tab(int p_index, const String &p_title, const
 	tab.code_edit->set_highlight_current_line(true);
 	tab.code_edit->set_draw_tabs(true);
 
-	// Snippet bodies are GDScript fragments: reuse the regular script editor
-	// highlighter for them.
-	Ref<GDScriptSyntaxHighlighter> highlighter;
-	highlighter.instantiate();
-	tab.code_edit->set_syntax_highlighter(highlighter);
+	// Snippet files are JSON with GDScript code embedded in "body" strings:
+	// the custom highlighter colors the JSON structure and the embedded code.
+	tab.highlighter.instantiate();
+	tab.code_edit->set_syntax_highlighter(tab.highlighter);
 
 	tab.code_edit->set_code_completion_enabled(true);
 	tab.code_edit->connect("code_completion_requested", callable_mp(this, &GDScriptSnippetEditor::_on_code_completion_requested).bind(p_index));
@@ -288,6 +287,13 @@ void GDScriptSnippetEditor::_on_open_dir_pressed(int p_tab) {
 void GDScriptSnippetEditor::_on_code_completion_requested(int p_tab) {
 	SnippetDirTab &tab = get_tab(p_tab);
 	CodeEdit *code_edit = tab.code_edit;
+
+	// Only offer completion inside the GDScript code strings, never on the
+	// JSON scaffolding around them.
+	tab.highlighter->ensure_parsed();
+	if (!tab.highlighter->is_position_in_code(code_edit->get_caret_line(), code_edit->get_caret_column())) {
+		return;
+	}
 
 	String prefix = code_edit->get_word_under_caret().to_lower();
 	if (prefix.is_empty()) {
