@@ -1061,13 +1061,73 @@ void DocumentEditorContainer::_go_to_tab(int p_idx, bool p_save_history) {
 	_update_history_arrows();
 }
 
-void DocumentEditorContainer::_primary_pane_tab_selected(int p_tab) {
-	active_pane = 0;
+// Configures a pane for side-by-side editing: visible tab bar, per-tab close
+// buttons and tabs that can be dragged onto the other pane. Panes sharing the
+// same rearrange group exchange tabs (with their contents) natively.
+void DocumentEditorContainer::_setup_pane(TabContainer *p_pane) {
+	ERR_FAIL_NULL(p_pane);
+
+	p_pane->set_tabs_visible(true);
+	p_pane->set_drag_to_rearrange_enabled(true);
+	p_pane->set_tabs_rearrange_group(1);
+
+	p_pane->connect("tab_selected", callable_mp(this, &DocumentEditorContainer::_pane_tab_selected).bind(p_pane));
+	p_pane->connect("tab_changed", callable_mp(this, &DocumentEditorContainer::_pane_tab_changed).bind(p_pane));
+	p_pane->connect("active_tab_rearranged", callable_mp(this, &DocumentEditorContainer::_pane_tab_rearranged).bind(p_pane));
+
+	if (TabBar *bar = p_pane->get_tab_bar()) {
+		bar->set_tab_close_display_policy(TabBar::CLOSE_BUTTON_SHOW_ALWAYS);
+		bar->connect("tab_close_pressed", callable_mp(this, &DocumentEditorContainer::_pane_tab_close_pressed).bind(p_pane));
+	}
 }
 
-void DocumentEditorContainer::_split_pane_tab_selected(int p_tab) {
-	active_pane = 1;
+void DocumentEditorContainer::_pane_tab_selected(int p_tab, TabContainer *p_pane) {
+	active_pane = (p_pane == split_pane) ? 1 : 0;
 	ensure_select_current();
+}
+
+void DocumentEditorContainer::_pane_tab_changed(int p_tab, TabContainer *p_pane) {
+	// Tabs may have been dragged in or out of this pane: refresh what depends
+	// on the panes' contents, and drop a split pane that became empty. The
+	// emptiness check is deferred so tabs can finish moving during a drop.
+	callable_mp(this, &DocumentEditorContainer::_check_split_pane_empty).call_deferred();
+	_update_filenames();
+	document_list->update_list();
+}
+
+void DocumentEditorContainer::_pane_tab_rearranged(int p_tab, TabContainer *p_pane) {
+	// A tab was reordered or moved to another pane: keep titles and the
+	// document list in sync.
+	callable_mp(this, &DocumentEditorContainer::_check_split_pane_empty).call_deferred();
+	_update_filenames();
+	document_list->update_list();
+}
+
+void DocumentEditorContainer::_pane_tab_close_pressed(int p_tab, TabContainer *p_pane) {
+	Control *editor = p_pane->get_tab_control(p_tab);
+	if (editor == nullptr) {
+		return;
+	}
+
+	// Make the tab being closed the current document, so the shared close
+	// flows (save prompt, discard, save-then-close) act on it.
+	p_pane->set_current_tab(p_tab);
+	active_pane = (p_pane == split_pane) ? 1 : 0;
+
+	ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor);
+	if (seb != nullptr && seb->is_unsaved()) {
+		_ask_close_current_unsaved_tab(seb);
+	} else {
+		_close_tab(p_pane, p_tab, false);
+	}
+}
+
+void DocumentEditorContainer::_check_split_pane_empty() {
+	if (split_pane != nullptr && split_pane->get_tab_count() == 0) {
+		_remove_split_pane();
+		_update_filenames();
+		document_list->update_list();
+	}
 }
 
 void DocumentEditorContainer::_update_history_arrows() {
@@ -1274,11 +1334,11 @@ void DocumentEditorContainer::_activate_document(Control *p_editor, bool p_focus
 void DocumentEditorContainer::_toggle_split_editor_view() {
 	if (split_pane == nullptr) {
 		split_pane = memnew(TabContainer);
-		split_pane->set_tabs_visible(true);
+		split_pane->set_custom_minimum_size(Size2(200, 0) * EDSCALE);
 		split_pane->set_h_size_flags(SIZE_EXPAND_FILL);
 		split_pane->set_v_size_flags(SIZE_EXPAND_FILL);
-		split_pane->connect("tab_selected", callable_mp(this, &DocumentEditorContainer::_split_pane_tab_selected));
 		editor_split->add_child(split_pane);
+		_setup_pane(split_pane);
 	}
 
 	TabContainer *from = _active_pane_container();
@@ -4212,12 +4272,11 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	editor_split->set_v_size_flags(SIZE_EXPAND_FILL);
 
 	tab_container = memnew(TabContainer);
-	tab_container->set_tabs_visible(false);
 	tab_container->set_custom_minimum_size(Size2(200, 0) * EDSCALE);
 	editor_split->add_child(tab_container);
 	tab_container->set_h_size_flags(SIZE_EXPAND_FILL);
 	tab_container->set_v_size_flags(SIZE_EXPAND_FILL);
-	tab_container->connect("tab_selected", callable_mp(this, &DocumentEditorContainer::_primary_pane_tab_selected));
+	_setup_pane(tab_container);
 
 	find_replace_bar = memnew(FindReplaceBar);
 	code_editor_container->add_child(find_replace_bar);
@@ -4334,7 +4393,7 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 		if (snippets_opener) {
 			file_menu->get_popup()->add_separator();
 			file_menu->get_popup()->add_shortcut(ED_SHORTCUT("script_editor/code_snippets", TTRC("Code Snippets...")), FILE_MENU_SNIPPETS);
-			file_menu->get_popup()->add_shortcut(ED_SHORTCUT("script_editor/split_editor_view", TTRC("Split Editor View")), FILE_MENU_SPLIT_EDITOR);
+			file_menu->get_popup()->add_shortcut(ED_SHORTCUT("script_editor/split_editor_view", TTRC("Split Editor View"), KeyModifierMask::CMD_OR_CTRL | Key::BACKSLASH), FILE_MENU_SPLIT_EDITOR);
 		}
 		file_menu->get_popup()->add_separator();
 	}

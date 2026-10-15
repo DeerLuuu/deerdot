@@ -382,8 +382,14 @@ class DocumentEditorContainer : public MarginContainer {
 	void _go_to_tab(int p_idx, bool p_save_history = false);
 	void _toggle_split_editor_view();
 	void _remove_split_pane();
-	void _split_pane_tab_selected(int p_tab);
-	void _primary_pane_tab_selected(int p_tab);
+	// Configures a pane (tab bar visibility, tab dragging between panes,
+	// per-tab close buttons) and connects its tab signals.
+	void _setup_pane(TabContainer *p_pane);
+	void _pane_tab_selected(int p_tab, TabContainer *p_pane);
+	void _pane_tab_changed(int p_tab, TabContainer *p_pane);
+	void _pane_tab_rearranged(int p_tab, TabContainer *p_pane);
+	void _pane_tab_close_pressed(int p_tab, TabContainer *p_pane);
+	void _check_split_pane_empty();
 
 	Ref<ConfigFile> script_editor_cache;
 	String cache_path;
