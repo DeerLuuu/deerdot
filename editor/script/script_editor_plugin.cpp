@@ -2360,6 +2360,12 @@ bool DocumentEditorContainer::_has_script_tab() const {
 void DocumentEditorContainer::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_TREE: {
+			// Keep the document name shown at the top in sync with the pane the
+			// user is actually working in.
+			Viewport *viewport = get_viewport();
+			if (viewport != nullptr && !viewport->is_connected("gui_focus_changed", callable_mp(this, &DocumentEditorContainer::_focus_changed))) {
+				viewport->connect("gui_focus_changed", callable_mp(this, &DocumentEditorContainer::_focus_changed));
+			}
 			_apply_editor_settings();
 			[[fallthrough]];
 		}
@@ -4164,9 +4170,43 @@ void DocumentEditorContainer::_calculate_script_name_button_ratio() {
 	script_name_button_right_spacer->set_stretch_ratio(ratio_left / 2);
 }
 
+void DocumentEditorContainer::_focus_changed(Node *p_node) {
+	if (split_pane == nullptr) {
+		return;
+	}
+
+	Control *focused = Object::cast_to<Control>(p_node);
+	if (focused == nullptr) {
+		return;
+	}
+
+	TabContainer *pane = nullptr;
+	if (tab_container->is_ancestor_of(focused)) {
+		pane = tab_container;
+	} else if (split_pane->is_ancestor_of(focused)) {
+		pane = split_pane;
+	}
+	if (pane == nullptr) {
+		// Focus moved outside the editing panes (file list, menus...).
+		return;
+	}
+
+	const int new_active = (pane == split_pane) ? 1 : 0;
+	if (active_pane == new_active) {
+		return;
+	}
+
+	// The user started working in the other pane: follow it everywhere the
+	// current document matters, including the name shown at the top.
+	active_pane = new_active;
+	_update_document_name_button();
+	document_list->update_list();
+}
+
 void DocumentEditorContainer::_update_document_name_button() {
-	if (tab_container->get_current_tab() >= 0) {
-		const String &name = tab_container->get_tab_title(tab_container->get_current_tab());
+	TabContainer *pane = _active_pane_container();
+	if (pane->get_current_tab() >= 0) {
+		const String &name = pane->get_tab_title(pane->get_current_tab());
 		script_name_button->set_text(name);
 		script_name_button->show();
 		_calculate_script_name_button_size();

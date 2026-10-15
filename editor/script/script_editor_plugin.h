@@ -379,6 +379,7 @@ class DocumentEditorContainer : public MarginContainer {
 	TabContainer *_pane_of(Control *p_editor) const;
 	LocalVector<Control *> _get_all_pane_editors() const;
 	void _activate_document(Control *p_editor, bool p_focus);
+	void _focus_changed(Node *p_node);
 	void _go_to_tab(int p_idx, bool p_save_history = false);
 	void _toggle_split_editor_view();
 	void _remove_split_pane();
