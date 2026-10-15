@@ -1010,6 +1010,13 @@ GDScriptParser::TraitNode *GDScriptParser::parse_trait(bool p_is_static) {
 		} else {
 			n_trait->fqcn = n_trait->identifier->name;
 		}
+		// Traits declared at the top level of a script file are globally
+		// registered, so `uses` can resolve them from other scripts. The head
+		// class is the only ClassNode with no outer class.
+		const bool is_file_level = n_trait->outer == nullptr || n_trait->outer->outer == nullptr;
+		if (is_file_level) {
+			GDScriptLanguage::register_global_trait(n_trait->identifier->name, script_path);
+		}
 	}
 
 	consume(GDScriptTokenizer::Token::COLON, R"(Expected ":" after trait declaration.)");

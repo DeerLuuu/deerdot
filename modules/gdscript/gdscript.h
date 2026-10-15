@@ -407,6 +407,10 @@ class GDScriptLanguage : public ScriptLanguage {
 	HashMap<StringName, Variant> named_globals;
 	Vector<int> global_array_empty_indexes;
 
+	// Global trait registry (see the static methods below).
+	static HashMap<StringName, String> global_trait_paths;
+	static HashMap<String, uint64_t> global_trait_path_versions;
+
 	struct CallLevel {
 		Variant *stack = nullptr;
 		GDScriptFunction *function = nullptr;
@@ -677,6 +681,17 @@ public:
 
 	virtual bool handles_global_class_type(const String &p_type) const override;
 	virtual String get_global_class_name(const String &p_path, String *r_base_type = nullptr, String *r_icon_path = nullptr, bool *r_is_abstract = nullptr, bool *r_is_tool = nullptr) const override;
+
+	/* GLOBAL TRAITS */
+
+	// Top-level traits by fully-qualified name, mapped to the script path
+	// that declares them. Populated whenever a script declaring a top-level
+	// trait is parsed; the analyzer resolves cross-file `uses` through it.
+	static void register_global_trait(const StringName &p_name, const String &p_path);
+	static String get_global_trait_path(const StringName &p_name);
+	static uint64_t get_global_trait_path_version(const String &p_path);
+	static bool has_global_trait(const StringName &p_name);
+	static void get_global_trait_names(List<StringName> *r_names);
 
 	void add_orphan_subclass(const String &p_qualified_name, const ObjectID &p_subclass);
 	Ref<GDScript> get_orphan_subclass(const String &p_qualified_name);

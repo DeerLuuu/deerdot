@@ -2952,6 +2952,43 @@ void GDScriptLanguage::add_orphan_subclass(const String &p_qualified_name, const
 	orphan_subclasses[p_qualified_name] = p_subclass;
 }
 
+/* GLOBAL TRAITS */
+
+HashMap<StringName, String> GDScriptLanguage::global_trait_paths;
+HashMap<String, uint64_t> GDScriptLanguage::global_trait_path_versions;
+
+void GDScriptLanguage::register_global_trait(const StringName &p_name, const String &p_path) {
+	String *existing_path = global_trait_paths.getptr(p_name);
+	if (existing_path != nullptr && *existing_path == p_path) {
+		return; // Same trait, same file: registration unchanged.
+	}
+	// A new trait or a moved declaration: register and bump the path version
+	// so cached parses of the file are invalidated.
+	global_trait_paths[p_name] = p_path;
+	uint64_t version = global_trait_path_versions.has(p_path) ? global_trait_path_versions[p_path] + 1 : 1;
+	global_trait_path_versions[p_path] = version;
+}
+
+String GDScriptLanguage::get_global_trait_path(const StringName &p_name) {
+	const String *path = global_trait_paths.getptr(p_name);
+	return path != nullptr ? *path : String();
+}
+
+uint64_t GDScriptLanguage::get_global_trait_path_version(const String &p_path) {
+	HashMap<String, uint64_t>::ConstIterator E = global_trait_path_versions.find(p_path);
+	return E ? E->value : 0;
+}
+
+bool GDScriptLanguage::has_global_trait(const StringName &p_name) {
+	return global_trait_paths.has(p_name);
+}
+
+void GDScriptLanguage::get_global_trait_names(List<StringName> *r_names) {
+	for (const KeyValue<StringName, String> &E : global_trait_paths) {
+		r_names->push_back(E.key);
+	}
+}
+
 Ref<GDScript> GDScriptLanguage::get_orphan_subclass(const String &p_qualified_name) {
 	HashMap<String, ObjectID>::Iterator orphan_subclass_element = orphan_subclasses.find(p_qualified_name);
 	if (!orphan_subclass_element) {

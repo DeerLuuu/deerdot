@@ -69,6 +69,9 @@ class GDScriptAnalyzer {
 	// Resolves `uses` statements, copying the referenced traits' members into the class.
 	Error resolve_class_uses(GDScriptParser::ClassNode *p_class, const GDScriptParser::Node *p_source = nullptr);
 	Error resolve_class_uses(GDScriptParser::ClassNode *p_class, bool p_recursive);
+	// Resolves a cross-file trait by fully-qualified name through the global
+	// trait registry, parsing the declaring script on demand.
+	GDScriptParser::TraitNode *get_global_trait(GDScriptParser *p_parser, const StringName &p_fqtn);
 	GDScriptParser::DataType resolve_datatype(GDScriptParser::TypeNode *p_type);
 
 	void resolve_annotation(GDScriptParser::AnnotationNode *p_annotation);

@@ -680,6 +680,38 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 	return err;
 }
 
+// Cross-file trait resolution: loads the declaring script through the
+// standard dependency machinery (GDScriptCache), fully resolves it with its
+// own analyzer, and returns the parsed trait node. The parser ref is
+// registered in the current parser's depended_parsers, so later member
+// resolution on the copied members finds the right external parser.
+GDScriptParser::TraitNode *GDScriptAnalyzer::get_global_trait(GDScriptParser *p_parser, const StringName &p_fqtn) {
+	const String path = GDScriptLanguage::get_global_trait_path(p_fqtn);
+	if (path.is_empty()) {
+		return nullptr;
+	}
+
+	Ref<GDScriptParserRef> ref = p_parser->get_depended_parser_for(path);
+	if (ref.is_null()) {
+		return nullptr;
+	}
+	if (ref->raise_status(GDScriptParserRef::FULLY_SOLVED) != OK) {
+		return nullptr;
+	}
+
+	GDScriptParser::ClassNode *head = ref->get_parser()->head;
+	if (head == nullptr) {
+		return nullptr;
+	}
+	for (const GDScriptParser::ClassNode::Member &member : head->members) {
+		if (member.type == GDScriptParser::ClassNode::Member::TRAIT && member.m_class != nullptr &&
+				member.m_class->identifier != nullptr && member.m_class->identifier->name == String(p_fqtn)) {
+			return static_cast<GDScriptParser::TraitNode *>(member.m_class);
+		}
+	}
+	return nullptr;
+}
+
 Error GDScriptAnalyzer::resolve_class_uses(GDScriptParser::ClassNode *p_class, const GDScriptParser::Node *p_source) {
 	if (p_source == nullptr && parser->has_class(p_class)) {
 		p_source = p_class;
@@ -706,7 +738,14 @@ Error GDScriptAnalyzer::resolve_class_uses(GDScriptParser::ClassNode *p_class, c
 
 		// Locate the referenced trait by its fully-qualified name.
 		// `uses A.B.C` uses dots; `find_class()` expects `::` separators.
+		// A plain single name may also resolve to a globally registered
+		// trait declared in another script (fully resolved on demand).
 		GDScriptParser::ClassNode *found = parser->find_class(uses->fqtn.replace(".", "::"));
+		bool resolved_globally = false;
+		if (found == nullptr && !uses->fqtn.contains(".")) {
+			found = get_global_trait(parser, uses->fqtn);
+			resolved_globally = found != nullptr;
+		}
 		if (found == nullptr || found->type != GDScriptParser::Node::TRAIT) {
 			push_error(vformat(R"(Could not find trait "%s".)", uses->fqtn), uses);
 			continue;
@@ -724,14 +763,17 @@ Error GDScriptAnalyzer::resolve_class_uses(GDScriptParser::ClassNode *p_class, c
 		}
 		p_class->traits_fqtn.push_back(trait->fqcn);
 
-		// Resolve the trait itself first so its members have types.
-		GDScriptParser::ClassNode *previous_trait = parser->current_class;
-		parser->current_class = trait;
-		// resolve_class_interface/body() push their errors internally and
-		// return void in the current analyzer.
-		resolve_class_interface(trait);
-		resolve_class_body(trait);
-		parser->current_class = previous_trait;
+		// Same-file traits are resolved in place; globally registered traits
+		// were already fully resolved through their own analyzer.
+		if (!resolved_globally) {
+			GDScriptParser::ClassNode *previous_trait = parser->current_class;
+			parser->current_class = trait;
+			// resolve_class_interface/body() push their errors internally and
+			// return void in the current analyzer.
+			resolve_class_interface(trait);
+			resolve_class_body(trait);
+			parser->current_class = previous_trait;
+		}
 
 		// Copy the trait's members into this class, tagging each with its origin.
 		for (const GDScriptParser::ClassNode::Member &member : trait->members) {
