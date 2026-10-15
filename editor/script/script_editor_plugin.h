@@ -79,7 +79,7 @@ class DocumentList : public VBoxContainer {
 		String display_name;
 		String tooltip;
 		Ref<Texture2D> icon;
-		int index = 0;
+		Control *editor = nullptr; // The document editor this item refers to (replaces the pane index).
 		bool hidden = false;
 		bool tool = false;
 		bool used_in_scene = false;
@@ -200,6 +200,8 @@ class DocumentEditorContainer : public MarginContainer {
 
 		FILE_MENU_SNIPPETS,
 
+		FILE_MENU_SPLIT_EDITOR,
+
 		// Search.
 		HELP_SEARCH_FIND,
 		HELP_SEARCH_FIND_NEXT,
@@ -250,6 +252,9 @@ class DocumentEditorContainer : public MarginContainer {
 	DocumentOutline *document_outline = nullptr;
 	VSplitContainer *list_split = nullptr;
 	TabContainer *tab_container = nullptr;
+	HSplitContainer *editor_split = nullptr;
+	TabContainer *split_pane = nullptr; // Second pane for side-by-side editing.
+	int active_pane = 0; // 0 = primary pane, 1 = split pane.
 	AcceptDialog *error_dialog = nullptr;
 	ConfirmationDialog *erase_tab_confirm = nullptr;
 	FindReplaceBar *find_replace_bar = nullptr;
@@ -326,7 +331,7 @@ class DocumentEditorContainer : public MarginContainer {
 
 	void _show_error_dialog(const String &p_path);
 
-	void _close_tab(int p_idx, bool p_save = true);
+	void _close_tab(TabContainer *p_pane, int p_idx, bool p_save = true);
 	void _update_find_replace_bar();
 
 	void _close_current_tab(bool p_save = true);
@@ -370,6 +375,15 @@ class DocumentEditorContainer : public MarginContainer {
 	Array _get_cached_breakpoints_for_script(const String &p_path) const;
 
 	ScriptEditorBase *_get_current_editor() const;
+	TabContainer *_active_pane_container() const;
+	TabContainer *_pane_of(Control *p_editor) const;
+	LocalVector<Control *> _get_all_pane_editors() const;
+	void _activate_document(Control *p_editor, bool p_focus);
+	void _go_to_tab(int p_idx, bool p_save_history = false);
+	void _toggle_split_editor_view();
+	void _remove_split_pane();
+	void _split_pane_tab_selected(int p_tab);
+	void _primary_pane_tab_selected(int p_tab);
 
 	Ref<ConfigFile> script_editor_cache;
 	String cache_path;
@@ -416,7 +430,6 @@ class DocumentEditorContainer : public MarginContainer {
 	void _save_new_history(const Dictionary &p_state, Control *p_control);
 	void _save_previous_state(const Dictionary &p_state, Control *p_control);
 	void _compress_history_patterns(bool p_once);
-	void _go_to_tab(int p_idx, bool p_save_history = false);
 	void _update_history_pos(int p_new_pos);
 	void _update_modified_scripts_for_external_editor(Ref<Script> p_for_script = Ref<Script>());
 
