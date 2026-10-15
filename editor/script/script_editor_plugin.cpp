@@ -1955,7 +1955,7 @@ List<String> DocumentEditorContainer::_get_recognized_extensions() {
 }
 
 void DocumentEditorContainer::_menu_option(int p_option) {
-	Node *current_editor = tab_container->get_current_tab_control();
+	Node *current_editor = _active_pane_container()->get_current_tab_control();
 	ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(current_editor);
 	EditorHelp *eh = Object::cast_to<EditorHelp>(current_editor);
 	switch (p_option) {
@@ -2208,6 +2208,9 @@ void DocumentEditorContainer::_menu_option(int p_option) {
 				if (snippets_opener) {
 					snippets_opener();
 				}
+			} break;
+			case FILE_MENU_SPLIT_EDITOR: {
+				_toggle_split_editor_view();
 			} break;
 			case FILE_MENU_COPY_PATH: {
 				_copy_script_path();
@@ -2727,7 +2730,8 @@ bool DocumentEditorContainer::edit(const Ref<Resource> &p_resource, int p_line, 
 	seb->set_edited_resource(p_resource);
 
 	grab_focus_block = !p_grab_focus;
-	tab_container->add_child(seb);
+	// New documents open in the pane the user was last working in.
+	_active_pane_container()->add_child(seb);
 	grab_focus_block = false;
 
 	if (TextEditorBase *teb = Object::cast_to<TextEditorBase>(seb)) {
@@ -2761,7 +2765,10 @@ bool DocumentEditorContainer::edit(const Ref<Resource> &p_resource, int p_line, 
 
 	_update_filenames();
 	grab_focus_block = !p_grab_focus;
-	_go_to_tab(tab_container->get_tab_count() - 1);
+	// New documents open in the pane the user was last working in.
+	TabContainer *target_pane = _active_pane_container();
+	target_pane->set_current_tab(target_pane->get_tab_count() - 1);
+	active_pane = (target_pane == split_pane) ? 1 : 0;
 	ensure_select_current();
 	grab_focus_block = false;
 	_add_recent_script(p_resource->get_path());
@@ -3548,6 +3555,14 @@ void DocumentEditorContainer::_prepare_file_menu() {
 	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_SAVE_ALL), !_has_script_tab());
 	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_CLOSE), tab_container->get_tab_count() < 1);
 	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_CLOSE_ALL), tab_container->get_tab_count() < 1);
+
+	// The split action turns into a merge action while a second pane exists.
+	const int split_item = p_menu->get_item_index(FILE_MENU_SPLIT_EDITOR);
+	if (split_item != -1) {
+		p_menu->set_item_text(split_item, split_pane != nullptr ? TTRC("Merge Editor Views") : TTRC("Split Editor View"));
+		p_menu->set_item_disabled(split_item, _get_current_editor() == nullptr && split_pane == nullptr);
+	}
+
 	const Ref<Script> script = res;
 	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_SOFT_RELOAD_TOOL), script.is_null() || !script->is_tool());
 	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_RUN), script.is_null());
