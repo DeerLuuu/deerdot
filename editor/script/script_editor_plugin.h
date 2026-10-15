@@ -386,6 +386,9 @@ class DocumentEditorContainer : public MarginContainer {
 	// Configures a pane (tab bar visibility, tab dragging between panes,
 	// per-tab close buttons) and connects its tab signals.
 	void _setup_pane(TabContainer *p_pane);
+	void _create_split_pane();
+	bool _can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data);
+	void _drop_split_tab(const Vector2 &p_at_position, const Variant &p_data);
 	void _pane_tab_selected(int p_tab, TabContainer *p_pane);
 	void _pane_tab_changed(int p_tab, TabContainer *p_pane);
 	void _pane_tab_rearranged(int p_tab, TabContainer *p_pane);

@@ -1331,15 +1331,63 @@ void DocumentEditorContainer::_activate_document(Control *p_editor, bool p_focus
 	_update_history_arrows();
 }
 
-void DocumentEditorContainer::_toggle_split_editor_view() {
-	if (split_pane == nullptr) {
-		split_pane = memnew(TabContainer);
-		split_pane->set_custom_minimum_size(Size2(200, 0) * EDSCALE);
-		split_pane->set_h_size_flags(SIZE_EXPAND_FILL);
-		split_pane->set_v_size_flags(SIZE_EXPAND_FILL);
-		editor_split->add_child(split_pane);
-		_setup_pane(split_pane);
+void DocumentEditorContainer::_create_split_pane() {
+	if (split_pane != nullptr) {
+		return;
 	}
+	split_pane = memnew(TabContainer);
+	split_pane->set_custom_minimum_size(Size2(200, 0) * EDSCALE);
+	split_pane->set_h_size_flags(SIZE_EXPAND_FILL);
+	split_pane->set_v_size_flags(SIZE_EXPAND_FILL);
+	editor_split->add_child(split_pane);
+	_setup_pane(split_pane);
+}
+
+// Dragging a tab onto the right part of the editor area splits the view and
+// drops that document into the new pane, like dragging a tab to the side of a
+// code editor. Drops onto an existing pane are handled by the built-in tab
+// rearrangement instead.
+bool DocumentEditorContainer::_can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) {
+	if (split_pane != nullptr || p_data.get_type() != Variant::DICTIONARY) {
+		return false;
+	}
+
+	const Dictionary data = p_data;
+	if (String(data.get("type", String())) != "tab" || String(data.get("tab_type", String())) != "tab_container_tab") {
+		return false;
+	}
+
+	return p_at_position.x >= editor_split->get_size().x * 0.6f;
+}
+
+void DocumentEditorContainer::_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) {
+	if (!_can_drop_split_tab(p_at_position, p_data)) {
+		return;
+	}
+
+	const Dictionary data = p_data;
+	TabBar *from_bar = Object::cast_to<TabBar>(get_node_or_null(NodePath(String(data.get("from_path", String())))));
+	TabContainer *from = (from_bar != nullptr) ? TabContainer::get_tab_bar_container(from_bar) : nullptr;
+	if (from == nullptr) {
+		return;
+	}
+
+	const int from_index = data.get("tab_index", -1);
+	if (from_index < 0 || from_index >= from->get_tab_count()) {
+		return;
+	}
+
+	_create_split_pane();
+	split_pane->move_tab_from_tab_container(from, from_index, 0);
+	split_pane->set_current_tab(split_pane->get_tab_count() - 1);
+	active_pane = 1;
+
+	_update_filenames();
+	document_list->update_list();
+}
+
+void DocumentEditorContainer::_toggle_split_editor_view() {
+	_create_split_pane();
 
 	TabContainer *from = _active_pane_container();
 	TabContainer *to = (from == tab_container) ? split_pane : tab_container;
@@ -4310,6 +4358,8 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	code_editor_container->add_child(editor_split);
 	editor_split->set_h_size_flags(SIZE_EXPAND_FILL);
 	editor_split->set_v_size_flags(SIZE_EXPAND_FILL);
+	// Accept tabs dragged to the right side to create a second pane.
+	editor_split->set_drag_forwarding(Callable(), callable_mp(this, &DocumentEditorContainer::_can_drop_split_tab), callable_mp(this, &DocumentEditorContainer::_drop_split_tab));
 
 	tab_container = memnew(TabContainer);
 	tab_container->set_custom_minimum_size(Size2(200, 0) * EDSCALE);
