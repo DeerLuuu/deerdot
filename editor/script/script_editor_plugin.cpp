@@ -83,6 +83,7 @@
 #include "scene/main/node.h"
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
+#include "scene/resources/style_box_flat.h"
 #include "servers/display/display_server.h"
 
 void ScriptEditorQuickOpen::popup_dialog(const Vector<String> &p_functions, bool p_dontclear) {
@@ -4420,12 +4421,21 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	// Highlight shown while a document tab is dragged over the area where a
 	// second pane can be created. It is also the drop target for that gesture,
 	// since the code editors below it stop drag propagation.
-	split_drop_overlay = memnew(Control);
+	split_drop_overlay = memnew(Panel);
 	split_drop_overlay->set_as_top_level(true);
 	split_drop_overlay->set_mouse_filter(Control::MOUSE_FILTER_STOP);
 	split_drop_overlay->set_drag_forwarding(Callable(), callable_mp(this, &DocumentEditorContainer::_can_drop_split_tab), callable_mp(this, &DocumentEditorContainer::_drop_split_tab));
 	split_drop_overlay->hide();
 	code_editor_container->add_child(split_drop_overlay);
+	{
+		Ref<StyleBoxFlat> overlay_style = memnew(StyleBoxFlat);
+		const Color accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
+		overlay_style->set_bg_color(Color(accent.r, accent.g, accent.b, 0.12f));
+		overlay_style->set_border_color(Color(accent.r, accent.g, accent.b, 0.7f));
+		overlay_style->set_border_width_all(2);
+		overlay_style->set_corner_radius_all(4);
+		split_drop_overlay->add_theme_style_override(SceneStringName(panel), overlay_style);
+	}
 
 	tab_container = memnew(TabContainer);
 	tab_container->set_custom_minimum_size(Size2(200, 0) * EDSCALE);
