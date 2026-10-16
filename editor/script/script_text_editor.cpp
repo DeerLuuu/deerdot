@@ -2132,7 +2132,7 @@ String ScriptTextEditor::get_drop_preview_text(const Variant &p_data) {
 			// nothing to preview.
 			return String();
 		}
-	} else if (type != "files" && type != "files_and_dirs") {
+	} else if (type != "files" && type != "files_and_dirs" && type != "obj_property") {
 		return String();
 	}
 
