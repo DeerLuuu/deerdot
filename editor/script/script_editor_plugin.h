@@ -158,21 +158,6 @@ class ShaderCreateDialog;
 // line and column where the code would land.
 class CodeEdit;
 
-class CodeGhostText : public Control {
-	CodeEdit *code_edit = nullptr;
-	String text;
-	int target_line = 0;
-	int target_column = 0;
-	Color color = Color(1, 1, 1, 0.5);
-	Callable preview_refresh; // Asked each frame so the text follows the modifiers.
-
-public:
-	void show_preview(CodeEdit *p_code_edit, const String &p_text, int p_line, int p_column, const Color &p_color);
-	void clear_preview();
-	void set_preview_refresh(const Callable &p_refresh) { preview_refresh = p_refresh; }
-
-	void _notification(int p_what);
-};
 class DocumentEditorContainer : public MarginContainer {
 	GDCLASS(DocumentEditorContainer, MarginContainer);
 
@@ -286,7 +271,7 @@ class DocumentEditorContainer : public MarginContainer {
 	Panel *split_drop_overlay = nullptr;
 	Label *split_drop_hint = nullptr; // Hint text shown inside the drop highlight.
 	VBoxContainer *split_drop_box = nullptr; // Holds the overlay hint; alignment depends on the zone.
-	CodeGhostText *drop_code_preview = nullptr; // Inline preview of the code a drop would insert.
+	Label *drop_code_preview = nullptr; // Inline preview of the text a drop would insert.
 	DropZone drop_overlay_zone = DROP_ZONE_NONE;
 	int active_pane = 0; // 0 = primary pane, 1 = split pane.
 	AcceptDialog *error_dialog = nullptr;

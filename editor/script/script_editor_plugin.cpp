@@ -1421,83 +1421,14 @@ void DocumentEditorContainer::_drop_on_editor(const Vector2 &p_at_position, cons
 	}
 }
 
-void CodeGhostText::show_preview(CodeEdit *p_code_edit, const String &p_text, int p_line, int p_column, const Color &p_color) {
-	code_edit = p_code_edit;
-	text = p_text;
-	target_line = p_line;
-	target_column = p_column;
-	color = p_color;
-
-	if (code_edit == nullptr || text.is_empty()) {
-		clear_preview();
-		return;
-	}
-
-	set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
-	set_process(true);
-	show();
-	queue_redraw();
-}
-
-void CodeGhostText::clear_preview() {
-	text = String();
-	set_process(false);
-	hide();
-	queue_redraw();
-}
-
-void CodeGhostText::_notification(int p_what) {
-	switch (p_what) {
-		case NOTIFICATION_PROCESS: {
-			if (code_edit == nullptr || text.is_empty() || !code_edit->is_visible_in_tree()) {
-				hide();
-				return;
-			}
-
-			// The preview belongs to a line of the editor: keep it aligned while
-			// the editor scrolls, and hide it when that line is scrolled away.
-			if (target_line < code_edit->get_first_visible_line() || target_line > code_edit->get_last_full_visible_line()) {
-				hide();
-				return;
-			}
-			if (!is_visible()) {
-				show();
-			}
-
-			set_position(code_edit->get_rect_at_line_column(target_line, target_column).position);
-
-			// The text can change while dragging (holding Ctrl or Alt changes
-			// what the drop inserts), so ask for it again.
-			if (preview_refresh.is_valid()) {
-				preview_refresh.call();
-			}
-		} break;
-
-		case NOTIFICATION_DRAW: {
-			if (code_edit == nullptr || text.is_empty()) {
-				return;
-			}
-
-			const Ref<Font> font = code_edit->get_theme_font(SceneStringName(font));
-			if (font.is_null()) {
-				return;
-			}
-			const int font_size = code_edit->get_theme_font_size(SceneStringName(font_size));
-			const int line_height = code_edit->get_line_height();
-			const PackedStringArray lines = text.split("\n");
-
-			for (int i = 0; i < lines.size(); i++) {
-				draw_string(font, Point2(0, font->get_ascent(font_size) + i * line_height), lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color);
-			}
-		} break;
-	}
-}
-
 CodeEdit *DocumentEditorContainer::_get_active_code_edit() const {
 	TextEditorBase *teb = Object::cast_to<TextEditorBase>(_get_current_editor());
 	return (teb != nullptr) ? Object::cast_to<CodeEdit>(teb->get_base_editor()) : nullptr;
 }
 
+// Shows the text the current drop would insert, as translucent text at the
+// caret. It is asked for again every frame while dragging, because holding Ctrl
+// or Alt changes what the drop inserts.
 void DocumentEditorContainer::_update_drop_preview() {
 	CodeEdit *code_edit = _get_active_code_edit();
 	Viewport *viewport = get_viewport();
@@ -1514,23 +1445,42 @@ void DocumentEditorContainer::_update_drop_preview() {
 	}
 
 	if (drop_code_preview == nullptr) {
-		drop_code_preview = memnew(CodeGhostText);
-		drop_code_preview->set_clip_contents(true);
-		drop_code_preview->set_preview_refresh(callable_mp(this, &DocumentEditorContainer::_update_drop_preview));
+		drop_code_preview = memnew(Label);
+		drop_code_preview->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+		drop_code_preview->set_autowrap_mode(TextServer::AUTOWRAP_OFF);
 	}
 	if (drop_code_preview->get_parent() != code_edit) {
 		if (drop_code_preview->get_parent() != nullptr) {
 			drop_code_preview->get_parent()->remove_child(drop_code_preview);
 		}
 		code_edit->add_child(drop_code_preview);
+		// Match the editor's code font so the preview sits exactly in the text.
+		drop_code_preview->add_theme_font_override(SceneStringName(font), code_edit->get_theme_font(SceneStringName(font)));
+		drop_code_preview->add_theme_font_size_override(SceneStringName(font_size), code_edit->get_theme_font_size(SceneStringName(font_size)));
+	}
+
+	set_process(true);
+	drop_code_preview->set_text(preview);
+	drop_code_preview->show();
+
+	// The preview belongs to a line of the editor: keep it aligned while the
+	// editor scrolls, and hide it when that line is out of view.
+	const int line = code_edit->get_caret_line();
+	const int column = code_edit->get_caret_column();
+	if (line < code_edit->get_first_visible_line() || line > code_edit->get_last_full_visible_line()) {
+		drop_code_preview->hide();
+		return;
 	}
 
 	const Color accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
-	drop_code_preview->show_preview(code_edit, preview, code_edit->get_caret_line(), code_edit->get_caret_column(), Color(accent.r, accent.g, accent.b, 0.7f));
+	drop_code_preview->set_modulate(Color(accent.r, accent.g, accent.b, 0.7f));
+	drop_code_preview->set_position(code_edit->get_rect_at_line_column(line, column).position);
 }
+
 void DocumentEditorContainer::_hide_code_preview() {
+	set_process(false);
 	if (drop_code_preview != nullptr) {
-		drop_code_preview->clear_preview();
+		drop_code_preview->hide();
 	}
 }
 
@@ -2676,6 +2626,18 @@ void DocumentEditorContainer::_notification(int p_what) {
 
 		case NOTIFICATION_DRAG_END: {
 			_hide_drop_overlay();
+		} break;
+
+		case NOTIFICATION_PROCESS: {
+			// While dragging, the preview text depends on the modifier keys, so
+			// it is refreshed for as long as the drag lasts; once it ends the
+			// preview is dropped and processing stops.
+			Viewport *drag_viewport = get_viewport();
+			if (drag_viewport != nullptr && drag_viewport->gui_is_dragging()) {
+				_update_drop_preview();
+			} else {
+				_hide_code_preview();
+			}
 		} break;
 
 		case NOTIFICATION_ENTER_TREE: {
