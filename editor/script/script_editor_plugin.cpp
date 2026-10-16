@@ -1477,7 +1477,6 @@ void DocumentEditorContainer::_update_drop_preview() {
 		drop_code_preview->add_theme_font_size_override(SceneStringName(font_size), code_edit->get_theme_font_size(SceneStringName(font_size)));
 	}
 
-	set_process(true);
 	drop_code_preview->set_text(preview);
 	drop_code_preview->show();
 
@@ -1497,7 +1496,6 @@ void DocumentEditorContainer::_update_drop_preview() {
 }
 
 void DocumentEditorContainer::_hide_code_preview() {
-	set_process(false);
 	if (drop_code_preview != nullptr) {
 		drop_code_preview->hide();
 	}
@@ -2640,6 +2638,9 @@ void DocumentEditorContainer::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_DRAG_BEGIN: {
 			// The drag data may not be set yet when the notification arrives.
+			// Processing stays on for the whole drag so the inline preview can
+			// appear as soon as the drag reaches a code editor.
+			set_process(true);
 			callable_mp(this, &DocumentEditorContainer::_check_drop_overlay).call_deferred();
 		} break;
 
@@ -2656,6 +2657,7 @@ void DocumentEditorContainer::_notification(int p_what) {
 				_update_drop_preview();
 			} else {
 				_hide_code_preview();
+				set_process(false);
 			}
 		} break;
 
