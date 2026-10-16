@@ -549,6 +549,12 @@ msgstr "没有已保存的布局"
 msgid "Saved layout \"%s\"."
 msgstr "已保存布局 \"%s\"。"
 
+msgid "Open in New Window"
+msgstr "在新窗口中打开"
+
+msgid "Release to open in a new window"
+msgstr "松开以在新窗口中打开"
+
 msgid "Saved snippet \"%s\"."
 msgstr "已保存片段 \"%s\"。"
 
