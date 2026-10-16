@@ -414,7 +414,6 @@ class DocumentEditorContainer : public MarginContainer {
 	void _show_drop_overlay(DropZone p_zone, const String &p_hint);
 	void _update_drop_preview();
 	void _hide_code_preview();
-	CodeEdit *_get_active_code_edit() const;
 	void _hide_drop_overlay();
 	void _update_drop_overlay_rect();
 	void _update_drop_overlay_theme();

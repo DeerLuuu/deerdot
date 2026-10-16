@@ -1421,24 +1421,42 @@ void DocumentEditorContainer::_drop_on_editor(const Vector2 &p_at_position, cons
 	}
 }
 
-CodeEdit *DocumentEditorContainer::_get_active_code_edit() const {
-	TextEditorBase *teb = Object::cast_to<TextEditorBase>(_get_current_editor());
-	return (teb != nullptr) ? Object::cast_to<CodeEdit>(teb->get_base_editor()) : nullptr;
-}
-
 // Shows the text the current drop would insert, as translucent text at the
-// caret. It is asked for again every frame while dragging, because holding Ctrl
-// or Alt changes what the drop inserts.
+// position the drop would use. It is asked for again every frame while dragging
+// because holding Ctrl or Alt changes what the drop inserts, and it is only
+// shown over the editor the drop would actually go to.
 void DocumentEditorContainer::_update_drop_preview() {
-	CodeEdit *code_edit = _get_active_code_edit();
 	Viewport *viewport = get_viewport();
-	ScriptEditorBase *seb = _get_current_editor();
-	if (code_edit == nullptr || viewport == nullptr || seb == nullptr || !viewport->gui_is_dragging()) {
+	if (viewport == nullptr || !viewport->gui_is_dragging()) {
 		_hide_code_preview();
 		return;
 	}
 
-	const String preview = seb->get_drop_preview_text(viewport->gui_get_drag_data());
+	// The drop goes to the editor under the mouse, so preview that one; moving
+	// the drag off the code (over the scene tree, the file list, ...) drops the
+	// preview.
+	const Vector2 mouse = viewport->get_mouse_position();
+	ScriptEditorBase *target = nullptr;
+	CodeEdit *code_edit = nullptr;
+	for (Control *editor : _get_all_pane_editors()) {
+		ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor);
+		if (seb == nullptr) {
+			continue;
+		}
+		CodeEdit *code = Object::cast_to<CodeEdit>(seb->get_base_editor());
+		if (code != nullptr && code->is_visible_in_tree() && code->get_global_rect().has_point(mouse)) {
+			target = seb;
+			code_edit = code;
+			break;
+		}
+	}
+
+	if (target == nullptr) {
+		_hide_code_preview();
+		return;
+	}
+
+	const String preview = target->get_drop_preview_text(viewport->gui_get_drag_data());
 	if (preview.is_empty()) {
 		_hide_code_preview();
 		return;
@@ -1463,9 +1481,8 @@ void DocumentEditorContainer::_update_drop_preview() {
 	drop_code_preview->set_text(preview);
 	drop_code_preview->show();
 
-	// The drop inserts where the mouse is, so the preview is placed there too;
-	// it follows the editor while it scrolls and hides when the line is out of
-	// view.
+	// The preview belongs to a line of the editor: keep it aligned while the
+	// editor scrolls, and hide it when that line is out of view.
 	const Point2i drop_pos = code_edit->get_line_column_at_pos(code_edit->get_local_mouse_position());
 	const int line = drop_pos.y;
 	const int column = drop_pos.x;
