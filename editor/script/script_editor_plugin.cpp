@@ -1345,9 +1345,8 @@ void DocumentEditorContainer::_create_split_pane() {
 
 // Dragging a tab onto the right part of the editor area splits the view and
 // drops that document into the new pane, like dragging a tab to the side of a
-// code editor. Drops onto an existing pane are handled by the built-in tab
-// rearrangement instead.
-bool DocumentEditorContainer::_can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) {
+// code editor. Anywhere else the built-in tab rearrangement takes over.
+bool DocumentEditorContainer::_can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) const {
 	if (split_pane != nullptr || p_data.get_type() != Variant::DICTIONARY) {
 		return false;
 	}
@@ -1357,7 +1356,22 @@ bool DocumentEditorContainer::_can_drop_split_tab(const Vector2 &p_at_position, 
 		return false;
 	}
 
-	return p_at_position.x >= editor_split->get_size().x * 0.6f;
+	return p_at_position.x >= tab_container->get_size().x * 0.6f;
+}
+
+bool ScriptEditorTabContainer::can_drop_data(const Point2 &p_point, const Variant &p_data) const {
+	if (owner != nullptr && owner->_can_drop_split_tab(p_point, p_data)) {
+		return true;
+	}
+	return TabContainer::can_drop_data(p_point, p_data);
+}
+
+void ScriptEditorTabContainer::drop_data(const Point2 &p_point, const Variant &p_data) {
+	if (owner != nullptr && owner->_can_drop_split_tab(p_point, p_data)) {
+		owner->_drop_split_tab(p_point, p_data);
+		return;
+	}
+	TabContainer::drop_data(p_point, p_data);
 }
 
 void DocumentEditorContainer::_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) {
@@ -4358,10 +4372,9 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	code_editor_container->add_child(editor_split);
 	editor_split->set_h_size_flags(SIZE_EXPAND_FILL);
 	editor_split->set_v_size_flags(SIZE_EXPAND_FILL);
-	// Accept tabs dragged to the right side to create a second pane.
-	editor_split->set_drag_forwarding(Callable(), callable_mp(this, &DocumentEditorContainer::_can_drop_split_tab), callable_mp(this, &DocumentEditorContainer::_drop_split_tab));
 
-	tab_container = memnew(TabContainer);
+	tab_container = memnew(ScriptEditorTabContainer);
+	tab_container->set_owner(this);
 	tab_container->set_custom_minimum_size(Size2(200, 0) * EDSCALE);
 	editor_split->add_child(tab_container);
 	tab_container->set_h_size_flags(SIZE_EXPAND_FILL);
