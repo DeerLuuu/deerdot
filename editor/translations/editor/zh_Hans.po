@@ -522,6 +522,27 @@ msgstr "代码片段"
 msgid "Code Snippets..."
 msgstr "代码片段..."
 
+msgid "Save Selection as Snippet..."
+msgstr "将选中内容保存为代码片段..."
+
+msgid "Save Selection as Snippet"
+msgstr "保存为代码片段"
+
+msgid "Snippet prefix"
+msgstr "片段前缀"
+
+msgid "Saved snippet \"%s\"."
+msgstr "已保存片段 \"%s\"。"
+
+msgid "Could not save the snippet: \"%s\" is not valid JSON."
+msgstr "无法保存片段：\"%s\" 不是有效的 JSON。"
+
+msgid "Hold %s+Shift: Add `uses` for the traits a script declares."
+msgstr "按住 %s+Shift：添加该脚本声明的 trait 的 `uses`。"
+
+msgid "Hold %s+Shift: Add `uses` for the traits the scripts declare."
+msgstr "按住 %s+Shift：添加这些脚本声明的 trait 的 `uses`。"
+
 msgid "Global Snippets"
 msgstr "全局代码片段"
 
