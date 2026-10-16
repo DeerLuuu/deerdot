@@ -407,7 +407,8 @@ class DocumentEditorContainer : public MarginContainer {
 	void _drop_nodes(const Variant &p_data);
 	void _check_drop_overlay();
 	void _show_drop_overlay(DropZone p_zone, const String &p_hint, const String &p_preview = String());
-	String _get_node_reference_code(const Variant &p_data) const;
+	String _get_node_reference_code(const Variant &p_data, const String &p_existing_code = String()) const;
+	String _get_active_document_code() const;
 	void _hide_drop_overlay();
 	void _update_drop_overlay_rect();
 	void _update_drop_overlay_theme();

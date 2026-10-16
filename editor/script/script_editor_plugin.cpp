@@ -1388,7 +1388,7 @@ void DocumentEditorContainer::_check_drop_overlay() {
 
 	// Dragging nodes from the scene tree: offer to reference them in the script.
 	if (type == "nodes") {
-		_show_drop_overlay(DROP_ZONE_EDITOR, TTRC("Drop here to reference the node in the script"), _get_node_reference_code(data));
+		_show_drop_overlay(DROP_ZONE_EDITOR, TTRC("Drop here to reference the node in the script"), _get_node_reference_code(data, _get_active_document_code()));
 		return;
 	}
 
@@ -1436,6 +1436,42 @@ void DocumentEditorContainer::_drop_nodes(const Variant &p_data) {
 	}
 
 	_hide_drop_overlay();
+
+	TextEditorBase *teb = Object::cast_to<TextEditorBase>(_get_current_editor());
+	CodeEdit *code_edit = (teb != nullptr) ? Object::cast_to<CodeEdit>(teb->get_base_editor()) : nullptr;
+	if (code_edit == nullptr) {
+		return;
+	}
+
+	const String code = _get_node_reference_code(p_data, code_edit->get_text());
+	if (code.is_empty()) {
+		return;
+	}
+
+	// Put the code on its own line, indented like the caret's line, and leave
+	// the caret on a fresh line so whatever followed stays where it was.
+	const int caret_line = code_edit->get_caret_line();
+	const String caret_line_text = code_edit->get_line(caret_line);
+	String indent;
+	for (int i = 0; i < caret_line_text.length() && (caret_line_text[i] == ' ' || caret_line_text[i] == '\t'); i++) {
+		indent += caret_line_text[i];
+	}
+
+	PackedStringArray code_lines = code.split("\n");
+	for (int i = 0; i < code_lines.size(); i++) {
+		code_lines.set(i, indent + code_lines[i]);
+	}
+
+	String insertion = String("\n").join(code_lines) + "\n" + indent;
+	if (!caret_line_text.strip_edges().is_empty()) {
+		insertion = "\n" + insertion;
+	}
+
+	code_edit->begin_complex_operation();
+	code_edit->insert_text_at_caret(insertion);
+	code_edit->end_complex_operation();
+
+	teb->ensure_focus();
 }
 
 void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &p_hint, const String &p_preview) {
@@ -1490,8 +1526,9 @@ void DocumentEditorContainer::_update_drop_overlay_theme() {
 
 // Builds the code a dropped node reference turns into: an `@onready` variable
 // holding the node, typed with its class (or its global script class, when it
-// has one). Nodes that are not part of the edited scene are skipped.
-String DocumentEditorContainer::_get_node_reference_code(const Variant &p_data) const {
+// has one). Nodes not part of the edited scene are skipped, and names already
+// used by the target script are avoided.
+String DocumentEditorContainer::_get_node_reference_code(const Variant &p_data, const String &p_existing_code) const {
 	if (!_can_drop_nodes(p_data)) {
 		return String();
 	}
@@ -1502,9 +1539,30 @@ String DocumentEditorContainer::_get_node_reference_code(const Variant &p_data) 
 		return String();
 	}
 
+	// Variable names already declared in the target script, so the generated
+	// ones do not redeclare or shadow them.
+	HashSet<String> used_names;
+	for (const String &line : p_existing_code.split("\n")) {
+		const String stripped = line.strip_edges();
+		const int var_pos = stripped.find("var ");
+		if (var_pos < 0) {
+			continue;
+		}
+		// Only treat `var` as a declaration when it starts a word.
+		if (var_pos > 0) {
+			const char32_t before = stripped[var_pos - 1];
+			if ((before >= 'a' && before <= 'z') || (before >= 'A' && before <= 'Z') || (before >= '0' && before <= '9') || before == '_') {
+				continue;
+			}
+		}
+		String name = stripped.substr(var_pos + 4).strip_edges().split(":")[0].split("=")[0].split("(")[0].strip_edges();
+		if (!name.is_empty()) {
+			used_names.insert(name);
+		}
+	}
+
 	const Array paths = data["nodes"];
 	PackedStringArray lines;
-	HashSet<String> used_names;
 
 	for (int i = 0; i < paths.size(); i++) {
 		Node *node = scene_root->get_node_or_null(paths[i]);
@@ -1538,6 +1596,16 @@ String DocumentEditorContainer::_get_node_reference_code(const Variant &p_data) 
 	}
 
 	return String("\n").join(lines);
+}
+
+String DocumentEditorContainer::_get_active_document_code() const {
+	TextEditorBase *teb = Object::cast_to<TextEditorBase>(_get_current_editor());
+	if (teb == nullptr) {
+		return String();
+	}
+
+	CodeEdit *code_edit = Object::cast_to<CodeEdit>(teb->get_base_editor());
+	return code_edit != nullptr ? code_edit->get_text() : String();
 }
 
 Rect2 DocumentEditorContainer::_get_drop_overlay_rect(DropZone p_zone) const {
