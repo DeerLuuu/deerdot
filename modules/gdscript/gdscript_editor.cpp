@@ -4553,8 +4553,9 @@ static bool _code_uses_trait(const String &p_code, const StringName &p_name) {
 	return false;
 }
 
-// Line (1-based) where a script declares a trait, or -1 if it does not.
-static int _find_trait_declaration_line(const String &p_path, const StringName &p_name) {
+// Line (1-based) where a script declares a trait, or -1 if it does not. The
+// documentation comments above the declaration are reported as well.
+static int _find_trait_declaration_line(const String &p_path, const StringName &p_name, String *r_description = nullptr) {
 	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::READ);
 	if (file.is_null()) {
 		return -1;
@@ -4567,9 +4568,23 @@ static int _find_trait_declaration_line(const String &p_path, const StringName &
 			continue;
 		}
 		const String declared = line.substr(6).strip_edges().split(":")[0].split(" ")[0].strip_edges();
-		if (declared == p_name) {
-			return i + 1;
+		if (declared != p_name) {
+			continue;
 		}
+
+		if (r_description != nullptr) {
+			String documentation;
+			for (int j = i - 1; j >= 0; j--) {
+				const String comment = lines[j].strip_edges();
+				if (!comment.begins_with("##")) {
+					break;
+				}
+				const String text = comment.substr(2).strip_edges();
+				documentation = documentation.is_empty() ? text : text + "\n" + documentation;
+			}
+			*r_description = documentation;
+		}
+		return i + 1;
 	}
 	return -1;
 }
@@ -4598,16 +4613,18 @@ static int _find_trait_declaration_line(const String &p_path, const StringName &
 	parser.parse(p_code, p_path, true);
 
 	// A trait name in a `uses` statement points at the script declaring it, so
-	// ctrl+clicking it opens that script and the tooltip names it.
+	// ctrl+clicking it opens that script and the tooltip describes the trait.
 	if (GDScriptLanguage::get_singleton() != nullptr && p_symbol.is_valid_identifier() && _code_uses_trait(p_code, p_symbol)) {
 		const String trait_path = GDScriptLanguage::get_singleton()->get_global_trait_path(p_symbol);
 		if (!trait_path.is_empty()) {
-			const int trait_line = _find_trait_declaration_line(trait_path, p_symbol);
+			String documentation;
+			const int trait_line = _find_trait_declaration_line(trait_path, p_symbol, &documentation);
 			if (trait_line > 0) {
-				r_result.type = LookupResult::Type::SCRIPT_LOCATION;
+				r_result.type = LookupResult::Type::TRAIT;
+				r_result.class_name = p_symbol;
 				r_result.script_path = trait_path;
 				r_result.location = trait_line;
-				r_result.description = vformat("trait %s\n%s", String(p_symbol), trait_path);
+				r_result.description = documentation;
 				return OK;
 			}
 		}

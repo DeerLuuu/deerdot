@@ -4523,6 +4523,9 @@ String EditorHelpBit::get_as_plain_text(const String &p_symbol, const String &p_
 		new_help_data = _get_signal_help_data(class_name, item_name);
 	} else if (item_type == "annotation") {
 		new_help_data = _get_annotation_help_data(class_name, item_name);
+	} else if (item_type == "trait") {
+		new_help_data.description = item_data.get("description", "").operator String().strip_edges();
+		new_help_data.resource_path = item_data.get("script_path", "").operator String();
 	} else if (item_type == "local_constant" || item_type == "local_variable") {
 		new_help_data.description = item_data.get("description", "").operator String().strip_edges();
 		if (item_data.get("is_deprecated", false)) {
@@ -4798,6 +4801,11 @@ void EditorHelpBit::parse_symbol(const String &p_symbol, const String &p_prologu
 		symbol_type = TTR("Annotation");
 		symbol_hint = SYMBOL_HINT_SIGNATURE;
 		help_data = _get_annotation_help_data(class_name, item_name);
+	} else if (item_type == "trait") {
+		symbol_type = TTR("Trait");
+		symbol_hint = SYMBOL_HINT_NONE;
+		help_data.description = item_data.get("description", "").operator String().strip_edges();
+		help_data.resource_path = item_data.get("script_path", "").operator String();
 	} else if (item_type == "local_constant" || item_type == "local_variable") {
 		symbol_type = (item_type == "local_constant") ? TTR("Local Constant") : TTR("Local Variable");
 		symbol_hint = SYMBOL_HINT_ASSIGNABLE;

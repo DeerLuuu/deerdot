@@ -126,6 +126,7 @@ public:
 	struct LookupResult {
 		enum class Type {
 			SCRIPT_LOCATION, // Use if none of the options below apply.
+			TRAIT, // A trait and the script declaring it.
 			CLASS,
 			CLASS_CONSTANT,
 			CLASS_PROPERTY,

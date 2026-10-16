@@ -1399,9 +1399,6 @@ void ScriptTextEditor::_show_symbol_tooltip(const String &p_symbol, int p_row, i
 
 	EditorLanguage::LookupResult result;
 	String doc_symbol;
-	// Extra text shown above the documentation tooltip, for results that are
-	// not classes, such as a trait and the script declaring it.
-	String extra_prologue;
 	const String code_text = code_editor->get_text_editor()->get_text_with_cursor_char(p_row, p_column);
 	const Error lc_error = script->get_language()->get_editor_language()->lookup_code(code_text, p_symbol, script->get_path(), base, result);
 	if (lc_error == OK) {
@@ -1483,13 +1480,15 @@ void ScriptTextEditor::_show_symbol_tooltip(const String &p_symbol, int p_row, i
 				doc_symbol = item_type + "||" + p_symbol + "|" + JSON::stringify(item_data);
 			} break;
 				GODOT_PUSH_IGNORE_DEPRECATION()
+			case EditorLanguage::LookupResult::Type::TRAIT: {
+				Dictionary item_data;
+				item_data["description"] = result.description;
+				item_data["script_path"] = result.script_path;
+				doc_symbol = "trait||" + result.class_name + "|" + JSON::stringify(item_data);
+			} break;
 			case EditorLanguage::LookupResult::Type::SCRIPT_LOCATION:
 			case EditorLanguage::LookupResult::Type::CLASS_TBD_GLOBALSCOPE: {
-				// A language may describe something that is not a class, such as
-				// a trait and the script declaring it.
-				if (!result.description.is_empty()) {
-					extra_prologue = result.description;
-				}
+				// Nothing to do.
 			} break;
 				GODOT_POP_IGNORE_DEPRECATION()
 		}
@@ -1505,8 +1504,8 @@ void ScriptTextEditor::_show_symbol_tooltip(const String &p_symbol, int p_row, i
 		debug_value = TTR("Current value: ") + debug_value.replace("[", "[lb]");
 	}
 
-	if (!doc_symbol.is_empty() || !debug_value.is_empty() || !extra_prologue.is_empty() || !diagnostic_strings_concatenated.is_empty()) {
-		Control *tmp = EditorHelpBitTooltip::make_tooltip(code_editor->get_text_editor(), doc_symbol, debug_value + extra_prologue, true, p_shortcut, diagnostic_strings_concatenated);
+	if (!doc_symbol.is_empty() || !debug_value.is_empty() || !diagnostic_strings_concatenated.is_empty()) {
+		Control *tmp = EditorHelpBitTooltip::make_tooltip(code_editor->get_text_editor(), doc_symbol, debug_value, true, p_shortcut, diagnostic_strings_concatenated);
 		memdelete(tmp);
 	}
 }
