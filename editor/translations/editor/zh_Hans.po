@@ -513,6 +513,9 @@ msgstr "复制"
 msgid "Copy All"
 msgstr "全部复制"
 
+msgid "Drop here to split the view"
+msgstr "松开以在此处拆分视图"
+
 msgid "Code Snippets"
 msgstr "代码片段"
 
