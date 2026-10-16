@@ -537,6 +537,18 @@ msgstr "插入代码片段"
 msgid "No snippets found"
 msgstr "未找到代码片段"
 
+msgid "Layouts"
+msgstr "布局"
+
+msgid "Layout name"
+msgstr "布局名称"
+
+msgid "No saved layouts"
+msgstr "没有已保存的布局"
+
+msgid "Saved layout \"%s\"."
+msgstr "已保存布局 \"%s\"。"
+
 msgid "Saved snippet \"%s\"."
 msgstr "已保存片段 \"%s\"。"
 
