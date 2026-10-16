@@ -1343,35 +1343,63 @@ void DocumentEditorContainer::_create_split_pane() {
 	_setup_pane(split_pane);
 }
 
-// Dragging a tab onto the right part of the editor area splits the view and
-// drops that document into the new pane, like dragging a tab to the side of a
-// code editor. Anywhere else the built-in tab rearrangement takes over.
+// Dragging a document tab into the highlighted area on the right of the editor
+// splits the view there, like dragging a tab to the side of a code editor.
+// Only the overlay covering that area is a drop target, so drops on the tabs
+// themselves keep using the built-in tab rearrangement.
 bool DocumentEditorContainer::_can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) const {
 	if (split_pane != nullptr || p_data.get_type() != Variant::DICTIONARY) {
 		return false;
 	}
 
 	const Dictionary data = p_data;
-	if (String(data.get("type", String())) != "tab" || String(data.get("tab_type", String())) != "tab_container_tab") {
-		return false;
-	}
-
-	return p_at_position.x >= tab_container->get_size().x * 0.6f;
+	return String(data.get("type", String())) == "tab" && String(data.get("tab_type", String())) == "tab_container_tab";
 }
 
-bool ScriptEditorTabContainer::can_drop_data(const Point2 &p_point, const Variant &p_data) const {
-	if (owner != nullptr && owner->_can_drop_split_tab(p_point, p_data)) {
-		return true;
-	}
-	return TabContainer::can_drop_data(p_point, p_data);
-}
-
-void ScriptEditorTabContainer::drop_data(const Point2 &p_point, const Variant &p_data) {
-	if (owner != nullptr && owner->_can_drop_split_tab(p_point, p_data)) {
-		owner->_drop_split_tab(p_point, p_data);
+// The overlay is shown while a tab is being dragged and the view is not split
+// yet. It doubles as the visual hint of where the new pane will appear.
+void DocumentEditorContainer::_update_split_drop_overlay() {
+	if (split_drop_overlay == nullptr) {
 		return;
 	}
-	TabContainer::drop_data(p_point, p_data);
+
+	bool show = false;
+	Viewport *viewport = get_viewport();
+	if (split_pane == nullptr && viewport != nullptr && viewport->gui_is_dragging()) {
+		const Variant drag_data = viewport->gui_get_drag_data();
+		if (drag_data.get_type() == Variant::DICTIONARY) {
+			const Dictionary data = drag_data;
+			show = String(data.get("type", String())) == "tab" && String(data.get("tab_type", String())) == "tab_container_tab";
+		}
+	}
+
+	if (!show) {
+		split_drop_overlay->hide();
+		return;
+	}
+
+	_update_split_drop_overlay_rect();
+	split_drop_overlay->show();
+}
+
+void DocumentEditorContainer::_update_split_drop_overlay_rect() {
+	if (split_drop_overlay == nullptr) {
+		return;
+	}
+
+	// Cover the right half of the editor area, below the tab bar, so dragging
+	// along the tabs still reorders them.
+	const Rect2 area = editor_split->get_global_rect();
+	float bar_height = 0.0f;
+	if (TabBar *bar = tab_container->get_tab_bar()) {
+		if (bar->is_visible()) {
+			bar_height = bar->get_size().y;
+		}
+	}
+
+	const float half = area.size.x * 0.5f;
+	split_drop_overlay->set_position(area.position + Point2(half, bar_height));
+	split_drop_overlay->set_size(Size2(half, MAX(0.0f, area.size.y - bar_height)));
 }
 
 void DocumentEditorContainer::_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) {
@@ -1389,6 +1417,10 @@ void DocumentEditorContainer::_drop_split_tab(const Vector2 &p_at_position, cons
 	const int from_index = data.get("tab_index", -1);
 	if (from_index < 0 || from_index >= from->get_tab_count()) {
 		return;
+	}
+
+	if (split_drop_overlay != nullptr) {
+		split_drop_overlay->hide();
 	}
 
 	_create_split_pane();
@@ -2421,6 +2453,17 @@ bool DocumentEditorContainer::_has_script_tab() const {
 
 void DocumentEditorContainer::_notification(int p_what) {
 	switch (p_what) {
+		case NOTIFICATION_DRAG_BEGIN: {
+			// The drag data may not be set yet when the notification arrives.
+			callable_mp(this, &DocumentEditorContainer::_update_split_drop_overlay).call_deferred();
+		} break;
+
+		case NOTIFICATION_DRAG_END: {
+			if (split_drop_overlay != nullptr) {
+				split_drop_overlay->hide();
+			}
+		} break;
+
 		case NOTIFICATION_ENTER_TREE: {
 			// Keep the document name shown at the top in sync with the pane the
 			// user is actually working in.
@@ -4372,9 +4415,19 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	code_editor_container->add_child(editor_split);
 	editor_split->set_h_size_flags(SIZE_EXPAND_FILL);
 	editor_split->set_v_size_flags(SIZE_EXPAND_FILL);
+	editor_split->connect(SceneStringName(resized), callable_mp(this, &DocumentEditorContainer::_update_split_drop_overlay_rect));
 
-	tab_container = memnew(ScriptEditorTabContainer);
-	tab_container->set_owner(this);
+	// Highlight shown while a document tab is dragged over the area where a
+	// second pane can be created. It is also the drop target for that gesture,
+	// since the code editors below it stop drag propagation.
+	split_drop_overlay = memnew(Control);
+	split_drop_overlay->set_as_top_level(true);
+	split_drop_overlay->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+	split_drop_overlay->set_drag_forwarding(Callable(), callable_mp(this, &DocumentEditorContainer::_can_drop_split_tab), callable_mp(this, &DocumentEditorContainer::_drop_split_tab));
+	split_drop_overlay->hide();
+	code_editor_container->add_child(split_drop_overlay);
+
+	tab_container = memnew(TabContainer);
 	tab_container->set_custom_minimum_size(Size2(200, 0) * EDSCALE);
 	editor_split->add_child(tab_container);
 	tab_container->set_h_size_flags(SIZE_EXPAND_FILL);

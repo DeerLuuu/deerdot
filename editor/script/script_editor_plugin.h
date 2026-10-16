@@ -37,7 +37,6 @@
 #include "editor/plugins/editor_plugin.h"
 #include "editor/script/script_editor_base.h"
 #include "scene/gui/margin_container.h"
-#include "scene/gui/tab_container.h"
 #include "scene/resources/text_file.h"
 
 class CodeTextEditor;
@@ -153,22 +152,6 @@ class EditorScriptCodeCompletionCache;
 class FindInFiles;
 class TextFile;
 class ShaderCreateDialog;
-class DocumentEditorContainer;
-
-// Tab container used for the script editor panes. In addition to the regular
-// behavior (reordering tabs, moving them between panes that share a rearrange
-// group), dropping a tab on the right part of an unsplit view asks the editor
-// to create a second pane there.
-class ScriptEditorTabContainer : public TabContainer {
-	DocumentEditorContainer *owner = nullptr;
-
-public:
-	void set_owner(DocumentEditorContainer *p_owner) { owner = p_owner; }
-
-	virtual bool can_drop_data(const Point2 &p_point, const Variant &p_data) const override;
-	virtual void drop_data(const Point2 &p_point, const Variant &p_data) override;
-};
-
 class DocumentEditorContainer : public MarginContainer {
 	GDCLASS(DocumentEditorContainer, MarginContainer);
 
@@ -267,9 +250,10 @@ class DocumentEditorContainer : public MarginContainer {
 	HSplitContainer *script_split = nullptr;
 	DocumentOutline *document_outline = nullptr;
 	VSplitContainer *list_split = nullptr;
-	ScriptEditorTabContainer *tab_container = nullptr;
+	TabContainer *tab_container = nullptr;
 	HSplitContainer *editor_split = nullptr;
 	TabContainer *split_pane = nullptr; // Second pane for side-by-side editing.
+	Control *split_drop_overlay = nullptr; // Highlight/drop target for splitting by drag.
 	int active_pane = 0; // 0 = primary pane, 1 = split pane.
 	AcceptDialog *error_dialog = nullptr;
 	ConfirmationDialog *erase_tab_confirm = nullptr;
@@ -404,7 +388,8 @@ class DocumentEditorContainer : public MarginContainer {
 	void _setup_pane(TabContainer *p_pane);
 	void _create_split_pane();
 	bool _can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) const;
-	friend class ScriptEditorTabContainer;
+	void _update_split_drop_overlay();
+	void _update_split_drop_overlay_rect();
 	void _drop_split_tab(const Vector2 &p_at_position, const Variant &p_data);
 	void _pane_tab_selected(int p_tab, TabContainer *p_pane);
 	void _pane_tab_changed(int p_tab, TabContainer *p_pane);
