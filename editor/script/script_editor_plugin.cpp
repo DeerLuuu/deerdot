@@ -1388,7 +1388,7 @@ void DocumentEditorContainer::_check_drop_overlay() {
 
 	// Dragging nodes from the scene tree: offer to reference them in the script.
 	if (type == "nodes") {
-		_show_drop_overlay(DROP_ZONE_EDITOR, TTRC("Drop here to reference the node in the script"));
+		_show_drop_overlay(DROP_ZONE_EDITOR, TTRC("Drop here to reference the node in the script"), _get_node_reference_code(data));
 		return;
 	}
 
@@ -1438,7 +1438,7 @@ void DocumentEditorContainer::_drop_nodes(const Variant &p_data) {
 	_hide_drop_overlay();
 }
 
-void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &p_hint) {
+void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &p_hint, const String &p_preview) {
 	if (split_drop_overlay == nullptr || p_zone == DROP_ZONE_NONE) {
 		return;
 	}
@@ -1446,6 +1446,10 @@ void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &
 	drop_overlay_zone = p_zone;
 	if (split_drop_hint != nullptr) {
 		split_drop_hint->set_text(p_hint);
+	}
+	if (split_drop_preview != nullptr) {
+		split_drop_preview->set_text(p_preview);
+		split_drop_preview->set_visible(!p_preview.is_empty());
 	}
 	_update_drop_overlay_rect();
 	split_drop_overlay->show();
@@ -1456,6 +1460,58 @@ void DocumentEditorContainer::_hide_drop_overlay() {
 	if (split_drop_overlay != nullptr) {
 		split_drop_overlay->hide();
 	}
+}
+
+// Builds the code a dropped node reference turns into: an `@onready` variable
+// holding the node, typed with its class (or its global script class, when it
+// has one). Nodes that are not part of the edited scene are skipped.
+String DocumentEditorContainer::_get_node_reference_code(const Variant &p_data) const {
+	if (!_can_drop_nodes(p_data)) {
+		return String();
+	}
+
+	const Dictionary data = p_data;
+	const Node *scene_root = Object::cast_to<Node>(data["scene_root"]);
+	if (scene_root == nullptr) {
+		return String();
+	}
+
+	const Array paths = data["nodes"];
+	PackedStringArray lines;
+	HashSet<String> used_names;
+
+	for (int i = 0; i < paths.size(); i++) {
+		Node *node = scene_root->get_node_or_null(paths[i]);
+		if (node == nullptr || node == scene_root) {
+			// The scene root cannot be referenced relative to itself.
+			continue;
+		}
+
+		String type_name = node->get_class();
+		if (Ref<Script> scr = node->get_script(); scr.is_valid() && !scr->get_global_name().is_empty()) {
+			type_name = scr->get_global_name();
+		}
+
+		String var_name;
+		const String &node_name = node->get_name();
+		for (int c = 0; c < node_name.length(); c++) {
+			const char32_t ch = node_name[c];
+			const bool valid = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_';
+			var_name += valid ? String::chr(ch) : "_";
+		}
+		var_name = var_name.to_snake_case();
+		if (var_name.is_empty() || (var_name[0] >= '0' && var_name[0] <= '9')) {
+			var_name = "node_" + var_name;
+		}
+		while (used_names.has(var_name)) {
+			var_name += "_";
+		}
+		used_names.insert(var_name);
+
+		lines.push_back(vformat("@onready var %s: %s = $%s", var_name, type_name, String(scene_root->get_path_to(node))));
+	}
+
+	return String("\n").join(lines);
 }
 
 Rect2 DocumentEditorContainer::_get_drop_overlay_rect(DropZone p_zone) const {
@@ -4526,17 +4582,32 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	overlay_style->set_corner_radius_all(4);
 	split_drop_overlay->add_theme_style_override(SceneStringName(panel), overlay_style);
 
-	// Hint shown inside the highlight, telling what releasing there does. It
-	// must not take part in drag-and-drop, or it would block the drop target.
+	// Hint and code preview shown inside the highlight, telling what releasing
+	// there does. They must not take part in drag-and-drop, or they would block
+	// the drop target.
+	VBoxContainer *overlay_box = memnew(VBoxContainer);
+	overlay_box->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+	overlay_box->set_alignment(BoxContainer::ALIGNMENT_CENTER);
+	overlay_box->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	overlay_box->add_theme_constant_override("separation", 8);
+	split_drop_overlay->add_child(overlay_box);
+
 	split_drop_hint = memnew(Label);
 	split_drop_hint->set_text(TTRC("Drop here to split the view"));
 	split_drop_hint->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 	split_drop_hint->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
-	split_drop_hint->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
 	split_drop_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-	split_drop_hint->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
 	split_drop_hint->add_theme_color_override(SceneStringName(font_color), overlay_accent);
-	split_drop_overlay->add_child(split_drop_hint);
+	overlay_box->add_child(split_drop_hint);
+
+	split_drop_preview = memnew(Label);
+	split_drop_preview->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	split_drop_preview->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	split_drop_preview->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
+	split_drop_preview->add_theme_font_override(SceneStringName(font), get_theme_font(SNAME("source"), EditorStringName(EditorFonts)));
+	split_drop_preview->add_theme_color_override(SceneStringName(font_color), Color(overlay_accent.r, overlay_accent.g, overlay_accent.b, 0.85f));
+	split_drop_preview->hide();
+	overlay_box->add_child(split_drop_preview);
 
 	tab_container = memnew(TabContainer);
 	tab_container->set_custom_minimum_size(Size2(200, 0) * EDSCALE);

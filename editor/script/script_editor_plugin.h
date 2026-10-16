@@ -264,6 +264,7 @@ class DocumentEditorContainer : public MarginContainer {
 
 	Panel *split_drop_overlay = nullptr;
 	Label *split_drop_hint = nullptr; // Hint text shown inside the drop highlight.
+	Label *split_drop_preview = nullptr; // Translucent code preview for the pending drop.
 	DropZone drop_overlay_zone = DROP_ZONE_NONE;
 	int active_pane = 0; // 0 = primary pane, 1 = split pane.
 	AcceptDialog *error_dialog = nullptr;
@@ -405,7 +406,8 @@ class DocumentEditorContainer : public MarginContainer {
 	bool _can_drop_nodes(const Variant &p_data) const;
 	void _drop_nodes(const Variant &p_data);
 	void _check_drop_overlay();
-	void _show_drop_overlay(DropZone p_zone, const String &p_hint);
+	void _show_drop_overlay(DropZone p_zone, const String &p_hint, const String &p_preview = String());
+	String _get_node_reference_code(const Variant &p_data) const;
 	void _hide_drop_overlay();
 	void _update_drop_overlay_rect();
 	Rect2 _get_drop_overlay_rect(DropZone p_zone) const;
