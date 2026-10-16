@@ -4274,6 +4274,21 @@ void EditorHelpBit::_update_labels() {
 			content->add_text(nbsp + TTR("Open in File Manager"));
 			content->pop(); // meta
 		}
+
+		// Show what an image looks like, since a path alone says little about it.
+		if (!is_dir && is_valid && ClassDB::is_parent_class(ResourceLoader::get_resource_type(help_data.resource_path), "Texture2D")) {
+			Ref<Texture2D> preview = ResourceLoader::load(help_data.resource_path);
+			if (preview.is_valid()) {
+				const Vector2 dimensions = preview->get_size();
+				const real_t max_side = 128.0;
+				const Vector2 shown = (dimensions.x > max_side || dimensions.y > max_side) ? dimensions * (max_side / MAX(dimensions.x, dimensions.y)) : dimensions;
+
+				content->add_newline();
+				content->add_image(preview, (int)shown.x, (int)shown.y);
+				content->add_newline();
+				content->add_text(vformat(TTR("Dimensions: %d × %d"), (int)dimensions.x, (int)dimensions.y));
+			}
+		}
 	}
 
 	if (is_inside_tree()) {
