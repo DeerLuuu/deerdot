@@ -253,8 +253,17 @@ class DocumentEditorContainer : public MarginContainer {
 	TabContainer *tab_container = nullptr;
 	HSplitContainer *editor_split = nullptr;
 	TabContainer *split_pane = nullptr; // Second pane for side-by-side editing.
+
+	// Area of the editor where a drop is offered, highlighted by the overlay.
+	enum DropZone {
+		DROP_ZONE_NONE,
+		DROP_ZONE_RIGHT,
+		DROP_ZONE_BOTTOM,
+	};
+
 	Panel *split_drop_overlay = nullptr;
-	Label *split_drop_hint = nullptr; // Hint text shown inside the drop highlight. // Highlight/drop target for splitting by drag.
+	Label *split_drop_hint = nullptr; // Hint text shown inside the drop highlight.
+	DropZone drop_overlay_zone = DROP_ZONE_NONE;
 	int active_pane = 0; // 0 = primary pane, 1 = split pane.
 	AcceptDialog *error_dialog = nullptr;
 	ConfirmationDialog *erase_tab_confirm = nullptr;
@@ -388,9 +397,13 @@ class DocumentEditorContainer : public MarginContainer {
 	// per-tab close buttons) and connects its tab signals.
 	void _setup_pane(TabContainer *p_pane);
 	void _create_split_pane();
+
 	bool _can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) const;
-	void _update_split_drop_overlay();
-	void _update_split_drop_overlay_rect();
+	void _check_drop_overlay();
+	void _show_drop_overlay(DropZone p_zone, const String &p_hint);
+	void _hide_drop_overlay();
+	void _update_drop_overlay_rect();
+	Rect2 _get_drop_overlay_rect(DropZone p_zone) const;
 	void _drop_split_tab(const Vector2 &p_at_position, const Variant &p_data);
 	void _pane_tab_selected(int p_tab, TabContainer *p_pane);
 	void _pane_tab_changed(int p_tab, TabContainer *p_pane);

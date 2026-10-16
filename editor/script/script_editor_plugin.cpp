@@ -1359,7 +1359,7 @@ bool DocumentEditorContainer::_can_drop_split_tab(const Vector2 &p_at_position, 
 
 // The overlay is shown while a tab is being dragged and the view is not split
 // yet. It doubles as the visual hint of where the new pane will appear.
-void DocumentEditorContainer::_update_split_drop_overlay() {
+void DocumentEditorContainer::_check_drop_overlay() {
 	if (split_drop_overlay == nullptr) {
 		return;
 	}
@@ -1375,21 +1375,36 @@ void DocumentEditorContainer::_update_split_drop_overlay() {
 	}
 
 	if (!show) {
-		split_drop_overlay->hide();
+		_hide_drop_overlay();
 		return;
 	}
 
-	_update_split_drop_overlay_rect();
+	_show_drop_overlay(DROP_ZONE_RIGHT, TTRC("Drop here to split the view"));
+}
+
+void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &p_hint) {
+	if (split_drop_overlay == nullptr || p_zone == DROP_ZONE_NONE) {
+		return;
+	}
+
+	drop_overlay_zone = p_zone;
+	if (split_drop_hint != nullptr) {
+		split_drop_hint->set_text(p_hint);
+	}
+	_update_drop_overlay_rect();
 	split_drop_overlay->show();
 }
 
-void DocumentEditorContainer::_update_split_drop_overlay_rect() {
-	if (split_drop_overlay == nullptr) {
-		return;
+void DocumentEditorContainer::_hide_drop_overlay() {
+	drop_overlay_zone = DROP_ZONE_NONE;
+	if (split_drop_overlay != nullptr) {
+		split_drop_overlay->hide();
 	}
+}
 
-	// Cover the right half of the editor area, below the tab bar, so dragging
-	// along the tabs still reorders them.
+Rect2 DocumentEditorContainer::_get_drop_overlay_rect(DropZone p_zone) const {
+	// The area available to the panes, excluding the tab bar so dragging along
+	// the tabs keeps reordering them.
 	const Rect2 area = editor_split->get_global_rect();
 	float bar_height = 0.0f;
 	if (TabBar *bar = tab_container->get_tab_bar()) {
@@ -1398,9 +1413,29 @@ void DocumentEditorContainer::_update_split_drop_overlay_rect() {
 		}
 	}
 
-	const float half = area.size.x * 0.5f;
-	split_drop_overlay->set_position(area.position + Point2(half, bar_height));
-	split_drop_overlay->set_size(Size2(half, MAX(0.0f, area.size.y - bar_height)));
+	const Rect2 content(area.position + Point2(0, bar_height), Size2(area.size.x, MAX(0.0f, area.size.y - bar_height)));
+	switch (p_zone) {
+		case DROP_ZONE_RIGHT: {
+			const float half = content.size.x * 0.5f;
+			return Rect2(content.position + Point2(content.size.x - half, 0), Size2(half, content.size.y));
+		} break;
+		case DROP_ZONE_BOTTOM: {
+			const float half = content.size.y * 0.5f;
+			return Rect2(content.position + Point2(0, content.size.y - half), Size2(content.size.x, half));
+		} break;
+		default:
+			return Rect2();
+	}
+}
+
+void DocumentEditorContainer::_update_drop_overlay_rect() {
+	if (split_drop_overlay == nullptr || drop_overlay_zone == DROP_ZONE_NONE) {
+		return;
+	}
+
+	const Rect2 rect = _get_drop_overlay_rect(drop_overlay_zone);
+	split_drop_overlay->set_position(rect.position);
+	split_drop_overlay->set_size(rect.size);
 }
 
 void DocumentEditorContainer::_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) {
@@ -1420,9 +1455,7 @@ void DocumentEditorContainer::_drop_split_tab(const Vector2 &p_at_position, cons
 		return;
 	}
 
-	if (split_drop_overlay != nullptr) {
-		split_drop_overlay->hide();
-	}
+	_hide_drop_overlay();
 
 	_create_split_pane();
 	split_pane->move_tab_from_tab_container(from, from_index, 0);
@@ -2456,13 +2489,11 @@ void DocumentEditorContainer::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_DRAG_BEGIN: {
 			// The drag data may not be set yet when the notification arrives.
-			callable_mp(this, &DocumentEditorContainer::_update_split_drop_overlay).call_deferred();
+			callable_mp(this, &DocumentEditorContainer::_check_drop_overlay).call_deferred();
 		} break;
 
 		case NOTIFICATION_DRAG_END: {
-			if (split_drop_overlay != nullptr) {
-				split_drop_overlay->hide();
-			}
+			_hide_drop_overlay();
 		} break;
 
 		case NOTIFICATION_ENTER_TREE: {
@@ -4416,7 +4447,7 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	code_editor_container->add_child(editor_split);
 	editor_split->set_h_size_flags(SIZE_EXPAND_FILL);
 	editor_split->set_v_size_flags(SIZE_EXPAND_FILL);
-	editor_split->connect(SceneStringName(resized), callable_mp(this, &DocumentEditorContainer::_update_split_drop_overlay_rect));
+	editor_split->connect(SceneStringName(resized), callable_mp(this, &DocumentEditorContainer::_update_drop_overlay_rect));
 
 	// Highlight shown while a document tab is dragged over the area where a
 	// second pane can be created. It is also the drop target for that gesture,
