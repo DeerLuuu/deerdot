@@ -423,6 +423,26 @@ class DocumentEditorContainer : public MarginContainer {
 	void _pane_tab_changed(int p_tab, TabContainer *p_pane);
 	void _pane_tab_rearranged(int p_tab, TabContainer *p_pane);
 	void _pane_tab_close_pressed(int p_tab, TabContainer *p_pane);
+
+	// Right-click menu of a document tab.
+	enum TabMenuOptions {
+		TAB_MENU_CLOSE,
+		TAB_MENU_CLOSE_OTHERS,
+		TAB_MENU_COPY_PATH,
+		TAB_MENU_SPLIT_RIGHT,
+		TAB_MENU_MOVE_TO_OTHER_PANE,
+	};
+
+	PopupMenu *tab_context_menu = nullptr;
+	TabContainer *tab_context_pane = nullptr; // Pane the tab menu was opened on.
+	int tab_context_index = -1;
+	// Pane the queued tab closes belong to; the primary pane when unset.
+	TabContainer *script_close_queue_pane = nullptr;
+
+	void _show_tab_context_menu(int p_tab, TabContainer *p_pane);
+	void _tab_menu_option(int p_option);
+	void _request_close_tab(TabContainer *p_pane, int p_idx);
+	void _move_tab_to_pane(TabContainer *p_from, int p_index, TabContainer *p_to);
 	void _check_split_pane_empty();
 
 	Ref<ConfigFile> script_editor_cache;

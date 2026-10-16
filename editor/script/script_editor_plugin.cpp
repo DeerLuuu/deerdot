@@ -1075,6 +1075,7 @@ void DocumentEditorContainer::_setup_pane(TabContainer *p_pane) {
 	p_pane->connect("tab_selected", callable_mp(this, &DocumentEditorContainer::_pane_tab_selected).bind(p_pane));
 	p_pane->connect("tab_changed", callable_mp(this, &DocumentEditorContainer::_pane_tab_changed).bind(p_pane));
 	p_pane->connect("active_tab_rearranged", callable_mp(this, &DocumentEditorContainer::_pane_tab_rearranged).bind(p_pane));
+	p_pane->connect("tab_rmb_clicked", callable_mp(this, &DocumentEditorContainer::_show_tab_context_menu).bind(p_pane));
 
 	if (TabBar *bar = p_pane->get_tab_bar()) {
 		bar->set_tab_close_display_policy(TabBar::CLOSE_BUTTON_SHOW_ALWAYS);
@@ -1115,11 +1116,120 @@ void DocumentEditorContainer::_pane_tab_close_pressed(int p_tab, TabContainer *p
 	p_pane->set_current_tab(p_tab);
 	active_pane = (p_pane == split_pane) ? 1 : 0;
 
-	ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor);
+	_request_close_tab(p_pane, p_tab);
+}
+
+// Right-clicking a tab offers the usual document actions for that tab, on
+// either pane, and the way to move it between the panes.
+void DocumentEditorContainer::_show_tab_context_menu(int p_tab, TabContainer *p_pane) {
+	if (p_tab < 0 || p_tab >= p_pane->get_tab_count()) {
+		return;
+	}
+
+	tab_context_pane = p_pane;
+	tab_context_index = p_tab;
+
+	// Act on the tab that was clicked, like the rest of the editor would.
+	p_pane->set_current_tab(p_tab);
+	active_pane = (p_pane == split_pane) ? 1 : 0;
+
+	const Control *editor = p_pane->get_tab_control(p_tab);
+	ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(const_cast<Control *>(editor));
+	const Ref<Resource> res = (seb != nullptr) ? seb->get_edited_resource() : Ref<Resource>();
+
+	tab_context_menu->clear();
+	tab_context_menu->add_item(TTRC("Close"), TAB_MENU_CLOSE);
+	tab_context_menu->add_item(TTRC("Close Others"), TAB_MENU_CLOSE_OTHERS);
+	tab_context_menu->add_separator();
+	tab_context_menu->add_item(TTRC("Copy Path"), TAB_MENU_COPY_PATH);
+	tab_context_menu->add_separator();
+	if (split_pane == nullptr) {
+		// With a single pane, the tab is moved into a new one on the right.
+		tab_context_menu->add_item(TTRC("Split Right"), TAB_MENU_SPLIT_RIGHT);
+	} else {
+		tab_context_menu->add_item(TTRC("Move to Other Pane"), TAB_MENU_MOVE_TO_OTHER_PANE);
+	}
+
+	tab_context_menu->set_item_disabled(tab_context_menu->get_item_index(TAB_MENU_CLOSE_OTHERS), p_pane->get_tab_count() <= 1);
+	tab_context_menu->set_item_disabled(tab_context_menu->get_item_index(TAB_MENU_COPY_PATH), res.is_null() || res->get_path().is_empty());
+
+	tab_context_menu->set_position(DisplayServer::get_singleton()->mouse_get_position());
+	tab_context_menu->popup();
+}
+
+void DocumentEditorContainer::_tab_menu_option(int p_option) {
+	if (tab_context_pane == nullptr) {
+		return;
+	}
+
+	switch (p_option) {
+		case TAB_MENU_CLOSE: {
+			_request_close_tab(tab_context_pane, tab_context_index);
+		} break;
+		case TAB_MENU_CLOSE_OTHERS: {
+			script_close_queue_pane = tab_context_pane;
+			for (int i = tab_context_pane->get_tab_count() - 1; i >= 0; i--) {
+				if (i != tab_context_index) {
+					script_close_queue.push_back(i);
+				}
+			}
+			_queue_close_tabs();
+		} break;
+		case TAB_MENU_COPY_PATH: {
+			Control *editor = tab_context_pane->get_tab_control(tab_context_index);
+			ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor);
+			if (seb != nullptr) {
+				const Ref<Resource> res = seb->get_edited_resource();
+				if (res.is_valid() && !res->get_path().is_empty()) {
+					DisplayServer::get_singleton()->clipboard_set(res->get_path());
+				}
+			}
+		} break;
+		case TAB_MENU_SPLIT_RIGHT: {
+			_create_split_pane();
+			_move_tab_to_pane(tab_context_pane, tab_context_index, split_pane);
+		} break;
+		case TAB_MENU_MOVE_TO_OTHER_PANE: {
+			TabContainer *to = (tab_context_pane == split_pane) ? tab_container : split_pane;
+			_move_tab_to_pane(tab_context_pane, tab_context_index, to);
+		} break;
+		default:
+			break;
+	}
+}
+
+void DocumentEditorContainer::_move_tab_to_pane(TabContainer *p_from, int p_index, TabContainer *p_to) {
+	if (p_from == nullptr || p_to == nullptr || p_from == p_to || p_index < 0 || p_index >= p_from->get_tab_count()) {
+		return;
+	}
+
+	_hide_drop_overlay();
+	p_to->move_tab_from_tab_container(p_from, p_index, p_to->get_tab_count());
+	p_to->set_current_tab(p_to->get_tab_count() - 1);
+	active_pane = (p_to == split_pane) ? 1 : 0;
+
+	_update_filenames();
+	document_list->update_list();
+
+	// A pane emptied by the move is not needed anymore.
+	callable_mp(this, &DocumentEditorContainer::_check_split_pane_empty).call_deferred();
+}
+
+// Closing a tab may need to ask about unsaved changes; both the tab close
+// button and the tab menu go through here.
+void DocumentEditorContainer::_request_close_tab(TabContainer *p_pane, int p_idx) {
+	if (p_pane == nullptr || p_idx < 0 || p_idx >= p_pane->get_tab_count()) {
+		return;
+	}
+
+	p_pane->set_current_tab(p_idx);
+	active_pane = (p_pane == split_pane) ? 1 : 0;
+
+	ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(p_pane->get_tab_control(p_idx));
 	if (seb != nullptr && seb->is_unsaved()) {
 		_ask_close_current_unsaved_tab(seb);
 	} else {
-		_close_tab(p_pane, p_tab, false);
+		_close_tab(p_pane, p_idx, false);
 	}
 }
 
@@ -1870,6 +1980,7 @@ void DocumentEditorContainer::_copy_script_uid() {
 }
 
 void DocumentEditorContainer::_close_other_tabs() {
+	script_close_queue_pane = nullptr;
 	int current_idx = tab_container->get_current_tab();
 	for (int i = tab_container->get_tab_count() - 1; i >= 0; i--) {
 		if (i != current_idx) {
@@ -1889,6 +2000,7 @@ void DocumentEditorContainer::_close_tabs_below() {
 }
 
 void DocumentEditorContainer::_close_all_tabs() {
+	script_close_queue_pane = nullptr;
 	for (int i = tab_container->get_tab_count() - 1; i >= 0; i--) {
 		script_close_queue.push_back(i);
 	}
@@ -1896,12 +2008,17 @@ void DocumentEditorContainer::_close_all_tabs() {
 }
 
 void DocumentEditorContainer::_queue_close_tabs() {
+	// The queue belongs to one pane; closing several tabs at once is offered
+	// from the tab menu, which can target either pane.
+	TabContainer *pane = (script_close_queue_pane != nullptr) ? script_close_queue_pane : tab_container;
+
 	while (!script_close_queue.is_empty()) {
 		int idx = script_close_queue.front()->get();
 		script_close_queue.pop_front();
 
-		tab_container->set_current_tab(idx);
-		ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(tab_container->get_tab_control(idx));
+		pane->set_current_tab(idx);
+		active_pane = (pane == split_pane) ? 1 : 0;
+		ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(pane->get_tab_control(idx));
 		if (seb) {
 			// Maybe there are unsaved changes.
 			if (seb->is_unsaved()) {
@@ -1912,6 +2029,10 @@ void DocumentEditorContainer::_queue_close_tabs() {
 		}
 
 		_close_current_tab(false);
+	}
+
+	if (script_close_queue.is_empty()) {
+		script_close_queue_pane = nullptr;
 	}
 	_update_find_replace_bar();
 }
@@ -4646,6 +4767,11 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	split_drop_hint->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	split_drop_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	split_drop_box->add_child(split_drop_hint);
+
+	// Menu opened by right-clicking a document tab.
+	tab_context_menu = memnew(PopupMenu);
+	add_child(tab_context_menu);
+	tab_context_menu->connect(SceneStringName(id_pressed), callable_mp(this, &DocumentEditorContainer::_tab_menu_option));
 
 	tab_container = memnew(TabContainer);
 	tab_container->set_custom_minimum_size(Size2(200, 0) * EDSCALE);
