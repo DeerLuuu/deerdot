@@ -1146,6 +1146,8 @@ void DocumentEditorContainer::_show_tab_context_menu(int p_tab, TabContainer *p_
 		// With exactly two panes, the tab goes to the other one.
 		tab_context_menu->add_item(TTRC("Move to Other Pane"), TAB_MENU_MOVE_TO_OTHER_PANE);
 	}
+	tab_context_menu->add_separator();
+	tab_context_menu->add_item(TTRC("Open in New Window"), TAB_MENU_OPEN_IN_WINDOW);
 
 	tab_context_menu->set_item_disabled(tab_context_menu->get_item_index(TAB_MENU_CLOSE_OTHERS), p_pane->get_tab_count() <= 1);
 	tab_context_menu->set_item_disabled(tab_context_menu->get_item_index(TAB_MENU_COPY_PATH), res.is_null() || res->get_path().is_empty());
@@ -1154,6 +1156,95 @@ void DocumentEditorContainer::_show_tab_context_menu(int p_tab, TabContainer *p_
 	set_process(true);
 	tab_context_menu->set_position(DisplayServer::get_singleton()->mouse_get_position());
 	tab_context_menu->popup();
+}
+
+// Takes the document of a tab out of its pane and gives it a window of its
+// own. The pane it came from is dropped if it is left empty.
+void DocumentEditorContainer::_popout_editor(TabContainer *p_pane, int p_index) {
+	if (p_pane == nullptr || p_index < 0 || p_index >= p_pane->get_tab_count()) {
+		return;
+	}
+
+	Control *editor = p_pane->get_tab_control(p_index);
+	if (editor == nullptr) {
+		return;
+	}
+
+	const String title = p_pane->get_tab_title(p_index);
+
+	Window *window = memnew(Window);
+	window->set_title(title);
+	window->set_size(Size2i(900, 600));
+	window->set_min_size(Size2i(200, 150));
+	window->set_meta("script_editor_document", true);
+	window->connect("close_requested", callable_mp(this, &DocumentEditorContainer::_on_popout_close_requested).bind(window));
+	add_child(window);
+
+	p_pane->remove_child(editor);
+	window->add_child(editor);
+	editor->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+
+	popout_windows.push_back(window);
+	window->popup_centered();
+
+	_check_split_pane_empty();
+	_update_filenames();
+	document_list->update_list();
+}
+
+void DocumentEditorContainer::_on_popout_close_requested(Window *p_window) {
+	_return_popout(p_window);
+}
+
+// Puts the document back into the pane being edited and closes its window.
+void DocumentEditorContainer::_return_popout(Window *p_window) {
+	if (p_window == nullptr) {
+		return;
+	}
+
+	Control *editor = nullptr;
+	for (int i = 0; i < p_window->get_child_count(); i++) {
+		editor = Object::cast_to<Control>(p_window->get_child(i));
+		if (editor != nullptr) {
+			break;
+		}
+	}
+
+	if (editor != nullptr) {
+		p_window->remove_child(editor);
+
+		TabContainer *target = _active_pane_container();
+		target->add_child(editor);
+		target->set_current_tab(target->get_tab_count() - 1);
+		editor->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+	}
+
+	popout_windows.erase(p_window);
+	p_window->queue_free();
+
+	_update_filenames();
+	document_list->update_list();
+}
+
+void DocumentEditorContainer::_update_popout_windows() {
+	// Window titles follow the documents while they are renamed or saved.
+	for (Window *window : popout_windows) {
+		Control *editor = nullptr;
+		for (int i = 0; i < window->get_child_count(); i++) {
+			editor = Object::cast_to<Control>(window->get_child(i));
+			if (editor != nullptr) {
+				break;
+			}
+		}
+		if (editor == nullptr) {
+			continue;
+		}
+
+		ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor);
+		if (seb != nullptr) {
+			window->set_title(seb->get_document_name());
+		}
+	}
 }
 
 void DocumentEditorContainer::_tab_menu_option(int p_option) {
@@ -1193,6 +1284,9 @@ void DocumentEditorContainer::_tab_menu_option(int p_option) {
 			if (panes.size() > 1) {
 				_move_tab_to_pane(from, index, panes[panes.size() - 1]);
 			}
+		} break;
+		case TAB_MENU_OPEN_IN_WINDOW: {
+			_popout_editor(tab_context_pane, tab_context_index);
 		} break;
 		case TAB_MENU_MOVE_TO_OTHER_PANE: {
 			TabContainer *to = (tab_context_pane == panes[0]) ? panes[1] : panes[0];
@@ -1668,7 +1762,19 @@ bool DocumentEditorContainer::_can_drop_split_tab(const Vector2 &p_at_position, 
 // step with where the drag currently is.
 void DocumentEditorContainer::_update_drag_feedback() {
 	Viewport *viewport = get_viewport();
-	if (viewport == nullptr || !viewport->gui_is_dragging()) {
+	if (viewport == nullptr) {
+		return;
+	}
+
+	if (!viewport->gui_is_dragging()) {
+		// A tab released outside the panes becomes a window of its own.
+		if (pending_popout_pane != nullptr) {
+			TabContainer *pane = pending_popout_pane;
+			const int index = pending_popout_index;
+			pending_popout_pane = nullptr;
+			pending_popout_index = -1;
+			_popout_editor(pane, index);
+		}
 		_hide_drop_overlay();
 		return;
 	}
@@ -1687,7 +1793,28 @@ void DocumentEditorContainer::_update_drag_feedback() {
 	if (type == "tab" && String(data.get("tab_type", String())) == "tab_container_tab") {
 		_hide_code_preview();
 		TabContainer *pane = _pane_under_mouse();
-		if (pane == nullptr || !_can_add_pane()) {
+		if (pane == nullptr) {
+			// Dragged out of the panes: releasing it opens the document in a
+			// window of its own.
+			TabBar *from_bar = Object::cast_to<TabBar>(get_node_or_null(NodePath(String(data.get("from_path", String())))));
+			TabContainer *from = (from_bar != nullptr) ? TabContainer::get_tab_bar_container(from_bar) : nullptr;
+			const int from_index = data.get("tab_index", -1);
+			if (from != nullptr && from_index >= 0 && from_index < from->get_tab_count()) {
+				pending_popout_pane = from;
+				pending_popout_index = from_index;
+				_show_highlight_overlay(Rect2(get_global_rect().position, get_global_rect().size), TTRC("Release to open in a new window"));
+			} else {
+				pending_popout_pane = nullptr;
+				pending_popout_index = -1;
+				_hide_split_overlay();
+			}
+			return;
+		}
+
+		pending_popout_pane = nullptr;
+		pending_popout_index = -1;
+
+		if (!_can_add_pane()) {
 			_hide_split_overlay();
 			return;
 		}
@@ -4352,6 +4479,7 @@ void DocumentEditorContainer::_update_filenames() {
 
 	document_list->update_list();
 	_update_document_name_button();
+	_update_popout_windows();
 }
 
 void DocumentEditorContainer::_files_moved(const String &p_old_file, const String &p_new_file) {

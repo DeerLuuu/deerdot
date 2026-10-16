@@ -472,7 +472,13 @@ class DocumentEditorContainer : public MarginContainer {
 		TAB_MENU_SPLIT_RIGHT,
 		TAB_MENU_SPLIT_DOWN,
 		TAB_MENU_MOVE_TO_OTHER_PANE,
+		TAB_MENU_OPEN_IN_WINDOW,
 	};
+
+	// Documents open in their own window, and the tab a drag would take out.
+	LocalVector<Window *> popout_windows;
+	TabContainer *pending_popout_pane = nullptr;
+	int pending_popout_index = -1;
 
 	PopupMenu *tab_context_menu = nullptr;
 	TabContainer *tab_context_pane = nullptr; // Pane the tab menu was opened on.
@@ -483,6 +489,11 @@ class DocumentEditorContainer : public MarginContainer {
 
 	void _show_tab_context_menu(int p_tab, TabContainer *p_pane);
 	void _tab_menu_option(int p_option);
+	// Opens the document of a tab in its own window, and brings it back.
+	void _popout_editor(TabContainer *p_pane, int p_index);
+	void _return_popout(Window *p_window);
+	void _on_popout_close_requested(Window *p_window);
+	void _update_popout_windows();
 	void _request_close_tab(TabContainer *p_pane, int p_idx);
 	void _move_tab_to_pane(TabContainer *p_from, int p_index, TabContainer *p_to);
 	void _check_split_pane_empty();
