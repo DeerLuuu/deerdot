@@ -414,7 +414,9 @@ class DocumentEditorContainer : public MarginContainer {
 	bool _can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) const;
 	bool _can_drop_on_editor(const Vector2 &p_at_position, const Variant &p_data) const;
 	void _drop_on_editor(const Vector2 &p_at_position, const Variant &p_data);
-	void _check_drop_overlay();
+	void _update_drag_feedback();
+	void _hide_split_overlay();
+	void _update_tab_menu_highlight();
 	void _show_drop_overlay(DropZone p_zone, const String &p_hint);
 	// Highlights an explicit area without accepting drops, used by menu
 	// actions that hint where a document will go.
@@ -446,6 +448,7 @@ class DocumentEditorContainer : public MarginContainer {
 	PopupMenu *tab_context_menu = nullptr;
 	TabContainer *tab_context_pane = nullptr; // Pane the tab menu was opened on.
 	int tab_context_index = -1;
+	int tab_menu_hovered_id = -1; // Item the menu pointer is on, or -1.
 	// Pane the queued tab closes belong to; the primary pane when unset.
 	TabContainer *script_close_queue_pane = nullptr;
 

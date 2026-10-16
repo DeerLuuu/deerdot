@@ -1156,6 +1156,8 @@ void DocumentEditorContainer::_show_tab_context_menu(int p_tab, TabContainer *p_
 	tab_context_menu->set_item_disabled(tab_context_menu->get_item_index(TAB_MENU_CLOSE_OTHERS), p_pane->get_tab_count() <= 1);
 	tab_context_menu->set_item_disabled(tab_context_menu->get_item_index(TAB_MENU_COPY_PATH), res.is_null() || res->get_path().is_empty());
 
+	tab_menu_hovered_id = -1;
+	set_process(true);
 	tab_context_menu->set_position(DisplayServer::get_singleton()->mouse_get_position());
 	tab_context_menu->popup();
 }
@@ -1203,6 +1205,23 @@ void DocumentEditorContainer::_tab_menu_option(int p_option) {
 		default:
 			break;
 	}
+}
+
+// The tab menu reports keyboard navigation, not the pointer, so the hovered
+// entry is polled while the menu is open.
+void DocumentEditorContainer::_update_tab_menu_highlight() {
+	if (tab_context_menu == nullptr || !tab_context_menu->is_visible()) {
+		return;
+	}
+
+	// get_focused_item() reports the entry the pointer (or keyboard) is on.
+	const int index = tab_context_menu->get_focused_item();
+	const int id = (index >= 0) ? tab_context_menu->get_item_id(index) : -1;
+	if (id == tab_menu_hovered_id) {
+		return;
+	}
+	tab_menu_hovered_id = id;
+	_tab_menu_option_focused(id);
 }
 
 void DocumentEditorContainer::_tab_menu_option_focused(int p_option) {
@@ -1530,14 +1549,9 @@ bool DocumentEditorContainer::_can_drop_split_tab(const Vector2 &p_at_position, 
 	return String(data.get("type", String())) == "tab" && String(data.get("tab_type", String())) == "tab_container_tab";
 }
 
-// The overlay is shown while a supported drag is in progress, highlighting the
-// area that will react to the drop. It doubles as the drop target for those
-// gestures, since the code editors below it stop drag propagation.
-void DocumentEditorContainer::_check_drop_overlay() {
-	if (split_drop_overlay == nullptr) {
-		return;
-	}
-
+// Called every frame of a drag: it keeps the hint and the inline preview in
+// step with where the drag currently is.
+void DocumentEditorContainer::_update_drag_feedback() {
 	Viewport *viewport = get_viewport();
 	if (viewport == nullptr || !viewport->gui_is_dragging()) {
 		_hide_drop_overlay();
@@ -1552,28 +1566,28 @@ void DocumentEditorContainer::_check_drop_overlay() {
 
 	const Dictionary data = drag_data;
 	const String type = data.get("type", String());
+	const Vector2 mouse = viewport->get_mouse_position();
 
 	// Dragging a document tab: offer to split the view, to the right or below
-	// depending on the half of the editor the drag is in.
+	// depending on the half of the editor the pointer is in, and only while the
+	// pointer is over the editor at all.
 	if (type == "tab" && String(data.get("tab_type", String())) == "tab_container_tab" && split_pane == nullptr) {
+		_hide_code_preview();
 		const Rect2 area = editor_split->get_global_rect();
-		const bool below = viewport->get_mouse_position().y > area.position.y + area.size.y * 0.5f;
+		if (!area.has_point(mouse)) {
+			_hide_split_overlay();
+			return;
+		}
+		const bool below = mouse.y > area.position.y + area.size.y * 0.5f;
 		_show_drop_overlay(below ? DROP_ZONE_BOTTOM : DROP_ZONE_RIGHT, TTRC("Drop here to split the view"));
 		return;
 	}
 
-	// Dragging nodes from the scene tree: the script editor inserts the node
-	// path itself (with Ctrl an @onready variable, with Alt an @export one), so
-	// the drop is left alone and only the resulting text is previewed inline.
-	if (type == "nodes") {
-		_hide_drop_overlay();
-		_update_drop_preview();
-		return;
-	}
-
-	_hide_drop_overlay();
+	// Drops the editor turns into code are previewed inline, in the editor the
+	// drop would go to.
+	_hide_split_overlay();
+	_update_drop_preview();
 }
-
 bool DocumentEditorContainer::_can_drop_on_editor(const Vector2 &p_at_position, const Variant &p_data) const {
 	switch (drop_overlay_zone) {
 		case DROP_ZONE_RIGHT:
@@ -1714,14 +1728,18 @@ void DocumentEditorContainer::_apply_drop_overlay(const Rect2 &p_rect, const Str
 	split_drop_overlay->show();
 }
 
-void DocumentEditorContainer::_hide_drop_overlay() {
+void DocumentEditorContainer::_hide_split_overlay() {
 	drop_overlay_zone = DROP_ZONE_NONE;
-	_hide_code_preview();
 	if (split_drop_overlay != nullptr) {
 		split_drop_overlay->hide();
 		// Back to being a drop target for the next drag.
 		split_drop_overlay->set_mouse_filter(Control::MOUSE_FILTER_STOP);
 	}
+}
+
+void DocumentEditorContainer::_hide_drop_overlay() {
+	_hide_split_overlay();
+	_hide_code_preview();
 }
 
 // Applies the editor theme to the drop highlight. Theme items cannot be read
@@ -2846,11 +2864,9 @@ bool DocumentEditorContainer::_has_script_tab() const {
 void DocumentEditorContainer::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_DRAG_BEGIN: {
-			// The drag data may not be set yet when the notification arrives.
-			// Processing stays on for the whole drag so the inline preview can
-			// appear as soon as the drag reaches a code editor.
+			// Processing stays on for the whole drag so the hint and the inline
+			// preview follow wherever the drag goes.
 			set_process(true);
-			callable_mp(this, &DocumentEditorContainer::_check_drop_overlay).call_deferred();
 		} break;
 
 		case NOTIFICATION_DRAG_END: {
@@ -2858,14 +2874,19 @@ void DocumentEditorContainer::_notification(int p_what) {
 		} break;
 
 		case NOTIFICATION_PROCESS: {
-			// While dragging, the preview text depends on the modifier keys, so
-			// it is refreshed for as long as the drag lasts; once it ends the
-			// preview is dropped and processing stops.
+			// A drag needs its hint and preview refreshed as it moves, and the
+			// tab menu needs its hovered entry followed (the menu only reports
+			// keyboard navigation, not the mouse).
 			Viewport *drag_viewport = get_viewport();
-			if (drag_viewport != nullptr && drag_viewport->gui_is_dragging()) {
-				_update_drop_preview();
+			const bool dragging = drag_viewport != nullptr && drag_viewport->gui_is_dragging();
+			const bool menu_open = tab_context_menu != nullptr && tab_context_menu->is_visible();
+
+			if (dragging) {
+				_update_drag_feedback();
+			} else if (menu_open) {
+				_update_tab_menu_highlight();
 			} else {
-				_hide_code_preview();
+				_hide_drop_overlay();
 				set_process(false);
 			}
 		} break;
