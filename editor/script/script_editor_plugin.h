@@ -44,6 +44,8 @@ class EditorFileDialog;
 class EditorHelpSearch;
 class FilterLineEdit;
 class HSplitContainer;
+class SplitContainer;
+class VSplitContainer;
 class ItemList;
 class TabContainer;
 class Tree;
@@ -257,7 +259,7 @@ class DocumentEditorContainer : public MarginContainer {
 	DocumentOutline *document_outline = nullptr;
 	VSplitContainer *list_split = nullptr;
 	TabContainer *tab_container = nullptr;
-	HSplitContainer *editor_split = nullptr;
+	SplitContainer *editor_split = nullptr; // Horizontal or vertical, depending on the split.
 	TabContainer *split_pane = nullptr; // Second pane for side-by-side editing.
 
 	// Area of the editor where a drop is offered, highlighted by the overlay.
@@ -405,7 +407,9 @@ class DocumentEditorContainer : public MarginContainer {
 	// Configures a pane (tab bar visibility, tab dragging between panes,
 	// per-tab close buttons) and connects its tab signals.
 	void _setup_pane(TabContainer *p_pane);
-	void _create_split_pane();
+	void _create_split_pane(DropZone p_zone = DROP_ZONE_RIGHT);
+	// Makes the split container match the requested direction, recreating it if the view is split the other way.
+	void _ensure_split_orientation(DropZone p_zone);
 
 	bool _can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) const;
 	bool _can_drop_on_editor(const Vector2 &p_at_position, const Variant &p_data) const;
@@ -435,6 +439,7 @@ class DocumentEditorContainer : public MarginContainer {
 		TAB_MENU_CLOSE_OTHERS,
 		TAB_MENU_COPY_PATH,
 		TAB_MENU_SPLIT_RIGHT,
+		TAB_MENU_SPLIT_DOWN,
 		TAB_MENU_MOVE_TO_OTHER_PANE,
 	};
 

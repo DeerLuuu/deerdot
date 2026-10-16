@@ -1144,8 +1144,10 @@ void DocumentEditorContainer::_show_tab_context_menu(int p_tab, TabContainer *p_
 	tab_context_menu->add_item(TTRC("Copy Path"), TAB_MENU_COPY_PATH);
 	tab_context_menu->add_separator();
 	if (split_pane == nullptr) {
-		// With a single pane, the tab is moved into a new one on the right.
+		// With a single pane, the tab is moved into a new one, on the right or
+		// below.
 		tab_context_menu->add_item(TTRC("Split Right"), TAB_MENU_SPLIT_RIGHT);
+		tab_context_menu->add_item(TTRC("Split Down"), TAB_MENU_SPLIT_DOWN);
 	} else {
 		tab_context_menu->add_item(TTRC("Move to Other Pane"), TAB_MENU_MOVE_TO_OTHER_PANE);
 	}
@@ -1186,7 +1188,11 @@ void DocumentEditorContainer::_tab_menu_option(int p_option) {
 			}
 		} break;
 		case TAB_MENU_SPLIT_RIGHT: {
-			_create_split_pane();
+			_create_split_pane(DROP_ZONE_RIGHT);
+			_move_tab_to_pane(tab_context_pane, tab_context_index, split_pane);
+		} break;
+		case TAB_MENU_SPLIT_DOWN: {
+			_create_split_pane(DROP_ZONE_BOTTOM);
 			_move_tab_to_pane(tab_context_pane, tab_context_index, split_pane);
 		} break;
 		case TAB_MENU_MOVE_TO_OTHER_PANE: {
@@ -1202,6 +1208,9 @@ void DocumentEditorContainer::_tab_menu_option_focused(int p_option) {
 	switch (p_option) {
 		case TAB_MENU_SPLIT_RIGHT: {
 			_show_highlight_overlay(_get_drop_overlay_rect(DROP_ZONE_RIGHT), TTRC("New pane"));
+		} break;
+		case TAB_MENU_SPLIT_DOWN: {
+			_show_highlight_overlay(_get_drop_overlay_rect(DROP_ZONE_BOTTOM), TTRC("New pane"));
 		} break;
 		case TAB_MENU_MOVE_TO_OTHER_PANE: {
 			TabContainer *to = (tab_context_pane == split_pane) ? tab_container : split_pane;
@@ -1459,12 +1468,48 @@ void DocumentEditorContainer::_activate_document(Control *p_editor, bool p_focus
 	_update_history_arrows();
 }
 
-void DocumentEditorContainer::_create_split_pane() {
+// The split container follows the requested direction: to the right of the
+// first pane, or below it. A view split the other way is rebuilt.
+void DocumentEditorContainer::_ensure_split_orientation(DropZone p_zone) {
+	if (editor_split == nullptr) {
+		return;
+	}
+
+	const bool want_vertical = (p_zone == DROP_ZONE_BOTTOM);
+	const bool is_vertical = Object::cast_to<VSplitContainer>(editor_split) != nullptr;
+	if (want_vertical == is_vertical) {
+		return;
+	}
+
+	// Switch the container, keeping the panes in it.
+	Control *parent = editor_split->get_parent_control();
+	SplitContainer *new_split = want_vertical ? (SplitContainer *)memnew(VSplitContainer) : (SplitContainer *)memnew(HSplitContainer);
+	parent->add_child(new_split);
+	parent->move_child(new_split, editor_split->get_index());
+	new_split->set_h_size_flags(SIZE_EXPAND_FILL);
+	new_split->set_v_size_flags(SIZE_EXPAND_FILL);
+	new_split->connect(SceneStringName(resized), callable_mp(this, &DocumentEditorContainer::_update_drop_overlay_rect));
+
+	editor_split->remove_child(tab_container);
+	new_split->add_child(tab_container);
+	if (split_pane != nullptr) {
+		editor_split->remove_child(split_pane);
+		new_split->add_child(split_pane);
+	}
+
+	editor_split->queue_free();
+	editor_split = new_split;
+}
+
+void DocumentEditorContainer::_create_split_pane(DropZone p_zone) {
 	if (split_pane != nullptr) {
 		return;
 	}
+
+	_ensure_split_orientation(p_zone);
+
 	split_pane = memnew(TabContainer);
-	split_pane->set_custom_minimum_size(Size2(200, 0) * EDSCALE);
+	split_pane->set_custom_minimum_size(p_zone == DROP_ZONE_BOTTOM ? Size2(0, 100) * EDSCALE : Size2(200, 0) * EDSCALE);
 	split_pane->set_h_size_flags(SIZE_EXPAND_FILL);
 	split_pane->set_v_size_flags(SIZE_EXPAND_FILL);
 	editor_split->add_child(split_pane);
@@ -1507,9 +1552,12 @@ void DocumentEditorContainer::_check_drop_overlay() {
 	const Dictionary data = drag_data;
 	const String type = data.get("type", String());
 
-	// Dragging a document tab: offer to split the view on the right.
+	// Dragging a document tab: offer to split the view, to the right or below
+	// depending on the half of the editor the drag is in.
 	if (type == "tab" && String(data.get("tab_type", String())) == "tab_container_tab" && split_pane == nullptr) {
-		_show_drop_overlay(DROP_ZONE_RIGHT, TTRC("Drop here to split the view"));
+		const Rect2 area = editor_split->get_global_rect();
+		const bool below = viewport->get_mouse_position().y > area.position.y + area.size.y * 0.5f;
+		_show_drop_overlay(below ? DROP_ZONE_BOTTOM : DROP_ZONE_RIGHT, TTRC("Drop here to split the view"));
 		return;
 	}
 
@@ -1752,9 +1800,10 @@ void DocumentEditorContainer::_drop_split_tab(const Vector2 &p_at_position, cons
 		return;
 	}
 
+	const DropZone zone = drop_overlay_zone;
 	_hide_drop_overlay();
 
-	_create_split_pane();
+	_create_split_pane(zone);
 	split_pane->move_tab_from_tab_container(from, from_index, 0);
 	split_pane->set_current_tab(split_pane->get_tab_count() - 1);
 	active_pane = 1;
