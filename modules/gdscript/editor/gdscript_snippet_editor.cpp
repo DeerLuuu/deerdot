@@ -78,7 +78,15 @@ void GDScriptSnippetEditor::fill_context_menu(PopupMenu *p_menu, ScriptEditorBas
 		return;
 	}
 
-	const HashMap<String, GDScriptLanguage::SnippetConfig> &snippets = GDScriptLanguage::get_singleton()->_get_snippets();
+	// Snippets are not loaded until something asks for them, so make sure the
+	// ones on disk are known before offering them.
+	GDScriptLanguage *language = GDScriptLanguage::get_singleton();
+	language->check_snippets_reload();
+	if (language->_get_snippets().is_empty()) {
+		language->load_snippets();
+	}
+
+	const HashMap<String, GDScriptLanguage::SnippetConfig> &snippets = language->_get_snippets();
 
 	context_menu_editor = p_editor;
 	context_menu_prefixes.clear();
