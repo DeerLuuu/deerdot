@@ -1075,11 +1075,12 @@ void DocumentEditorContainer::_setup_pane(TabContainer *p_pane) {
 	p_pane->connect("tab_selected", callable_mp(this, &DocumentEditorContainer::_pane_tab_selected).bind(p_pane));
 	p_pane->connect("tab_changed", callable_mp(this, &DocumentEditorContainer::_pane_tab_changed).bind(p_pane));
 	p_pane->connect("active_tab_rearranged", callable_mp(this, &DocumentEditorContainer::_pane_tab_rearranged).bind(p_pane));
-	p_pane->connect("tab_rmb_clicked", callable_mp(this, &DocumentEditorContainer::_show_tab_context_menu).bind(p_pane));
 
+	// Per-tab close buttons and the tab context menu belong to the tab bar.
 	if (TabBar *bar = p_pane->get_tab_bar()) {
 		bar->set_tab_close_display_policy(TabBar::CLOSE_BUTTON_SHOW_ALWAYS);
 		bar->connect("tab_close_pressed", callable_mp(this, &DocumentEditorContainer::_pane_tab_close_pressed).bind(p_pane));
+		bar->connect("tab_rmb_clicked", callable_mp(this, &DocumentEditorContainer::_show_tab_context_menu).bind(p_pane));
 	}
 }
 
