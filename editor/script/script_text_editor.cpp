@@ -2106,46 +2106,87 @@ void ScriptTextEditor::drop_data_fw(const Point2 &p_point, const Variant &p_data
 	Dictionary d = p_data;
 
 	CodeEdit *te = code_editor->get_text_editor();
-	Point2i pos = (p_point == Vector2(Math::INF, Math::INF)) ? Point2i(te->get_caret_line(0), te->get_caret_column(0)) : te->get_line_column_at_pos(p_point);
-	int drop_at_line = pos.y;
-	int drop_at_column = pos.x;
-	int selection_index = te->get_selection_at_line_column(drop_at_line, drop_at_column);
-
+	int drop_at_line = 0;
+	int drop_at_column = 0;
 	bool is_empty_line = false;
+	_get_drop_position(p_point, drop_at_line, drop_at_column, is_empty_line);
+	const int selection_index = te->get_selection_at_line_column(drop_at_line, drop_at_column);
+
+	const DropText drop = _build_drop_text(d, drop_at_line, drop_at_column, is_empty_line, true);
+	String text_to_drop = drop.text;
+	const bool add_new_line = drop.add_new_line;
+
+	if (text_to_drop.is_empty()) {
+		return;
+	}
+
+	// Remove drag caret before any actions so it is not included in undo.
+	te->remove_drag_caret();
+	te->begin_complex_operation();
+	if (selection_index >= 0) {
+		te->delete_selection(selection_index);
+	}
+	te->remove_secondary_carets();
+	te->deselect();
+	te->set_caret_line(drop_at_line);
+	if (add_new_line) {
+		te->set_caret_column(te->get_line(drop_at_line).length());
+		text_to_drop = "\n" + text_to_drop;
+	} else {
+		te->set_caret_column(drop_at_column);
+	}
+	te->insert_text_at_caret(text_to_drop);
+	te->end_complex_operation();
+	te->grab_focus();
+
+	drag_info_label->hide();
+}
+
+void ScriptTextEditor::_get_drop_position(const Point2 &p_point, int &r_line, int &r_column, bool &r_is_empty_line) const {
+	CodeEdit *te = code_editor->get_text_editor();
+	Point2i pos = (p_point == Vector2(Math::INF, Math::INF)) ? Point2i(te->get_caret_line(0), te->get_caret_column(0)) : te->get_line_column_at_pos(p_point);
+	r_line = pos.y;
+	r_column = pos.x;
+	int selection_index = te->get_selection_at_line_column(r_line, r_column);
+
+	r_is_empty_line = false;
 	if (selection_index >= 0) {
 		// Dropped on a selection, it will be replaced.
-		drop_at_line = te->get_selection_from_line(selection_index);
-		drop_at_column = te->get_selection_from_column(selection_index);
-		is_empty_line = drop_at_column <= te->get_first_non_whitespace_column(drop_at_line) && te->get_selection_to_column(selection_index) == te->get_line(te->get_selection_to_line(selection_index)).length();
+		r_line = te->get_selection_from_line(selection_index);
+		r_column = te->get_selection_from_column(selection_index);
+		r_is_empty_line = r_column <= te->get_first_non_whitespace_column(r_line) && te->get_selection_to_column(selection_index) == te->get_line(te->get_selection_to_line(selection_index)).length();
 	}
+
+	const String &line = te->get_line(r_line);
+
+	if (selection_index < 0) {
+		r_is_empty_line = line.is_empty() || te->get_first_non_whitespace_column(r_line) == line.length();
+	}
+}
+
+ScriptTextEditor::DropText ScriptTextEditor::_build_drop_text(const Dictionary &p_data, int p_drop_line, int p_drop_column, bool p_is_empty_line, bool p_register_exports) {
+	Dictionary d = p_data;
+	String text_to_drop;
+	bool add_new_line = false;
 
 	Node *scene_root = get_tree()->get_edited_scene_root();
 
 	const bool member_drop_modifier_pressed = Input::get_singleton()->is_key_pressed(Key::CMD_OR_CTRL);
 	const bool export_drop_modifier_pressed = Input::get_singleton()->is_key_pressed(Key::ALT);
-
 	const bool allow_uid = Input::get_singleton()->is_key_pressed(Key::SHIFT) != bool(EDITOR_GET("text_editor/behavior/files/drop_preload_resources_as_uid"));
-	const String &line = te->get_line(drop_at_line);
-
-	if (selection_index < 0) {
-		is_empty_line = line.is_empty() || te->get_first_non_whitespace_column(drop_at_line) == line.length();
-	}
-
-	String text_to_drop;
-	bool add_new_line = false;
 
 	const String type = d.get("type", "");
 	if (type == "resource") {
 		Ref<Resource> resource = d["resource"];
 		if (resource.is_null()) {
-			return;
+			return DropText();
 		}
 
 		const String &path = resource->get_path();
 		if (path.is_empty() || path.ends_with("::")) {
 			String warning = TTR("The resource does not have a valid path because it has not been saved.\nPlease save the scene or resource that contains this resource and try again.");
 			EditorToaster::get_singleton()->popup_str(warning, EditorToaster::SEVERITY_ERROR);
-			return;
+			return DropText();
 		}
 
 		if (member_drop_modifier_pressed) {
@@ -2153,7 +2194,7 @@ void ScriptTextEditor::drop_data_fw(const Point2 &p_point, const Variant &p_data
 				String warning = TTR("Preloading internal resources is not supported.");
 				EditorToaster::get_singleton()->popup_str(warning, EditorToaster::SEVERITY_ERROR);
 			} else {
-				text_to_drop = _get_dropped_resource_as_member(resource, is_empty_line, allow_uid);
+				text_to_drop = _get_dropped_resource_as_member(resource, p_is_empty_line, allow_uid);
 			}
 		} else if (export_drop_modifier_pressed) {
 			Vector<ObjectID> obj_ids = _get_objects_for_export_assignment();
@@ -2163,7 +2204,7 @@ void ScriptTextEditor::drop_data_fw(const Point2 &p_point, const Variant &p_data
 			text_to_drop = _quote_drop_data(path);
 		}
 
-		if (is_empty_line) {
+		if (p_is_empty_line) {
 			text_to_drop += "\n";
 		}
 	}
@@ -2182,7 +2223,7 @@ void ScriptTextEditor::drop_data_fw(const Point2 &p_point, const Variant &p_data
 				}
 
 				if (member_drop_modifier_pressed) {
-					parts.append(_get_dropped_resource_as_member(resource, is_empty_line, allow_uid));
+					parts.append(_get_dropped_resource_as_member(resource, p_is_empty_line, allow_uid));
 				} else if (export_drop_modifier_pressed) {
 					Vector<ObjectID> obj_ids = _get_objects_for_export_assignment();
 					parts.append(_get_dropped_resource_as_exported_member(resource, obj_ids));
@@ -2192,18 +2233,18 @@ void ScriptTextEditor::drop_data_fw(const Point2 &p_point, const Variant &p_data
 			}
 		}
 		String join_string;
-		if (is_empty_line) {
-			int indent_level = te->get_indent_level(drop_at_line);
-			if (te->is_indent_using_spaces()) {
+		if (p_is_empty_line) {
+			int indent_level = code_editor->get_text_editor()->get_indent_level(p_drop_line);
+			if (code_editor->get_text_editor()->is_indent_using_spaces()) {
 				join_string = "\n" + String(" ").repeat(indent_level);
 			} else {
-				join_string = "\n" + String("\t").repeat(indent_level / te->get_tab_size());
+				join_string = "\n" + String("\t").repeat(indent_level / code_editor->get_text_editor()->get_tab_size());
 			}
 		} else {
 			join_string = ", ";
 		}
 		text_to_drop = join_string.join(parts);
-		if (is_empty_line) {
+		if (p_is_empty_line) {
 			text_to_drop += join_string;
 		}
 	}
@@ -2211,13 +2252,13 @@ void ScriptTextEditor::drop_data_fw(const Point2 &p_point, const Variant &p_data
 	if (type == "nodes") {
 		if (!scene_root) {
 			EditorNode::get_singleton()->show_warning(TTR("Can't drop nodes without an open scene."));
-			return;
+			return DropText();
 		}
 
 		Ref<Script> script = edited_res;
 		if (!ClassDB::is_parent_class(script->get_instance_base_type(), "Node")) {
 			EditorToaster::get_singleton()->popup_str(vformat(TTR("Can't drop nodes because script '%s' does not inherit Node."), get_document_name()), EditorToaster::SEVERITY_WARNING);
-			return;
+			return DropText();
 		}
 
 		Node *sn = _find_script_node(scene_root, script);
@@ -2229,7 +2270,7 @@ void ScriptTextEditor::drop_data_fw(const Point2 &p_point, const Variant &p_data
 
 		if (member_drop_modifier_pressed) {
 			const bool use_type = EDITOR_GET("text_editor/completion/add_type_hints");
-			add_new_line = !is_empty_line && drop_at_column != 0;
+			add_new_line = !p_is_empty_line && p_drop_column != 0;
 
 			for (int i = 0; i < nodes.size(); i++) {
 				NodePath np = nodes[i];
@@ -2265,7 +2306,7 @@ void ScriptTextEditor::drop_data_fw(const Point2 &p_point, const Variant &p_data
 				}
 			}
 
-			if (is_empty_line || drop_at_column == 0) {
+			if (p_is_empty_line || p_drop_column == 0) {
 				text_to_drop += "\n";
 			}
 		} else if (export_drop_modifier_pressed) {
@@ -2288,8 +2329,10 @@ void ScriptTextEditor::drop_data_fw(const Point2 &p_point, const Variant &p_data
 				const StringName class_name = custom_class_name.is_empty() ? node->get_class_name() : custom_class_name;
 				text_to_drop += vformat("@export var %s: %s\n", variable_name, class_name);
 
-				for (ObjectID obj_id : obj_ids) {
-					pending_dragged_exports.push_back(DraggedExport{ obj_id, variable_name, node, class_name });
+				if (p_register_exports) {
+					for (ObjectID obj_id : obj_ids) {
+						pending_dragged_exports.push_back(DraggedExport{ obj_id, variable_name, node, class_name });
+					}
 				}
 			}
 		} else {
@@ -2325,30 +2368,10 @@ void ScriptTextEditor::drop_data_fw(const Point2 &p_point, const Variant &p_data
 		text_to_drop += _quote_drop_data(String(d["property"]));
 	}
 
-	if (text_to_drop.is_empty()) {
-		return;
-	}
-
-	// Remove drag caret before any actions so it is not included in undo.
-	te->remove_drag_caret();
-	te->begin_complex_operation();
-	if (selection_index >= 0) {
-		te->delete_selection(selection_index);
-	}
-	te->remove_secondary_carets();
-	te->deselect();
-	te->set_caret_line(drop_at_line);
-	if (add_new_line) {
-		te->set_caret_column(te->get_line(drop_at_line).length());
-		text_to_drop = "\n" + text_to_drop;
-	} else {
-		te->set_caret_column(drop_at_column);
-	}
-	te->insert_text_at_caret(text_to_drop);
-	te->end_complex_operation();
-	te->grab_focus();
-
-	drag_info_label->hide();
+	DropText drop;
+	drop.text = text_to_drop;
+	drop.add_new_line = add_new_line;
+	return drop;
 }
 
 Vector<ObjectID> ScriptTextEditor::_get_objects_for_export_assignment() const {

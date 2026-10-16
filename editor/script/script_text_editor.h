@@ -193,6 +193,15 @@ protected:
 
 	void _set_drop_info_text(const Dictionary &p_info) const;
 
+	// Text a drop would insert, and where it would go.
+	struct DropText {
+		String text;
+		bool add_new_line = false;
+	};
+
+	void _get_drop_position(const Point2 &p_point, int &r_line, int &r_column, bool &r_is_empty_line) const;
+	DropText _build_drop_text(const Dictionary &p_data, int p_drop_line, int p_drop_column, bool p_is_empty_line, bool p_register_exports);
+
 	String _get_absolute_path(const String &rel_path);
 
 	void _goto_line(int p_line);
