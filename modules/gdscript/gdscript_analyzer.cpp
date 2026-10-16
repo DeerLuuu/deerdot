@@ -764,8 +764,9 @@ Error GDScriptAnalyzer::resolve_class_uses(GDScriptParser::ClassNode *p_class, c
 		p_class->traits_fqtn.push_back(trait->fqcn);
 
 		// Same-file traits are resolved in place; globally registered traits
-		// were already fully resolved through their own analyzer.
-		if (!resolved_globally) {
+		// were already fully resolved through their own analyzer, and a file
+		// trait is resolved as part of the file it describes.
+		if (!resolved_globally && !trait->is_file_trait) {
 			GDScriptParser::ClassNode *previous_trait = parser->current_class;
 			parser->current_class = trait;
 			// resolve_class_interface/body() push their errors internally and
@@ -776,8 +777,16 @@ Error GDScriptAnalyzer::resolve_class_uses(GDScriptParser::ClassNode *p_class, c
 		}
 
 		// Copy the trait's members into this class, tagging each with its origin.
-		for (const GDScriptParser::ClassNode::Member &member : trait->members) {
+		// A trait that describes a whole file takes its members from that file.
+		const GDScriptParser::ClassNode *member_source = (trait->is_file_trait && trait->outer != nullptr) ? trait->outer : trait;
+		for (const GDScriptParser::ClassNode::Member &member : member_source->members) {
 			if (member.type == GDScriptParser::ClassNode::Member::GROUP) {
+				continue;
+			}
+			if (member.type == GDScriptParser::ClassNode::Member::TRAIT ||
+					member.type == GDScriptParser::ClassNode::Member::CLASS) {
+				// Only members with a value are carried over: a trait that
+				// describes a whole file must not copy the file's own classes.
 				continue;
 			}
 

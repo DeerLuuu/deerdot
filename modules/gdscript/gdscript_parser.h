@@ -867,6 +867,10 @@ public:
 	// A trait is a reusable bundle of members that classes can `use`.
 	// Extends ClassNode so it's parsed by the same logic without duplication.
 	struct TraitNode : public ClassNode {
+		// Set for `trait Name` at the top of a file, where the file itself is
+		// the trait: its members are the file's top level members.
+		bool is_file_trait = false;
+
 		TraitNode() {
 			type = TRAIT;
 		}

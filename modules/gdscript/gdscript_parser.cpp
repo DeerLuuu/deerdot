@@ -1017,6 +1017,26 @@ GDScriptParser::TraitNode *GDScriptParser::parse_trait(bool p_is_static) {
 		if (is_file_level) {
 			GDScriptLanguage::register_global_trait(n_trait->identifier->name, script_path);
 		}
+
+		// `trait Name` on its own means the whole file is the trait, so it has
+		// no body of its own.
+		if (match(GDScriptTokenizer::Token::NEWLINE)) {
+			if (!is_file_level) {
+				push_error(R"(Only a trait at the top level of a file can describe the whole file.)");
+			} else if (n_trait->outer != nullptr) {
+				for (const ClassNode::Member &member : n_trait->outer->members) {
+					if (member.type == ClassNode::Member::TRAIT && member.m_class != nullptr && static_cast<TraitNode *>(member.m_class)->is_file_trait) {
+						push_error(R"(Only one trait can describe the whole file.)");
+						break;
+					}
+				}
+			}
+			n_trait->is_file_trait = true;
+
+			current_class = previous_class;
+			complete_extents(n_trait);
+			return n_trait;
+		}
 	}
 
 	consume(GDScriptTokenizer::Token::COLON, R"(Expected ":" after trait declaration.)");
