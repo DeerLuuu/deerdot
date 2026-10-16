@@ -192,6 +192,7 @@ protected:
 	void drop_data_fw(const Point2 &p_point, const Variant &p_data, Control *p_from);
 
 	void _set_drop_info_text(const Dictionary &p_info) const;
+	PackedStringArray _get_trait_names_in_file(const String &p_path) const;
 
 	// Text a drop would insert, and where it would go.
 	struct DropText {

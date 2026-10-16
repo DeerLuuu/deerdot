@@ -2006,6 +2006,7 @@ void ScriptTextEditor::_set_drop_info_text(const Dictionary &p_info) const {
 	if (type == "files" || type == "files_and_dirs" || type == "resource") {
 		Array files = p_info.get("files", Array());
 		text = TPL(files.size(), TTR("Drop file path."), TTR("Drop file paths.")) +
+				"\n" + vformat(TPL(files.size(), TTR("Hold %s+Shift: Add `uses` for the traits a script declares."), TTR("Hold %s+Shift: Add `uses` for the traits the scripts declare.")), ctrl_name) +
 				"\n" + vformat(TPL(files.size(), TTR("Hold %s: Add const preload by %s."), TTR("Hold %s: Add const preloads by %s.")), ctrl_name, default_drop_option) +
 				"\n" + vformat(TPL(files.size(), TTR("Hold %s+Shift: Add const preload by %s."), TTR("Hold %s+Shift: Add const preloads by %s.")), ctrl_name, alternate_drop_option) +
 				"\n" + vformat(TPL(files.size(), TTR("Hold %s: Add @export var pointing to the resource."), TTR("Hold %s: Add @export vars pointing to the resources.")), alt_name);
@@ -2107,6 +2108,32 @@ String ScriptTextEditor::_get_dropped_resource_as_exported_member(const Ref<Reso
 	}
 
 	return vformat("@export var %s: %s", variable_name, class_name);
+}
+
+// Names of the traits a dropped script declares at its top level, which are
+// the ones another script can take with `uses`.
+PackedStringArray ScriptTextEditor::_get_trait_names_in_file(const String &p_path) const {
+	PackedStringArray names;
+	if (!p_path.ends_with(".gd")) {
+		return names;
+	}
+
+	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::READ);
+	if (file.is_null()) {
+		return names;
+	}
+
+	for (const String &line : file->get_as_text().split("\n")) {
+		// Top level declarations start at the first column.
+		if (!line.begins_with("trait ")) {
+			continue;
+		}
+		String name = line.substr(6).strip_edges().split(":")[0].split("(")[0].strip_edges();
+		if (name.is_valid_identifier()) {
+			names.push_back(name);
+		}
+	}
+	return names;
 }
 
 String ScriptTextEditor::get_drop_preview_text(const Variant &p_data) {
@@ -2263,6 +2290,27 @@ ScriptTextEditor::DropText ScriptTextEditor::_build_drop_text(const Dictionary &
 	if (type == "files" || type == "files_and_dirs") {
 		const PackedStringArray files = d["files"];
 		PackedStringArray parts;
+
+		if (member_drop_modifier_pressed && Input::get_singleton()->is_key_pressed(Key::SHIFT)) {
+			// Ctrl+Shift takes the traits the dropped scripts declare.
+			for (const String &path : files) {
+				for (const String &trait_name : _get_trait_names_in_file(path)) {
+					parts.append("uses " + trait_name);
+				}
+			}
+
+			if (parts.is_empty()) {
+				return DropText();
+			}
+
+			text_to_drop = String("\n").join(parts);
+			if (p_is_empty_line) {
+				text_to_drop += "\n";
+			}
+			DropText drop;
+			drop.text = text_to_drop;
+			return drop;
+		}
 
 		for (const String &path : files) {
 			if ((member_drop_modifier_pressed || export_drop_modifier_pressed) && ResourceLoader::exists(path)) {
