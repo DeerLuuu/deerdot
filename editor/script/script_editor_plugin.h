@@ -164,10 +164,12 @@ class CodeGhostText : public Control {
 	int target_line = 0;
 	int target_column = 0;
 	Color color = Color(1, 1, 1, 0.5);
+	Callable preview_refresh; // Asked each frame so the text follows the modifiers.
 
 public:
 	void show_preview(CodeEdit *p_code_edit, const String &p_text, int p_line, int p_column, const Color &p_color);
 	void clear_preview();
+	void set_preview_refresh(const Callable &p_refresh) { preview_refresh = p_refresh; }
 
 	void _notification(int p_what);
 };
@@ -425,7 +427,7 @@ class DocumentEditorContainer : public MarginContainer {
 	void _drop_on_editor(const Vector2 &p_at_position, const Variant &p_data);
 	void _check_drop_overlay();
 	void _show_drop_overlay(DropZone p_zone, const String &p_hint);
-	void _show_code_preview(const String &p_code);
+	void _update_drop_preview();
 	void _hide_code_preview();
 	CodeEdit *_get_active_code_edit() const;
 	void _hide_drop_overlay();

@@ -1386,6 +1386,15 @@ void DocumentEditorContainer::_check_drop_overlay() {
 		return;
 	}
 
+	// Dragging nodes from the scene tree: the script editor inserts the node
+	// path itself (with Ctrl an @onready variable, with Alt an @export one), so
+	// the drop is left alone and only the resulting text is previewed inline.
+	if (type == "nodes") {
+		_hide_drop_overlay();
+		_update_drop_preview();
+		return;
+	}
+
 	_hide_drop_overlay();
 }
 
@@ -1456,6 +1465,12 @@ void CodeGhostText::_notification(int p_what) {
 			}
 
 			set_position(code_edit->get_rect_at_line_column(target_line, target_column).position);
+
+			// The text can change while dragging (holding Ctrl or Alt changes
+			// what the drop inserts), so ask for it again.
+			if (preview_refresh.is_valid()) {
+				preview_refresh.call();
+			}
 		} break;
 
 		case NOTIFICATION_DRAW: {
@@ -1483,9 +1498,17 @@ CodeEdit *DocumentEditorContainer::_get_active_code_edit() const {
 	return (teb != nullptr) ? Object::cast_to<CodeEdit>(teb->get_base_editor()) : nullptr;
 }
 
-void DocumentEditorContainer::_show_code_preview(const String &p_code) {
+void DocumentEditorContainer::_update_drop_preview() {
 	CodeEdit *code_edit = _get_active_code_edit();
-	if (code_edit == nullptr || p_code.is_empty()) {
+	Viewport *viewport = get_viewport();
+	ScriptEditorBase *seb = _get_current_editor();
+	if (code_edit == nullptr || viewport == nullptr || seb == nullptr || !viewport->gui_is_dragging()) {
+		_hide_code_preview();
+		return;
+	}
+
+	const String preview = seb->get_drop_preview_text(viewport->gui_get_drag_data());
+	if (preview.is_empty()) {
 		_hide_code_preview();
 		return;
 	}
@@ -1493,6 +1516,7 @@ void DocumentEditorContainer::_show_code_preview(const String &p_code) {
 	if (drop_code_preview == nullptr) {
 		drop_code_preview = memnew(CodeGhostText);
 		drop_code_preview->set_clip_contents(true);
+		drop_code_preview->set_preview_refresh(callable_mp(this, &DocumentEditorContainer::_update_drop_preview));
 	}
 	if (drop_code_preview->get_parent() != code_edit) {
 		if (drop_code_preview->get_parent() != nullptr) {
@@ -1501,11 +1525,9 @@ void DocumentEditorContainer::_show_code_preview(const String &p_code) {
 		code_edit->add_child(drop_code_preview);
 	}
 
-	// Upstream drops insert at the caret, so the preview sits exactly there.
 	const Color accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
-	drop_code_preview->show_preview(code_edit, p_code, code_edit->get_caret_line(), code_edit->get_caret_column(), Color(accent.r, accent.g, accent.b, 0.7f));
+	drop_code_preview->show_preview(code_edit, preview, code_edit->get_caret_line(), code_edit->get_caret_column(), Color(accent.r, accent.g, accent.b, 0.7f));
 }
-
 void DocumentEditorContainer::_hide_code_preview() {
 	if (drop_code_preview != nullptr) {
 		drop_code_preview->clear_preview();
