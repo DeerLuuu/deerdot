@@ -2108,16 +2108,31 @@ String ScriptTextEditor::get_drop_preview_text(const Variant &p_data) {
 	}
 
 	Dictionary d = p_data;
-	if (String(d.get("type", "")) != "nodes") {
-		// Only node drops are previewed for now.
-		return String();
-	}
+	const String type = d.get("type", "");
 
 	// Check what the drop itself checks, without the warnings: an invalid drop
 	// should not complain while the user is still dragging.
-	Node *scene_root = get_tree()->get_edited_scene_root();
-	Ref<Script> script = edited_res;
-	if (scene_root == nullptr || script.is_null() || !ClassDB::is_parent_class(script->get_instance_base_type(), "Node")) {
+	if (type == "nodes") {
+		Node *scene_root = get_tree()->get_edited_scene_root();
+		Ref<Script> script = edited_res;
+		if (scene_root == nullptr || script.is_null() || !ClassDB::is_parent_class(script->get_instance_base_type(), "Node")) {
+			return String();
+		}
+	} else if (type == "resource") {
+		Ref<Resource> resource = d["resource"];
+		if (resource.is_null()) {
+			return String();
+		}
+		const String &path = resource->get_path();
+		if (path.is_empty() || path.ends_with("::")) {
+			return String();
+		}
+		if (Input::get_singleton()->is_key_pressed(Key::CMD_OR_CTRL) && resource->is_built_in()) {
+			// The drop refuses internal resources with a warning, so there is
+			// nothing to preview.
+			return String();
+		}
+	} else if (type != "files" && type != "files_and_dirs") {
 		return String();
 	}
 
