@@ -60,8 +60,11 @@
 #include "core/object/class_db.h"
 
 #ifdef TOOLS_ENABLED
+#include "core/object/callable_mp.h"
 #include "editor/editor_node.h"
 #include "editor/export/editor_export.h"
+#include "editor/file_system/editor_file_system.h"
+#include "editor/gdscript_trait_index.h"
 #include "editor/translations/editor_translation_parser.h"
 
 #ifndef GDSCRIPT_NO_LSP
@@ -163,6 +166,11 @@ void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 		DocumentEditorContainer::register_snippets_opener(&GDScriptSnippetEditor::open_snippets_editor);
 		DocumentEditorContainer::register_snippets_changed(&GDScriptSnippetEditor::reload_snippets);
 		DocumentEditorContainer::register_context_menu_contributor(&GDScriptSnippetEditor::fill_context_menu);
+		// Traits are registered while scripts are parsed, so read them from the
+		// project as soon as the filesystem is known.
+		if (EditorFileSystem::get_singleton() != nullptr) {
+			EditorFileSystem::get_singleton()->connect("filesystem_changed", callable_mp_static(gdscript_scan_project_traits));
+		}
 
 		gdscript_translation_parser_plugin.instantiate();
 		EditorTranslationParser::get_singleton()->add_parser(gdscript_translation_parser_plugin, EditorTranslationParser::STANDARD);

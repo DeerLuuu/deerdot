@@ -4588,6 +4588,15 @@ static int _find_trait_declaration_line(const String &p_path, const StringName &
 		return OK;
 	}
 
+	if (p_symbol == "Variant") {
+		r_result.type = LookupResult::Type::CLASS;
+		r_result.class_name = "Variant";
+		return OK;
+	}
+
+	GDScriptParser parser;
+	parser.parse(p_code, p_path, true);
+
 	// A trait name in a `uses` statement points at the script declaring it, so
 	// ctrl+clicking it opens that script and the tooltip names it.
 	if (GDScriptLanguage::get_singleton() != nullptr && p_symbol.is_valid_identifier() && _code_uses_trait(p_code, p_symbol)) {
@@ -4603,15 +4612,6 @@ static int _find_trait_declaration_line(const String &p_path, const StringName &
 			}
 		}
 	}
-
-	if (p_symbol == "Variant") {
-		r_result.type = LookupResult::Type::CLASS;
-		r_result.class_name = "Variant";
-		return OK;
-	}
-
-	GDScriptParser parser;
-	parser.parse(p_code, p_path, true);
 
 	GDScriptParser::CompletionContext context = parser.get_completion_context();
 	context.base = p_owner;
