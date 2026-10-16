@@ -567,6 +567,12 @@ msgstr "按住 %s+Shift：添加该脚本声明的 trait 的 `uses`。"
 msgid "Trait"
 msgstr "Trait（特性）"
 
+msgid "Enums"
+msgstr "枚举"
+
+msgid "Show %s"
+msgstr "显示%s"
+
 msgid "Hold %s+Shift: Add `uses` for the traits the scripts declare."
 msgstr "按住 %s+Shift：添加这些脚本声明的 trait 的 `uses`。"
 
