@@ -704,6 +704,60 @@ void DocumentOutline::update_editor_settings() {
 
 // Icon matching the kind of member the language reported, so methods,
 // properties, signals and the rest can be told apart at a glance.
+void DocumentOutline::_add_kind_filter() {
+	kind_filter_hbox = memnew(HBoxContainer);
+	kind_filter_hbox->add_theme_constant_override("separation", 2);
+	add_child(kind_filter_hbox);
+
+	_add_kind_button("method", TTRC("Methods"), SNAME("MemberMethod"));
+	_add_kind_button("property", TTRC("Properties"), SNAME("MemberProperty"));
+	_add_kind_button("signal", TTRC("Signals"), SNAME("MemberSignal"));
+	_add_kind_button("constant", TTRC("Constants"), SNAME("MemberConstant"));
+	_add_kind_button("enum", TTRC("Enums"), SNAME("Enum"));
+}
+
+Button *DocumentOutline::_add_kind_button(const String &p_kind, const String &p_label, const StringName &p_icon) {
+	const String setting = "text_editor/script_list/outline_show_" + p_kind + "s";
+
+	Button *button = memnew(Button);
+	button->set_theme_type_variation(SceneStringName(FlatButton));
+	button->set_toggle_mode(true);
+	button->set_button_icon(get_editor_theme_icon(p_icon));
+	button->set_tooltip_text(vformat(TTRC("Show %s"), p_label));
+	button->set_accessibility_name(p_label);
+	button->set_pressed(EDITOR_GET(setting));
+	button->connect(SceneStringName(toggled), callable_mp(this, &DocumentOutline::_toggle_kind).bind(p_kind));
+
+	kind_filter_hbox->add_child(button);
+	kind_buttons[p_kind] = button;
+	kind_settings[p_kind] = setting;
+
+	return button;
+}
+
+void DocumentOutline::_toggle_kind(const String &p_kind, bool p_pressed) {
+	const String *setting = kind_settings.getptr(p_kind);
+	if (setting == nullptr) {
+		return;
+	}
+
+	EditorSettings::get_singleton()->set(*setting, p_pressed);
+	update_outline();
+}
+
+bool DocumentOutline::_is_kind_visible(const String &p_kind) const {
+	// Entries without a kind are always shown.
+	if (p_kind.is_empty()) {
+		return true;
+	}
+
+	const String *setting = kind_settings.getptr(p_kind);
+	if (setting == nullptr) {
+		return true;
+	}
+	return EDITOR_GET(*setting);
+}
+
 Ref<Texture2D> DocumentOutline::_get_member_icon(const String &p_kind) const {
 	if (p_kind == "method") {
 		return get_editor_theme_icon(SNAME("MemberMethod"));
@@ -752,6 +806,10 @@ void DocumentOutline::update_outline() {
 
 		if (filter_text.is_empty()) {
 			for (const String &function_name : functions) {
+				if (!_is_kind_visible(function_name.get_slicec(':', 2))) {
+					continue;
+				}
+
 				TreeItem *parent = tree->get_root();
 				String name = function_name.get_slicec(':', 0);
 
@@ -787,7 +845,12 @@ void DocumentOutline::update_outline() {
 			}
 		} else {
 			PackedStringArray search_names;
+			PackedStringArray searched;
 			for (const String &function_name : functions) {
+				if (!_is_kind_visible(function_name.get_slicec(':', 2))) {
+					continue;
+				}
+				searched.push_back(function_name);
 				search_names.append(function_name.get_slicec(':', 0));
 			}
 
@@ -797,7 +860,7 @@ void DocumentOutline::update_outline() {
 
 			for (const Ref<FuzzySearchMatch> &res : results) {
 				TreeItem *parent = tree->get_root();
-				String function_name = functions[res->get_original_index()];
+				String function_name = searched[res->get_original_index()];
 				String name = function_name.get_slicec(':', 0);
 
 				// Organize functions inside subclasses.
@@ -870,6 +933,9 @@ void DocumentOutline::update_visibility() {
 
 DocumentOutline::DocumentOutline(DocumentEditorContainer *p_document_editor_container) {
 	document_editor_container = p_document_editor_container;
+	// Which kinds are listed, right above the filter box.
+	_add_kind_filter();
+
 	buttons_hbox = memnew(HBoxContainer);
 
 	filter = memnew(FilterLineEdit);

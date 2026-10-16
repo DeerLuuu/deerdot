@@ -126,7 +126,11 @@ class DocumentOutline : public VBoxContainer {
 
 	DocumentEditorContainer *document_editor_container = nullptr;
 	Tree *tree = nullptr;
+	HBoxContainer *kind_filter_hbox = nullptr;
 	HBoxContainer *buttons_hbox = nullptr;
+	// Toggle per member kind, and the setting it is stored in.
+	HashMap<String, Button *> kind_buttons;
+	HashMap<String, String> kind_settings;
 	FilterLineEdit *filter = nullptr;
 	Button *sort_button = nullptr;
 
@@ -137,6 +141,11 @@ class DocumentOutline : public VBoxContainer {
 	bool updating_outline = false;
 
 	void _toggle_sort(bool p_alphabetic_sort);
+	// Row of toggles for the kinds of members the outline lists.
+	void _add_kind_filter();
+	Button *_add_kind_button(const String &p_kind, const String &p_label, const StringName &p_icon);
+	void _toggle_kind(const String &p_kind, bool p_pressed);
+	bool _is_kind_visible(const String &p_kind) const;
 	void _tree_selected();
 
 protected:

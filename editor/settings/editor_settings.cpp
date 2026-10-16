@@ -880,6 +880,12 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 
 	// Script list
 	_initial_set("text_editor/script_list/show_members_overview", true, true);
+	// Which kinds of members the outline lists.
+	_initial_set("text_editor/script_list/outline_show_methods", true, true);
+	_initial_set("text_editor/script_list/outline_show_properties", true, true);
+	_initial_set("text_editor/script_list/outline_show_signals", true, true);
+	_initial_set("text_editor/script_list/outline_show_constants", true, true);
+	_initial_set("text_editor/script_list/outline_show_enums", true, true);
 	_initial_set("text_editor/script_list/sort_members_outline_alphabetically", false, true);
 	_initial_set("text_editor/script_list/script_temperature_enabled", true);
 	_initial_set("text_editor/script_list/script_temperature_history_size", 15);
