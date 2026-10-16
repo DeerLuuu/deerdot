@@ -1388,7 +1388,8 @@ void DocumentEditorContainer::_check_drop_overlay() {
 
 	// Dragging nodes from the scene tree: offer to reference them in the script.
 	if (type == "nodes") {
-		_show_drop_overlay(DROP_ZONE_EDITOR, TTRC("Drop here to reference the node in the script"), _get_node_reference_code(data, _get_active_document_code()));
+		_show_drop_overlay(DROP_ZONE_EDITOR, TTRC("Drop here to reference the node in the script"));
+		_show_code_preview(_get_node_reference_code(data, _get_active_document_code()));
 		return;
 	}
 
@@ -1430,6 +1431,125 @@ bool DocumentEditorContainer::_can_drop_nodes(const Variant &p_data) const {
 	return String(data.get("type", String())) == "nodes" && data.has("nodes") && data.has("scene_root");
 }
 
+void CodeGhostText::show_preview(CodeEdit *p_code_edit, const String &p_text, int p_line, int p_column, const Color &p_color) {
+	code_edit = p_code_edit;
+	text = p_text;
+	target_line = p_line;
+	target_column = p_column;
+	color = p_color;
+
+	if (code_edit == nullptr || text.is_empty()) {
+		clear_preview();
+		return;
+	}
+
+	set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	set_process(true);
+	show();
+	queue_redraw();
+}
+
+void CodeGhostText::clear_preview() {
+	text = String();
+	set_process(false);
+	hide();
+	queue_redraw();
+}
+
+void CodeGhostText::_notification(int p_what) {
+	switch (p_what) {
+		case NOTIFICATION_PROCESS: {
+			if (code_edit == nullptr || text.is_empty() || !code_edit->is_visible_in_tree()) {
+				hide();
+				return;
+			}
+
+			// The preview belongs to a line of the editor: keep it aligned while
+			// the editor scrolls, and hide it when that line is scrolled away.
+			if (target_line < code_edit->get_first_visible_line() || target_line > code_edit->get_last_full_visible_line()) {
+				hide();
+				return;
+			}
+			if (!is_visible()) {
+				show();
+			}
+
+			set_position(code_edit->get_rect_at_line_column(target_line, target_column).position);
+		} break;
+
+		case NOTIFICATION_DRAW: {
+			if (code_edit == nullptr || text.is_empty()) {
+				return;
+			}
+
+			const Ref<Font> font = code_edit->get_theme_font(SceneStringName(font));
+			if (font.is_null()) {
+				return;
+			}
+			const int font_size = code_edit->get_theme_font_size(SceneStringName(font_size));
+			const int line_height = code_edit->get_line_height();
+			const PackedStringArray lines = text.split("\n");
+
+			for (int i = 0; i < lines.size(); i++) {
+				draw_string(font, Point2(0, font->get_ascent(font_size) + i * line_height), lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color);
+			}
+		} break;
+	}
+}
+
+CodeEdit *DocumentEditorContainer::_get_active_code_edit() const {
+	TextEditorBase *teb = Object::cast_to<TextEditorBase>(_get_current_editor());
+	return (teb != nullptr) ? Object::cast_to<CodeEdit>(teb->get_base_editor()) : nullptr;
+}
+
+void DocumentEditorContainer::_get_node_insert_position(CodeEdit *p_code_edit, int &r_line, int &r_column) const {
+	const int caret_line = p_code_edit->get_caret_line();
+	const String caret_line_text = p_code_edit->get_line(caret_line);
+
+	int indent = 0;
+	while (indent < caret_line_text.length() && (caret_line_text[indent] == ' ' || caret_line_text[indent] == '\t')) {
+		indent++;
+	}
+	r_column = indent;
+
+	// The code goes on its own line: below the caret's line when that line
+	// already has content, on the caret's line otherwise.
+	const bool line_has_content = !caret_line_text.strip_edges().is_empty();
+	r_line = line_has_content ? MIN(caret_line + 1, MAX(0, p_code_edit->get_line_count() - 1)) : caret_line;
+}
+
+void DocumentEditorContainer::_show_code_preview(const String &p_code) {
+	CodeEdit *code_edit = _get_active_code_edit();
+	if (code_edit == nullptr || p_code.is_empty()) {
+		_hide_code_preview();
+		return;
+	}
+
+	if (drop_code_preview == nullptr) {
+		drop_code_preview = memnew(CodeGhostText);
+		drop_code_preview->set_clip_contents(true);
+	}
+	if (drop_code_preview->get_parent() != code_edit) {
+		if (drop_code_preview->get_parent() != nullptr) {
+			drop_code_preview->get_parent()->remove_child(drop_code_preview);
+		}
+		code_edit->add_child(drop_code_preview);
+	}
+
+	int line = 0;
+	int column = 0;
+	_get_node_insert_position(code_edit, line, column);
+
+	const Color accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
+	drop_code_preview->show_preview(code_edit, p_code, line, column, Color(accent.r, accent.g, accent.b, 0.7f));
+}
+
+void DocumentEditorContainer::_hide_code_preview() {
+	if (drop_code_preview != nullptr) {
+		drop_code_preview->clear_preview();
+	}
+}
+
 void DocumentEditorContainer::_drop_nodes(const Variant &p_data) {
 	if (!_can_drop_nodes(p_data)) {
 		return;
@@ -1448,33 +1568,43 @@ void DocumentEditorContainer::_drop_nodes(const Variant &p_data) {
 		return;
 	}
 
-	// Put the code on its own line, indented like the caret's line, and leave
-	// the caret on a fresh line so whatever followed stays where it was.
+	// Insert exactly where the preview was shown: on the line below the caret's
+	// when that line has content, indented like it, leaving the caret on a fresh
+	// line so whatever followed stays put.
+	int line = 0;
+	int column = 0;
+	_get_node_insert_position(code_edit, line, column);
+	const String indent = String(" ").repeat(column);
+
 	const int caret_line = code_edit->get_caret_line();
 	const String caret_line_text = code_edit->get_line(caret_line);
-	String indent;
-	for (int i = 0; i < caret_line_text.length() && (caret_line_text[i] == ' ' || caret_line_text[i] == '\t'); i++) {
-		indent += caret_line_text[i];
-	}
+	const bool line_has_content = !caret_line_text.strip_edges().is_empty();
 
 	PackedStringArray code_lines = code.split("\n");
 	for (int i = 0; i < code_lines.size(); i++) {
 		code_lines.set(i, indent + code_lines[i]);
 	}
-
-	String insertion = String("\n").join(code_lines) + "\n" + indent;
-	if (!caret_line_text.strip_edges().is_empty()) {
-		insertion = "\n" + insertion;
-	}
+	const String inserted = String("\n").join(code_lines) + "\n" + indent;
 
 	code_edit->begin_complex_operation();
-	code_edit->insert_text_at_caret(insertion);
+	if (line_has_content) {
+		// Move to the end of the caret's line and start the insertion below it.
+		code_edit->set_caret_line(caret_line);
+		code_edit->set_caret_column(caret_line_text.length());
+		code_edit->insert_text_at_caret("\n" + inserted);
+	} else {
+		// Replace the (blank) caret line with the indented code.
+		code_edit->set_caret_line(caret_line);
+		code_edit->set_caret_column(0);
+		code_edit->remove_text(caret_line, 0, caret_line, caret_line_text.length());
+		code_edit->insert_text_at_caret(inserted);
+	}
 	code_edit->end_complex_operation();
 
 	teb->ensure_focus();
 }
 
-void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &p_hint, const String &p_preview) {
+void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &p_hint) {
 	if (split_drop_overlay == nullptr || p_zone == DROP_ZONE_NONE) {
 		return;
 	}
@@ -1483,9 +1613,10 @@ void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &
 	if (split_drop_hint != nullptr) {
 		split_drop_hint->set_text(p_hint);
 	}
-	if (split_drop_preview != nullptr) {
-		split_drop_preview->set_text(p_preview);
-		split_drop_preview->set_visible(!p_preview.is_empty());
+	// Drops that act on the script show their preview inside the code, so the
+	// hint moves out of the way to the top of the area.
+	if (split_drop_box != nullptr) {
+		split_drop_box->set_alignment(p_zone == DROP_ZONE_EDITOR ? BoxContainer::ALIGNMENT_BEGIN : BoxContainer::ALIGNMENT_CENTER);
 	}
 	_update_drop_overlay_rect();
 	split_drop_overlay->show();
@@ -1493,6 +1624,7 @@ void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &
 
 void DocumentEditorContainer::_hide_drop_overlay() {
 	drop_overlay_zone = DROP_ZONE_NONE;
+	_hide_code_preview();
 	if (split_drop_overlay != nullptr) {
 		split_drop_overlay->hide();
 	}
@@ -1517,10 +1649,6 @@ void DocumentEditorContainer::_update_drop_overlay_theme() {
 
 	if (split_drop_hint != nullptr) {
 		split_drop_hint->add_theme_color_override(SceneStringName(font_color), accent);
-	}
-	if (split_drop_preview != nullptr) {
-		split_drop_preview->add_theme_font_override(SceneStringName(font), get_theme_font(SNAME("source"), EditorStringName(EditorFonts)));
-		split_drop_preview->add_theme_color_override(SceneStringName(font_color), Color(accent.r, accent.g, accent.b, 0.85f));
 	}
 }
 
@@ -4672,26 +4800,19 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	// there does. They must not take part in drag-and-drop, or they would block
 	// the drop target. Their theme-dependent styling is applied once the editor
 	// theme is available.
-	VBoxContainer *overlay_box = memnew(VBoxContainer);
-	overlay_box->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
-	overlay_box->set_alignment(BoxContainer::ALIGNMENT_CENTER);
-	overlay_box->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
-	overlay_box->add_theme_constant_override("separation", 8);
-	split_drop_overlay->add_child(overlay_box);
+	split_drop_box = memnew(VBoxContainer);
+	split_drop_box->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+	split_drop_box->set_alignment(BoxContainer::ALIGNMENT_CENTER);
+	split_drop_box->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	split_drop_box->add_theme_constant_override("separation", 8);
+	split_drop_overlay->add_child(split_drop_box);
 
 	split_drop_hint = memnew(Label);
 	split_drop_hint->set_text(TTRC("Drop here to split the view"));
 	split_drop_hint->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 	split_drop_hint->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	split_drop_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-	overlay_box->add_child(split_drop_hint);
-
-	split_drop_preview = memnew(Label);
-	split_drop_preview->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
-	split_drop_preview->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
-	split_drop_preview->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
-	split_drop_preview->hide();
-	overlay_box->add_child(split_drop_preview);
+	split_drop_box->add_child(split_drop_hint);
 
 	tab_container = memnew(TabContainer);
 	tab_container->set_custom_minimum_size(Size2(200, 0) * EDSCALE);

@@ -152,6 +152,25 @@ class EditorScriptCodeCompletionCache;
 class FindInFiles;
 class TextFile;
 class ShaderCreateDialog;
+// Translucent "ghost" text drawn over a code editor, previewing code that a
+// drop would insert (like inline completion suggestions). It follows the editor
+// while it scrolls, never takes part in drag-and-drop, and is positioned at the
+// line and column where the code would land.
+class CodeEdit;
+
+class CodeGhostText : public Control {
+	CodeEdit *code_edit = nullptr;
+	String text;
+	int target_line = 0;
+	int target_column = 0;
+	Color color = Color(1, 1, 1, 0.5);
+
+public:
+	void show_preview(CodeEdit *p_code_edit, const String &p_text, int p_line, int p_column, const Color &p_color);
+	void clear_preview();
+
+	void _notification(int p_what);
+};
 class DocumentEditorContainer : public MarginContainer {
 	GDCLASS(DocumentEditorContainer, MarginContainer);
 
@@ -264,7 +283,8 @@ class DocumentEditorContainer : public MarginContainer {
 
 	Panel *split_drop_overlay = nullptr;
 	Label *split_drop_hint = nullptr; // Hint text shown inside the drop highlight.
-	Label *split_drop_preview = nullptr; // Translucent code preview for the pending drop.
+	VBoxContainer *split_drop_box = nullptr; // Holds the overlay hint; alignment depends on the zone.
+	CodeGhostText *drop_code_preview = nullptr; // Inline preview of the code a drop would insert.
 	DropZone drop_overlay_zone = DROP_ZONE_NONE;
 	int active_pane = 0; // 0 = primary pane, 1 = split pane.
 	AcceptDialog *error_dialog = nullptr;
@@ -406,7 +426,11 @@ class DocumentEditorContainer : public MarginContainer {
 	bool _can_drop_nodes(const Variant &p_data) const;
 	void _drop_nodes(const Variant &p_data);
 	void _check_drop_overlay();
-	void _show_drop_overlay(DropZone p_zone, const String &p_hint, const String &p_preview = String());
+	void _show_drop_overlay(DropZone p_zone, const String &p_hint);
+	void _show_code_preview(const String &p_code);
+	void _hide_code_preview();
+	CodeEdit *_get_active_code_edit() const;
+	void _get_node_insert_position(CodeEdit *p_code_edit, int &r_line, int &r_column) const;
 	String _get_node_reference_code(const Variant &p_data, const String &p_existing_code = String()) const;
 	String _get_active_document_code() const;
 	void _hide_drop_overlay();
