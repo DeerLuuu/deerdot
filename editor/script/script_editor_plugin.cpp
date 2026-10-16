@@ -1462,6 +1462,32 @@ void DocumentEditorContainer::_hide_drop_overlay() {
 	}
 }
 
+// Applies the editor theme to the drop highlight. Theme items cannot be read
+// before the editor is in the tree, so this runs on theme changes instead of
+// from the constructor.
+void DocumentEditorContainer::_update_drop_overlay_theme() {
+	if (split_drop_overlay == nullptr) {
+		return;
+	}
+
+	const Color accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
+
+	Ref<StyleBoxFlat> overlay_style = memnew(StyleBoxFlat);
+	overlay_style->set_bg_color(Color(accent.r, accent.g, accent.b, 0.12f));
+	overlay_style->set_border_color(Color(accent.r, accent.g, accent.b, 0.7f));
+	overlay_style->set_border_width_all(2);
+	overlay_style->set_corner_radius_all(4);
+	split_drop_overlay->add_theme_style_override(SceneStringName(panel), overlay_style);
+
+	if (split_drop_hint != nullptr) {
+		split_drop_hint->add_theme_color_override(SceneStringName(font_color), accent);
+	}
+	if (split_drop_preview != nullptr) {
+		split_drop_preview->add_theme_font_override(SceneStringName(font), get_theme_font(SNAME("source"), EditorStringName(EditorFonts)));
+		split_drop_preview->add_theme_color_override(SceneStringName(font_color), Color(accent.r, accent.g, accent.b, 0.85f));
+	}
+}
+
 // Builds the code a dropped node reference turns into: an `@onready` variable
 // holding the node, typed with its class (or its global script class, when it
 // has one). Nodes that are not part of the edited scene are skipped.
@@ -2629,6 +2655,7 @@ void DocumentEditorContainer::_notification(int p_what) {
 		case NOTIFICATION_LAYOUT_DIRECTION_CHANGED:
 		case NOTIFICATION_THEME_CHANGED: {
 			tab_container->add_theme_style_override(SceneStringName(panel), get_theme_stylebox(SNAME("ScriptEditor"), EditorStringName(EditorStyles)));
+			_update_drop_overlay_theme();
 
 			_calculate_script_name_button_size();
 
@@ -4573,18 +4600,10 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	split_drop_overlay->hide();
 	code_editor_container->add_child(split_drop_overlay);
 
-	const Color overlay_accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
-
-	Ref<StyleBoxFlat> overlay_style = memnew(StyleBoxFlat);
-	overlay_style->set_bg_color(Color(overlay_accent.r, overlay_accent.g, overlay_accent.b, 0.12f));
-	overlay_style->set_border_color(Color(overlay_accent.r, overlay_accent.g, overlay_accent.b, 0.7f));
-	overlay_style->set_border_width_all(2);
-	overlay_style->set_corner_radius_all(4);
-	split_drop_overlay->add_theme_style_override(SceneStringName(panel), overlay_style);
-
 	// Hint and code preview shown inside the highlight, telling what releasing
 	// there does. They must not take part in drag-and-drop, or they would block
-	// the drop target.
+	// the drop target. Their theme-dependent styling is applied once the editor
+	// theme is available.
 	VBoxContainer *overlay_box = memnew(VBoxContainer);
 	overlay_box->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
 	overlay_box->set_alignment(BoxContainer::ALIGNMENT_CENTER);
@@ -4597,15 +4616,12 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	split_drop_hint->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 	split_drop_hint->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	split_drop_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-	split_drop_hint->add_theme_color_override(SceneStringName(font_color), overlay_accent);
 	overlay_box->add_child(split_drop_hint);
 
 	split_drop_preview = memnew(Label);
 	split_drop_preview->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 	split_drop_preview->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	split_drop_preview->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
-	split_drop_preview->add_theme_font_override(SceneStringName(font), get_theme_font(SNAME("source"), EditorStringName(EditorFonts)));
-	split_drop_preview->add_theme_color_override(SceneStringName(font_color), Color(overlay_accent.r, overlay_accent.g, overlay_accent.b, 0.85f));
 	split_drop_preview->hide();
 	overlay_box->add_child(split_drop_preview);
 

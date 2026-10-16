@@ -410,6 +410,7 @@ class DocumentEditorContainer : public MarginContainer {
 	String _get_node_reference_code(const Variant &p_data) const;
 	void _hide_drop_overlay();
 	void _update_drop_overlay_rect();
+	void _update_drop_overlay_theme();
 	Rect2 _get_drop_overlay_rect(DropZone p_zone) const;
 	void _drop_split_tab(const Vector2 &p_at_position, const Variant &p_data);
 	void _pane_tab_selected(int p_tab, TabContainer *p_pane);
