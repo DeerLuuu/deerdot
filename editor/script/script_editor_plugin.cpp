@@ -4469,9 +4469,88 @@ void DocumentEditorContainer::sort_document_editors() {
 	document_list->update_list();
 }
 
+// Rebuilds the saved panes: the first pane already exists, and every other one
+// is created by splitting, in the same order the layout was saved in.
+void DocumentEditorContainer::_restore_pane_layout(const Variant &p_node, TabContainer *p_pane) {
+	if (p_node.get_type() != Variant::DICTIONARY || p_pane == nullptr) {
+		return;
+	}
+
+	Dictionary node = p_node;
+
+	if (node.has("first") && node.has("second")) {
+		_restore_pane_layout(node["first"], p_pane);
+
+		const bool vertical = String(node.get("direction", "horizontal")) == "vertical";
+		_split_pane(p_pane, vertical ? DROP_ZONE_BOTTOM : DROP_ZONE_RIGHT);
+		if (panes.size() < 2) {
+			return;
+		}
+
+		TabContainer *second = panes[panes.size() - 1];
+		_restore_pane_layout(node["second"], second);
+
+		if (SplitContainer *split = Object::cast_to<SplitContainer>(second->get_parent())) {
+			split->set_split_offset(node.get("offset", 0));
+		}
+		return;
+	}
+
+	// A pane: open its documents into it, which is where the active pane points.
+	active_pane = MAX(0, _pane_index(p_pane));
+	const Array scripts = node.get("scripts", Array());
+	for (const Variant &script : scripts) {
+		const String path = script;
+		if (!path.is_empty() && _script_exists(path)) {
+			edit(ResourceLoader::load(path, "Script"), true, false, true);
+		}
+	}
+	const Array pane_helps = node.get("help", Array());
+	for (const Variant &help : pane_helps) {
+		const String help_class = help;
+		if (!help_class.is_empty()) {
+			_help_class_open(help_class);
+		}
+	}
+
+	// Go back to the document that was being edited in this pane.
+	const String selected = node.get("selected", String());
+	if (!selected.is_empty()) {
+		for (int i = 0; i < p_pane->get_tab_count(); i++) {
+			Control *editor = p_pane->get_tab_control(i);
+			ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor);
+			if (seb != nullptr && seb->get_edited_resource()->get_path() == selected) {
+				p_pane->set_current_tab(i);
+				break;
+			}
+			EditorHelp *eh = Object::cast_to<EditorHelp>(editor);
+			if (eh != nullptr && eh->get_class() == selected) {
+				p_pane->set_current_tab(i);
+				break;
+			}
+		}
+	}
+}
+
 void DocumentEditorContainer::set_window_layout(Ref<ConfigFile> p_layout) {
 	if (!p_layout->has_section_key(config_section, "open_scripts") && !p_layout->has_section_key(config_section, "open_help")) {
 		return;
+	}
+
+	// A layout with panes is restored pane by pane.
+	if (p_layout->has_section_key(config_section, "script_panes")) {
+		const Variant pane_layout = p_layout->get_value(config_section, "script_panes");
+		if (pane_layout.get_type() == Variant::DICTIONARY) {
+			restoring_layout = true;
+			_set_script_zoom_factor(p_layout->get_value(config_section, "zoom_factor", 1.0f));
+			ScriptEditorNavigationMarker::get_singleton()->init_begin();
+			_restore_pane_layout(pane_layout, tab_container);
+			ScriptEditorNavigationMarker::get_singleton()->init_end();
+			restoring_layout = false;
+			_update_filenames();
+			document_list->update_list();
+			return;
+		}
 	}
 
 	Array scripts = p_layout->get_value(config_section, "open_scripts");
@@ -4621,30 +4700,82 @@ void DocumentEditorContainer::set_window_layout(Ref<ConfigFile> p_layout) {
 	}
 }
 
+// Describes how the panes are laid out and which documents each of them holds,
+// as a tree: leaves are panes and inner nodes are splits.
+Variant DocumentEditorContainer::_serialize_pane_layout(const Node *p_node) const {
+	if (const TabContainer *pane = Object::cast_to<TabContainer>(p_node)) {
+		Dictionary leaf;
+		Array scripts;
+		Array pane_helps;
+		String selected;
+		for (int i = 0; i < pane->get_tab_count(); i++) {
+			Control *editor = pane->get_tab_control(i);
+			if (ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor)) {
+				const String path = seb->get_edited_resource()->get_path();
+				if (path.is_empty()) {
+					continue;
+				}
+				if (pane->get_current_tab_control() == editor) {
+					selected = path;
+				}
+				scripts.push_back(path);
+			} else if (EditorHelp *eh = Object::cast_to<EditorHelp>(editor)) {
+				if (pane->get_current_tab_control() == editor) {
+					selected = eh->get_class();
+				}
+				pane_helps.push_back(eh->get_class());
+			}
+		}
+		leaf["scripts"] = scripts;
+		leaf["help"] = pane_helps;
+		leaf["selected"] = selected;
+		return leaf;
+	}
+
+	if (const SplitContainer *split = Object::cast_to<SplitContainer>(p_node)) {
+		if (split->get_child_count() < 2) {
+			// A split without two children is not a split yet.
+			return split->get_child_count() == 1 ? _serialize_pane_layout(split->get_child(0)) : Variant();
+		}
+		Dictionary node;
+		node["direction"] = Object::cast_to<VSplitContainer>(split) != nullptr ? "vertical" : "horizontal";
+		node["offset"] = split->get_split_offset();
+		node["first"] = _serialize_pane_layout(split->get_child(0));
+		node["second"] = _serialize_pane_layout(split->get_child(1));
+		return node;
+	}
+
+	return Variant();
+}
+
 void DocumentEditorContainer::get_window_layout(Ref<ConfigFile> p_layout) {
 	Array scripts;
 	Array helps;
 	String selected_script;
-	for (int i = 0; i < tab_container->get_tab_count(); i++) {
-		if (ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(tab_container->get_tab_control(i))) {
-			const String path = seb->get_edited_resource()->get_path();
-			if (path.is_empty()) {
-				continue;
+	for (TabContainer *pane : panes) {
+		for (int i = 0; i < pane->get_tab_count(); i++) {
+			Control *editor = pane->get_tab_control(i);
+			if (ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor)) {
+				const String path = seb->get_edited_resource()->get_path();
+				if (path.is_empty()) {
+					continue;
+				}
+
+				if (pane == tab_container && pane->get_current_tab_control() == editor) {
+					selected_script = path;
+				}
+
+				_save_editor_state(seb);
+				scripts.push_back(path);
 			}
 
-			if (tab_container->get_current_tab_control() == tab_container->get_tab_control(i)) {
-				selected_script = path;
+			if (EditorHelp *eh = Object::cast_to<EditorHelp>(editor)) {
+				helps.push_back(eh->get_class());
 			}
-
-			_save_editor_state(seb);
-			scripts.push_back(path);
-		}
-
-		if (EditorHelp *eh = Object::cast_to<EditorHelp>(tab_container->get_tab_control(i))) {
-			helps.push_back(eh->get_class());
 		}
 	}
 
+	p_layout->set_value(config_section, "script_panes", _serialize_pane_layout(editor_split));
 	p_layout->set_value(config_section, "open_scripts", scripts);
 	p_layout->set_value(config_section, "selected_script", selected_script);
 	p_layout->set_value(config_section, "open_help", helps);

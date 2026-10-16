@@ -482,6 +482,9 @@ class DocumentEditorContainer : public MarginContainer {
 
 	void _save_editor_state(ScriptEditorBase *p_editor);
 	void _save_layout();
+	// Layout persistence: the panes as a tree, and rebuilding it on startup.
+	Variant _serialize_pane_layout(const Node *p_node) const;
+	void _restore_pane_layout(const Variant &p_node, TabContainer *p_pane);
 	void _apply_editor_settings();
 	void _update_filenames();
 	void _files_moved(const String &p_old_file, const String &p_new_file);
