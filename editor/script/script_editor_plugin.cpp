@@ -1063,7 +1063,7 @@ void DocumentEditorContainer::_setup_pane(TabContainer *p_pane) {
 
 	p_pane->set_tabs_visible(true);
 	p_pane->set_drag_to_rearrange_enabled(true);
-	p_pane->set_tabs_rearrange_group(1);
+	p_pane->set_tabs_rearrange_group(PANES_REARRANGE_GROUP);
 
 	p_pane->connect("tab_selected", callable_mp(this, &DocumentEditorContainer::_pane_tab_selected).bind(p_pane));
 	p_pane->connect("tab_changed", callable_mp(this, &DocumentEditorContainer::_pane_tab_changed).bind(p_pane));
@@ -1193,7 +1193,10 @@ void DocumentEditorContainer::_popout_editor(TabContainer *p_pane, int p_index) 
 }
 
 void DocumentEditorContainer::_on_popout_close_requested(Window *p_window) {
-	_return_popout(p_window);
+	// The window has to go away first, and the document returns on the next
+	// frame: moving it around inside the close request leaves the window stuck.
+	p_window->hide();
+	callable_mp(this, &DocumentEditorContainer::_return_popout).call_deferred(p_window);
 }
 
 // Puts the document back into the pane being edited and closes its window.

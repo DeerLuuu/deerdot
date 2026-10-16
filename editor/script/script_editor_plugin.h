@@ -277,6 +277,10 @@ class DocumentEditorContainer : public MarginContainer {
 	// the primary pane. Any pane can be split until MAX_PANES is reached.
 	LocalVector<TabContainer *> panes;
 	enum { MAX_PANES = 4 };
+	// The panes only exchange tabs with each other: the editor's docks use
+	// group 1, and sharing a group with them would let documents be dragged
+	// out of the script editor into a dock.
+	enum { PANES_REARRANGE_GROUP = 2718 };
 
 	// Area of the editor where a drop is offered, highlighted by the overlay.
 	enum DropZone {
