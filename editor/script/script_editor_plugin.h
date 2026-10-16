@@ -253,7 +253,8 @@ class DocumentEditorContainer : public MarginContainer {
 	TabContainer *tab_container = nullptr;
 	HSplitContainer *editor_split = nullptr;
 	TabContainer *split_pane = nullptr; // Second pane for side-by-side editing.
-	Panel *split_drop_overlay = nullptr; // Highlight/drop target for splitting by drag.
+	Panel *split_drop_overlay = nullptr;
+	Label *split_drop_hint = nullptr; // Hint text shown inside the drop highlight. // Highlight/drop target for splitting by drag.
 	int active_pane = 0; // 0 = primary pane, 1 = split pane.
 	AcceptDialog *error_dialog = nullptr;
 	ConfirmationDialog *erase_tab_confirm = nullptr;

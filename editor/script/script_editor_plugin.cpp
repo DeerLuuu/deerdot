@@ -4427,15 +4427,27 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	split_drop_overlay->set_drag_forwarding(Callable(), callable_mp(this, &DocumentEditorContainer::_can_drop_split_tab), callable_mp(this, &DocumentEditorContainer::_drop_split_tab));
 	split_drop_overlay->hide();
 	code_editor_container->add_child(split_drop_overlay);
-	{
-		Ref<StyleBoxFlat> overlay_style = memnew(StyleBoxFlat);
-		const Color accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
-		overlay_style->set_bg_color(Color(accent.r, accent.g, accent.b, 0.12f));
-		overlay_style->set_border_color(Color(accent.r, accent.g, accent.b, 0.7f));
-		overlay_style->set_border_width_all(2);
-		overlay_style->set_corner_radius_all(4);
-		split_drop_overlay->add_theme_style_override(SceneStringName(panel), overlay_style);
-	}
+
+	const Color overlay_accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
+
+	Ref<StyleBoxFlat> overlay_style = memnew(StyleBoxFlat);
+	overlay_style->set_bg_color(Color(overlay_accent.r, overlay_accent.g, overlay_accent.b, 0.12f));
+	overlay_style->set_border_color(Color(overlay_accent.r, overlay_accent.g, overlay_accent.b, 0.7f));
+	overlay_style->set_border_width_all(2);
+	overlay_style->set_corner_radius_all(4);
+	split_drop_overlay->add_theme_style_override(SceneStringName(panel), overlay_style);
+
+	// Hint shown inside the highlight, telling what releasing there does. It
+	// must not take part in drag-and-drop, or it would block the drop target.
+	split_drop_hint = memnew(Label);
+	split_drop_hint->set_text(TTRC("Drop here to split the view"));
+	split_drop_hint->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	split_drop_hint->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	split_drop_hint->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
+	split_drop_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	split_drop_hint->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+	split_drop_hint->add_theme_color_override(SceneStringName(font_color), overlay_accent);
+	split_drop_overlay->add_child(split_drop_hint);
 
 	tab_container = memnew(TabContainer);
 	tab_container->set_custom_minimum_size(Size2(200, 0) * EDSCALE);
