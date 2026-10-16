@@ -4528,6 +4528,52 @@ static Error _lookup_symbol_from_base(const GDScriptParser::DataType &p_base, co
 	return ERR_CANT_RESOLVE;
 }
 
+// Whether the code takes a trait with this name, as in `uses SomeTrait`.
+static bool _code_uses_trait(const String &p_code, const StringName &p_name) {
+	// The caret is marked in the code, so drop that character first.
+	const String code = p_code.remove_char(0xFFFF);
+	for (const String &line : code.split("\n")) {
+		const String stripped = line.strip_edges();
+		if (!stripped.begins_with("uses")) {
+			continue;
+		}
+
+		// `uses A, B.C` may list several traits.
+		for (const String &part : stripped.substr(4).split(",")) {
+			const String name = part.strip_edges();
+			if (name == p_name) {
+				return true;
+			}
+			// For `uses Outer.Inner` only the last part names the trait.
+			if (name.get_slice(".", name.get_slice_count(".") - 1) == p_name) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+// Line (1-based) where a script declares a trait, or -1 if it does not.
+static int _find_trait_declaration_line(const String &p_path, const StringName &p_name) {
+	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::READ);
+	if (file.is_null()) {
+		return -1;
+	}
+
+	const Vector<String> lines = file->get_as_text().split("\n");
+	for (int i = 0; i < lines.size(); i++) {
+		const String line = lines[i].strip_edges();
+		if (!line.begins_with("trait ")) {
+			continue;
+		}
+		const String declared = line.substr(6).strip_edges().split(":")[0].split(" ")[0].strip_edges();
+		if (declared == p_name) {
+			return i + 1;
+		}
+	}
+	return -1;
+}
+
 ::Error GDScriptEditorLanguage::lookup_code(const String &p_code, const String &p_symbol, const String &p_path, Object *p_owner, LookupResult &r_result) {
 	// Before parsing, try the usual stuff.
 	if (GDScriptAnalyzer::class_exists(p_symbol)) {
@@ -4540,6 +4586,22 @@ static Error _lookup_symbol_from_base(const GDScriptParser::DataType &p_base, co
 		r_result.type = LookupResult::Type::CLASS;
 		r_result.class_name = p_symbol;
 		return OK;
+	}
+
+	// A trait name in a `uses` statement points at the script declaring it, so
+	// ctrl+clicking it opens that script and the tooltip names it.
+	if (GDScriptLanguage::get_singleton() != nullptr && p_symbol.is_valid_identifier() && _code_uses_trait(p_code, p_symbol)) {
+		const String trait_path = GDScriptLanguage::get_singleton()->get_global_trait_path(p_symbol);
+		if (!trait_path.is_empty()) {
+			const int trait_line = _find_trait_declaration_line(trait_path, p_symbol);
+			if (trait_line > 0) {
+				r_result.type = LookupResult::Type::SCRIPT_LOCATION;
+				r_result.script_path = trait_path;
+				r_result.location = trait_line;
+				r_result.description = vformat("trait %s\n%s", String(p_symbol), trait_path);
+				return OK;
+			}
+		}
 	}
 
 	if (p_symbol == "Variant") {
