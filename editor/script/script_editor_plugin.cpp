@@ -1198,6 +1198,23 @@ void DocumentEditorContainer::_tab_menu_option(int p_option) {
 	}
 }
 
+void DocumentEditorContainer::_tab_menu_option_focused(int p_option) {
+	switch (p_option) {
+		case TAB_MENU_SPLIT_RIGHT: {
+			_show_highlight_overlay(_get_drop_overlay_rect(DROP_ZONE_RIGHT), TTRC("New pane"));
+		} break;
+		case TAB_MENU_MOVE_TO_OTHER_PANE: {
+			TabContainer *to = (tab_context_pane == split_pane) ? tab_container : split_pane;
+			if (to != nullptr) {
+				_show_highlight_overlay(to->get_global_rect(), TTRC("Other pane"));
+			}
+		} break;
+		default: {
+			_hide_drop_overlay();
+		} break;
+	}
+}
+
 void DocumentEditorContainer::_move_tab_to_pane(TabContainer *p_from, int p_index, TabContainer *p_to) {
 	if (p_from == nullptr || p_to == nullptr || p_from == p_to || p_index < 0 || p_index >= p_from->get_tab_count()) {
 		return;
@@ -1621,15 +1638,30 @@ void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &
 	}
 
 	drop_overlay_zone = p_zone;
+	_apply_drop_overlay(_get_drop_overlay_rect(p_zone), p_hint, true);
+}
+
+void DocumentEditorContainer::_show_highlight_overlay(const Rect2 &p_rect, const String &p_hint) {
+	drop_overlay_zone = DROP_ZONE_NONE;
+	_apply_drop_overlay(p_rect, p_hint, false);
+}
+
+void DocumentEditorContainer::_apply_drop_overlay(const Rect2 &p_rect, const String &p_hint, bool p_accept_drops) {
+	if (split_drop_overlay == nullptr) {
+		return;
+	}
+
+	// Highlights that only hint at a target must not take drags over.
+	split_drop_overlay->set_mouse_filter(p_accept_drops ? Control::MOUSE_FILTER_STOP : Control::MOUSE_FILTER_IGNORE);
 	if (split_drop_hint != nullptr) {
 		split_drop_hint->set_text(p_hint);
 	}
-	// Drops that act on the script show their preview inside the code, so the
-	// hint moves out of the way to the top of the area.
 	if (split_drop_box != nullptr) {
-		split_drop_box->set_alignment(p_zone == DROP_ZONE_EDITOR ? BoxContainer::ALIGNMENT_BEGIN : BoxContainer::ALIGNMENT_CENTER);
+		split_drop_box->set_alignment(BoxContainer::ALIGNMENT_CENTER);
 	}
-	_update_drop_overlay_rect();
+
+	split_drop_overlay->set_position(p_rect.position);
+	split_drop_overlay->set_size(p_rect.size);
 	split_drop_overlay->show();
 }
 
@@ -1638,6 +1670,8 @@ void DocumentEditorContainer::_hide_drop_overlay() {
 	_hide_code_preview();
 	if (split_drop_overlay != nullptr) {
 		split_drop_overlay->hide();
+		// Back to being a drop target for the next drag.
+		split_drop_overlay->set_mouse_filter(Control::MOUSE_FILTER_STOP);
 	}
 }
 
@@ -4772,6 +4806,9 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	tab_context_menu = memnew(PopupMenu);
 	add_child(tab_context_menu);
 	tab_context_menu->connect(SceneStringName(id_pressed), callable_mp(this, &DocumentEditorContainer::_tab_menu_option));
+	// Hovering an entry that moves the document highlights where it will go.
+	tab_context_menu->connect("id_focused", callable_mp(this, &DocumentEditorContainer::_tab_menu_option_focused));
+	tab_context_menu->connect("popup_hide", callable_mp(this, &DocumentEditorContainer::_hide_drop_overlay));
 
 	tab_container = memnew(TabContainer);
 	tab_container->set_custom_minimum_size(Size2(200, 0) * EDSCALE);

@@ -412,6 +412,11 @@ class DocumentEditorContainer : public MarginContainer {
 	void _drop_on_editor(const Vector2 &p_at_position, const Variant &p_data);
 	void _check_drop_overlay();
 	void _show_drop_overlay(DropZone p_zone, const String &p_hint);
+	// Highlights an explicit area without accepting drops, used by menu
+	// actions that hint where a document will go.
+	void _show_highlight_overlay(const Rect2 &p_rect, const String &p_hint);
+	void _apply_drop_overlay(const Rect2 &p_rect, const String &p_hint, bool p_accept_drops);
+	void _tab_menu_option_focused(int p_option);
 	void _update_drop_preview();
 	void _hide_code_preview();
 	void _hide_drop_overlay();
