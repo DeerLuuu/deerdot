@@ -1193,16 +1193,29 @@ void DocumentEditorContainer::_popout_editor(TabContainer *p_pane, int p_index) 
 }
 
 void DocumentEditorContainer::_on_popout_close_requested(Window *p_window) {
+	// The pane that is focused right now is where the document belongs. It is
+	// taken before the window goes away, since closing it moves the focus back
+	// into the editor and that can change the focused pane.
+	TabContainer *target = _active_pane_container();
+	const ObjectID target_id = (target != nullptr) ? target->get_instance_id() : ObjectID();
+
 	// The window has to go away first, and the document returns on the next
 	// frame: moving it around inside the close request leaves the window stuck.
 	p_window->hide();
-	callable_mp(this, &DocumentEditorContainer::_return_popout).call_deferred(p_window);
+	callable_mp(this, &DocumentEditorContainer::_return_popout).call_deferred(p_window, target_id);
 }
 
-// Puts the document back into the pane being edited and closes its window.
-void DocumentEditorContainer::_return_popout(Window *p_window) {
+// Puts the document back into the given pane (the focused one when the window
+// was closed) and drops the window.
+void DocumentEditorContainer::_return_popout(Window *p_window, ObjectID p_target_pane) {
 	if (p_window == nullptr) {
 		return;
+	}
+
+	TabContainer *target = Object::cast_to<TabContainer>(ObjectDB::get_instance(p_target_pane));
+	if (target == nullptr || _pane_index(target) < 0) {
+		// The pane is gone: fall back to whatever is focused now.
+		target = _active_pane_container();
 	}
 
 	Control *editor = nullptr;
@@ -1213,10 +1226,9 @@ void DocumentEditorContainer::_return_popout(Window *p_window) {
 		}
 	}
 
-	if (editor != nullptr) {
+	if (editor != nullptr && target != nullptr) {
 		p_window->remove_child(editor);
 
-		TabContainer *target = _active_pane_container();
 		target->add_child(editor);
 		target->set_current_tab(target->get_tab_count() - 1);
 		editor->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
