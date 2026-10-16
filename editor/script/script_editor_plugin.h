@@ -423,16 +423,11 @@ class DocumentEditorContainer : public MarginContainer {
 	bool _can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) const;
 	bool _can_drop_on_editor(const Vector2 &p_at_position, const Variant &p_data) const;
 	void _drop_on_editor(const Vector2 &p_at_position, const Variant &p_data);
-	bool _can_drop_nodes(const Variant &p_data) const;
-	void _drop_nodes(const Variant &p_data);
 	void _check_drop_overlay();
 	void _show_drop_overlay(DropZone p_zone, const String &p_hint);
 	void _show_code_preview(const String &p_code);
 	void _hide_code_preview();
 	CodeEdit *_get_active_code_edit() const;
-	void _get_node_insert_position(CodeEdit *p_code_edit, int &r_line, int &r_column) const;
-	String _get_node_reference_code(const Variant &p_data, const String &p_existing_code = String()) const;
-	String _get_active_document_code() const;
 	void _hide_drop_overlay();
 	void _update_drop_overlay_rect();
 	void _update_drop_overlay_theme();

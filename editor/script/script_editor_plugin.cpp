@@ -1386,13 +1386,6 @@ void DocumentEditorContainer::_check_drop_overlay() {
 		return;
 	}
 
-	// Dragging nodes from the scene tree: offer to reference them in the script.
-	if (type == "nodes") {
-		_show_drop_overlay(DROP_ZONE_EDITOR, TTRC("Drop here to reference the node in the script"));
-		_show_code_preview(_get_node_reference_code(data, _get_active_document_code()));
-		return;
-	}
-
 	_hide_drop_overlay();
 }
 
@@ -1401,8 +1394,7 @@ bool DocumentEditorContainer::_can_drop_on_editor(const Vector2 &p_at_position, 
 		case DROP_ZONE_RIGHT:
 		case DROP_ZONE_BOTTOM:
 			return _can_drop_split_tab(p_at_position, p_data);
-		case DROP_ZONE_EDITOR:
-			return _can_drop_nodes(p_data);
+
 		default:
 			return false;
 	}
@@ -1414,21 +1406,10 @@ void DocumentEditorContainer::_drop_on_editor(const Vector2 &p_at_position, cons
 		case DROP_ZONE_BOTTOM:
 			_drop_split_tab(p_at_position, p_data);
 			break;
-		case DROP_ZONE_EDITOR:
-			_drop_nodes(p_data);
-			break;
+
 		default:
 			break;
 	}
-}
-
-bool DocumentEditorContainer::_can_drop_nodes(const Variant &p_data) const {
-	if (p_data.get_type() != Variant::DICTIONARY) {
-		return false;
-	}
-
-	const Dictionary data = p_data;
-	return String(data.get("type", String())) == "nodes" && data.has("nodes") && data.has("scene_root");
 }
 
 void CodeGhostText::show_preview(CodeEdit *p_code_edit, const String &p_text, int p_line, int p_column, const Color &p_color) {
@@ -1502,22 +1483,6 @@ CodeEdit *DocumentEditorContainer::_get_active_code_edit() const {
 	return (teb != nullptr) ? Object::cast_to<CodeEdit>(teb->get_base_editor()) : nullptr;
 }
 
-void DocumentEditorContainer::_get_node_insert_position(CodeEdit *p_code_edit, int &r_line, int &r_column) const {
-	const int caret_line = p_code_edit->get_caret_line();
-	const String caret_line_text = p_code_edit->get_line(caret_line);
-
-	int indent = 0;
-	while (indent < caret_line_text.length() && (caret_line_text[indent] == ' ' || caret_line_text[indent] == '\t')) {
-		indent++;
-	}
-	r_column = indent;
-
-	// The code goes on its own line: below the caret's line when that line
-	// already has content, on the caret's line otherwise.
-	const bool line_has_content = !caret_line_text.strip_edges().is_empty();
-	r_line = line_has_content ? MIN(caret_line + 1, MAX(0, p_code_edit->get_line_count() - 1)) : caret_line;
-}
-
 void DocumentEditorContainer::_show_code_preview(const String &p_code) {
 	CodeEdit *code_edit = _get_active_code_edit();
 	if (code_edit == nullptr || p_code.is_empty()) {
@@ -1536,72 +1501,15 @@ void DocumentEditorContainer::_show_code_preview(const String &p_code) {
 		code_edit->add_child(drop_code_preview);
 	}
 
-	int line = 0;
-	int column = 0;
-	_get_node_insert_position(code_edit, line, column);
-
+	// Upstream drops insert at the caret, so the preview sits exactly there.
 	const Color accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
-	drop_code_preview->show_preview(code_edit, p_code, line, column, Color(accent.r, accent.g, accent.b, 0.7f));
+	drop_code_preview->show_preview(code_edit, p_code, code_edit->get_caret_line(), code_edit->get_caret_column(), Color(accent.r, accent.g, accent.b, 0.7f));
 }
 
 void DocumentEditorContainer::_hide_code_preview() {
 	if (drop_code_preview != nullptr) {
 		drop_code_preview->clear_preview();
 	}
-}
-
-void DocumentEditorContainer::_drop_nodes(const Variant &p_data) {
-	if (!_can_drop_nodes(p_data)) {
-		return;
-	}
-
-	_hide_drop_overlay();
-
-	TextEditorBase *teb = Object::cast_to<TextEditorBase>(_get_current_editor());
-	CodeEdit *code_edit = (teb != nullptr) ? Object::cast_to<CodeEdit>(teb->get_base_editor()) : nullptr;
-	if (code_edit == nullptr) {
-		return;
-	}
-
-	const String code = _get_node_reference_code(p_data, code_edit->get_text());
-	if (code.is_empty()) {
-		return;
-	}
-
-	// Insert exactly where the preview was shown: on the line below the caret's
-	// when that line has content, indented like it, leaving the caret on a fresh
-	// line so whatever followed stays put.
-	int line = 0;
-	int column = 0;
-	_get_node_insert_position(code_edit, line, column);
-	const String indent = String(" ").repeat(column);
-
-	const int caret_line = code_edit->get_caret_line();
-	const String caret_line_text = code_edit->get_line(caret_line);
-	const bool line_has_content = !caret_line_text.strip_edges().is_empty();
-
-	PackedStringArray code_lines = code.split("\n");
-	for (int i = 0; i < code_lines.size(); i++) {
-		code_lines.set(i, indent + code_lines[i]);
-	}
-	const String inserted = String("\n").join(code_lines) + "\n" + indent;
-
-	code_edit->begin_complex_operation();
-	if (line_has_content) {
-		// Move to the end of the caret's line and start the insertion below it.
-		code_edit->set_caret_line(caret_line);
-		code_edit->set_caret_column(caret_line_text.length());
-		code_edit->insert_text_at_caret("\n" + inserted);
-	} else {
-		// Replace the (blank) caret line with the indented code.
-		code_edit->set_caret_line(caret_line);
-		code_edit->set_caret_column(0);
-		code_edit->remove_text(caret_line, 0, caret_line, caret_line_text.length());
-		code_edit->insert_text_at_caret(inserted);
-	}
-	code_edit->end_complex_operation();
-
-	teb->ensure_focus();
 }
 
 void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &p_hint) {
@@ -1650,90 +1558,6 @@ void DocumentEditorContainer::_update_drop_overlay_theme() {
 	if (split_drop_hint != nullptr) {
 		split_drop_hint->add_theme_color_override(SceneStringName(font_color), accent);
 	}
-}
-
-// Builds the code a dropped node reference turns into: an `@onready` variable
-// holding the node, typed with its class (or its global script class, when it
-// has one). Nodes not part of the edited scene are skipped, and names already
-// used by the target script are avoided.
-String DocumentEditorContainer::_get_node_reference_code(const Variant &p_data, const String &p_existing_code) const {
-	if (!_can_drop_nodes(p_data)) {
-		return String();
-	}
-
-	const Dictionary data = p_data;
-	const Node *scene_root = Object::cast_to<Node>(data["scene_root"]);
-	if (scene_root == nullptr) {
-		return String();
-	}
-
-	// Variable names already declared in the target script, so the generated
-	// ones do not redeclare or shadow them.
-	HashSet<String> used_names;
-	for (const String &line : p_existing_code.split("\n")) {
-		const String stripped = line.strip_edges();
-		const int var_pos = stripped.find("var ");
-		if (var_pos < 0) {
-			continue;
-		}
-		// Only treat `var` as a declaration when it starts a word.
-		if (var_pos > 0) {
-			const char32_t before = stripped[var_pos - 1];
-			if ((before >= 'a' && before <= 'z') || (before >= 'A' && before <= 'Z') || (before >= '0' && before <= '9') || before == '_') {
-				continue;
-			}
-		}
-		String name = stripped.substr(var_pos + 4).strip_edges().split(":")[0].split("=")[0].split("(")[0].strip_edges();
-		if (!name.is_empty()) {
-			used_names.insert(name);
-		}
-	}
-
-	const Array paths = data["nodes"];
-	PackedStringArray lines;
-
-	for (int i = 0; i < paths.size(); i++) {
-		Node *node = scene_root->get_node_or_null(paths[i]);
-		if (node == nullptr || node == scene_root) {
-			// The scene root cannot be referenced relative to itself.
-			continue;
-		}
-
-		String type_name = node->get_class();
-		if (Ref<Script> scr = node->get_script(); scr.is_valid() && !scr->get_global_name().is_empty()) {
-			type_name = scr->get_global_name();
-		}
-
-		String var_name;
-		const String &node_name = node->get_name();
-		for (int c = 0; c < node_name.length(); c++) {
-			const char32_t ch = node_name[c];
-			const bool valid = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_';
-			var_name += valid ? String::chr(ch) : "_";
-		}
-		var_name = var_name.to_snake_case();
-		if (var_name.is_empty() || (var_name[0] >= '0' && var_name[0] <= '9')) {
-			var_name = "node_" + var_name;
-		}
-		while (used_names.has(var_name)) {
-			var_name += "_";
-		}
-		used_names.insert(var_name);
-
-		lines.push_back(vformat("@onready var %s: %s = $%s", var_name, type_name, String(scene_root->get_path_to(node))));
-	}
-
-	return String("\n").join(lines);
-}
-
-String DocumentEditorContainer::_get_active_document_code() const {
-	TextEditorBase *teb = Object::cast_to<TextEditorBase>(_get_current_editor());
-	if (teb == nullptr) {
-		return String();
-	}
-
-	CodeEdit *code_edit = Object::cast_to<CodeEdit>(teb->get_base_editor());
-	return code_edit != nullptr ? code_edit->get_text() : String();
 }
 
 Rect2 DocumentEditorContainer::_get_drop_overlay_rect(DropZone p_zone) const {
