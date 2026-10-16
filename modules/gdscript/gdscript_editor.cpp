@@ -159,15 +159,55 @@ Vector<ScriptLanguage::ScriptTemplate> GDScriptLanguage::get_built_in_templates(
 
 #ifdef TOOLS_ENABLED
 
-static void get_function_names_recursively(const GDScriptParser::ClassNode *p_class, const String &p_prefix, HashMap<int, String> &r_funcs) {
+// Collects one entry per member as "name:line:kind", so the editor can show the
+// icon matching the kind. Members of an inner class are listed under the class,
+// and members taken from a trait are listed under the trait.
+static void get_member_names_recursively(const GDScriptParser::ClassNode *p_class, const String &p_prefix, HashMap<int, String> &r_members) {
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
-		if (member.type == GDScriptParser::ClassNode::Member::FUNCTION) {
-			const GDScriptParser::FunctionNode *function = member.function;
-			r_funcs[function->start_line] = p_prefix.is_empty() ? String(function->identifier->name) : p_prefix + "." + String(function->identifier->name);
-		} else if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
-			String new_prefix = member.m_class->identifier->name;
-			get_function_names_recursively(member.m_class, p_prefix.is_empty() ? new_prefix : p_prefix + "." + new_prefix, r_funcs);
+		if (member.type == GDScriptParser::ClassNode::Member::CLASS || member.type == GDScriptParser::ClassNode::Member::TRAIT) {
+			const String new_prefix = member.m_class->identifier->name;
+			get_member_names_recursively(member.m_class, p_prefix.is_empty() ? new_prefix : p_prefix + "." + new_prefix, r_members);
+			continue;
 		}
+
+		String kind;
+		switch (member.type) {
+			case GDScriptParser::ClassNode::Member::FUNCTION:
+				kind = "method";
+				break;
+			case GDScriptParser::ClassNode::Member::SIGNAL:
+				kind = "signal";
+				break;
+			case GDScriptParser::ClassNode::Member::VARIABLE:
+				kind = "property";
+				break;
+			case GDScriptParser::ClassNode::Member::CONSTANT:
+				kind = "constant";
+				break;
+			case GDScriptParser::ClassNode::Member::ENUM:
+				kind = "enum";
+				break;
+			default:
+				continue;
+		}
+
+		const GDScriptParser::Node *node = member.get_source_node();
+		const StringName member_name = member.get_name();
+		if (node == nullptr || member_name.is_empty()) {
+			continue;
+		}
+
+		String prefix = p_prefix;
+		if (!node->trait_origin.is_empty()) {
+			// The first trait that brought this member in names the group it is
+			// listed under, like the class of a member of an inner class.
+			const String &origin = node->trait_origin[0];
+			const String trait_name = origin.get_slice("::", origin.get_slice_count("::") - 1);
+			prefix = prefix.is_empty() ? trait_name : prefix + "." + trait_name;
+		}
+
+		const String full_name = prefix.is_empty() ? String(member_name) : prefix + "." + String(member_name);
+		r_members[node->start_line] = full_name + ":" + itos(node->start_line) + ":" + kind;
 	}
 }
 
@@ -236,12 +276,12 @@ bool GDScriptEditorLanguage::validate(const String &p_script, const String &p_pa
 		return false;
 	} else if (r_functions) {
 		const GDScriptParser::ClassNode *cl = parser.get_tree();
-		HashMap<int, String> funcs;
+		HashMap<int, String> members;
 
-		get_function_names_recursively(cl, "", funcs);
+		get_member_names_recursively(cl, "", members);
 
-		for (const KeyValue<int, String> &E : funcs) {
-			r_functions->push_back(E.value + ":" + itos(E.key));
+		for (const KeyValue<int, String> &E : members) {
+			r_functions->push_back(E.value);
 		}
 	}
 

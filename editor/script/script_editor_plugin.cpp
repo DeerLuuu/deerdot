@@ -107,10 +107,13 @@ void ScriptEditorQuickOpen::_update_search() {
 	TreeItem *root = search_options->create_item();
 
 	for (int i = 0; i < functions.size(); i++) {
-		String file = functions[i];
-		if ((search_box->get_text().is_empty() || file.containsn(search_box->get_text()))) {
+		const String entry = functions[i];
+		// Entries are "name:line:kind"; only the name belongs in the list.
+		const String name = entry.get_slicec(':', 0);
+		if ((search_box->get_text().is_empty() || name.containsn(search_box->get_text()))) {
 			TreeItem *ti = search_options->create_item(root);
-			ti->set_text(0, file);
+			ti->set_text(0, name);
+			ti->set_metadata(0, entry);
 			if (root->get_first_child() == ti) {
 				ti->select(0);
 			}
@@ -125,7 +128,7 @@ void ScriptEditorQuickOpen::_confirmed() {
 	if (!ti) {
 		return;
 	}
-	int line = ti->get_text(0).get_slicec(':', 1).to_int();
+	int line = ti->get_metadata(0).operator String().get_slicec(':', 1).to_int();
 
 	emit_signal(SNAME("goto_line"), line - 1);
 	hide();
@@ -699,6 +702,27 @@ void DocumentOutline::update_editor_settings() {
 	update_visibility();
 }
 
+// Icon matching the kind of member the language reported, so methods,
+// properties, signals and the rest can be told apart at a glance.
+Ref<Texture2D> DocumentOutline::_get_member_icon(const String &p_kind) const {
+	if (p_kind == "method") {
+		return get_editor_theme_icon(SNAME("MemberMethod"));
+	}
+	if (p_kind == "property") {
+		return get_editor_theme_icon(SNAME("MemberProperty"));
+	}
+	if (p_kind == "signal") {
+		return get_editor_theme_icon(SNAME("MemberSignal"));
+	}
+	if (p_kind == "constant") {
+		return get_editor_theme_icon(SNAME("MemberConstant"));
+	}
+	if (p_kind == "enum") {
+		return get_editor_theme_icon(SNAME("Enum"));
+	}
+	return Ref<Texture2D>();
+}
+
 void DocumentOutline::update_outline() {
 	String selected;
 	if (tree->is_anything_selected()) {
@@ -753,6 +777,7 @@ void DocumentOutline::update_outline() {
 
 				TreeItem *ti = tree->create_item(parent);
 				ti->set_text(0, name);
+				ti->set_icon(0, _get_member_icon(function_name.get_slicec(':', 2)));
 				int line = function_name.get_slicec(':', 1).to_int() - 1;
 				ti->set_metadata(0, line);
 				ti->set_meta("function", function_name);
@@ -797,6 +822,7 @@ void DocumentOutline::update_outline() {
 
 				TreeItem *ti = tree->create_item(parent);
 				ti->set_text(0, name);
+				ti->set_icon(0, _get_member_icon(function_name.get_slicec(':', 2)));
 				int line = function_name.get_slicec(':', 1).to_int() - 1;
 				ti->set_metadata(0, line);
 				ti->set_meta("function", function_name);
@@ -5586,7 +5612,10 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 
 	document_list = memnew(DocumentList(this));
 
-	list_split->add_child(document_list);
+	// The documents are already listed as tabs, so the sidebar keeps only the
+	// outline. The list stays alive to keep being updated, but out of the way.
+	main_container->add_child(document_list);
+	document_list->hide();
 	script_split->set_split_offset(200 * EDSCALE);
 
 	document_outline = memnew(DocumentOutline(this));

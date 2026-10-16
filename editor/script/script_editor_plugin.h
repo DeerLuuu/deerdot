@@ -145,6 +145,8 @@ protected:
 public:
 	void update_editor_settings();
 	void update_outline();
+	// Icon matching a member kind reported by the language.
+	Ref<Texture2D> _get_member_icon(const String &p_kind) const;
 	void update_visibility();
 
 	DocumentOutline(DocumentEditorContainer *p_document_editor_container);
