@@ -129,6 +129,9 @@ void ScriptEditorQuickOpen::_confirmed() {
 		return;
 	}
 	int line = ti->get_metadata(0).operator String().get_slicec(':', 1).to_int();
+	if (line < 1) {
+		return;
+	}
 
 	emit_signal(SNAME("goto_line"), line - 1);
 	hide();
@@ -673,6 +676,13 @@ void DocumentOutline::_notification(int p_what) {
 		case NOTIFICATION_THEME_CHANGED: {
 			sort_button->set_button_icon(get_editor_theme_icon(SNAME("Sort")));
 
+			for (const KeyValue<String, Button *> &E : kind_buttons) {
+				const StringName icon = E.value->get_meta("kind_icon", StringName());
+				if (!icon.is_empty()) {
+					E.value->set_button_icon(get_editor_theme_icon(icon));
+				}
+			}
+
 			update_visibility();
 		} break;
 	}
@@ -684,6 +694,9 @@ void DocumentOutline::_tree_selected() {
 	}
 	Control *active_editor = document_editor_container->get_active_editor();
 	int line = tree->get_selected()->get_metadata(0);
+	if (line < 0) {
+		return;
+	}
 	if (TextEditorBase *teb = Object::cast_to<TextEditorBase>(active_editor)) {
 		teb->goto_line_centered(line);
 	} else if (EditorHelp *eh = Object::cast_to<EditorHelp>(active_editor)) {
@@ -709,33 +722,33 @@ void DocumentOutline::_add_kind_filter() {
 	kind_filter_hbox->add_theme_constant_override("separation", 2);
 	add_child(kind_filter_hbox);
 
-	_add_kind_button("method", TTRC("Methods"), SNAME("MemberMethod"));
-	_add_kind_button("property", TTRC("Properties"), SNAME("MemberProperty"));
-	_add_kind_button("signal", TTRC("Signals"), SNAME("MemberSignal"));
-	_add_kind_button("constant", TTRC("Constants"), SNAME("MemberConstant"));
-	_add_kind_button("enum", TTRC("Enums"), SNAME("Enum"));
+	_add_kind_button("method", TTRC("Methods"), "text_editor/script_list/outline_show_methods", SNAME("MemberMethod"));
+	_add_kind_button("property", TTRC("Properties"), "text_editor/script_list/outline_show_properties", SNAME("MemberProperty"));
+	_add_kind_button("signal", TTRC("Signals"), "text_editor/script_list/outline_show_signals", SNAME("MemberSignal"));
+	_add_kind_button("constant", TTRC("Constants"), "text_editor/script_list/outline_show_constants", SNAME("MemberConstant"));
+	_add_kind_button("enum", TTRC("Enums"), "text_editor/script_list/outline_show_enums", SNAME("Enum"));
 }
 
-Button *DocumentOutline::_add_kind_button(const String &p_kind, const String &p_label, const StringName &p_icon) {
-	const String setting = "text_editor/script_list/outline_show_" + p_kind + "s";
-
+Button *DocumentOutline::_add_kind_button(const String &p_kind, const String &p_label, const String &p_setting, const StringName &p_icon) {
 	Button *button = memnew(Button);
 	button->set_theme_type_variation(SceneStringName(FlatButton));
 	button->set_toggle_mode(true);
-	button->set_button_icon(get_editor_theme_icon(p_icon));
+	// The theme is not ready yet while the outline is built; the icon is set
+	// when the theme arrives.
+	button->set_meta("kind_icon", p_icon);
 	button->set_tooltip_text(vformat(TTRC("Show %s"), p_label));
 	button->set_accessibility_name(p_label);
-	button->set_pressed(EDITOR_GET(setting));
+	button->set_pressed(EDITOR_GET(p_setting));
 	button->connect(SceneStringName(toggled), callable_mp(this, &DocumentOutline::_toggle_kind).bind(p_kind));
 
 	kind_filter_hbox->add_child(button);
 	kind_buttons[p_kind] = button;
-	kind_settings[p_kind] = setting;
+	kind_settings[p_kind] = p_setting;
 
 	return button;
 }
 
-void DocumentOutline::_toggle_kind(const String &p_kind, bool p_pressed) {
+void DocumentOutline::_toggle_kind(bool p_pressed, const String &p_kind) {
 	const String *setting = kind_settings.getptr(p_kind);
 	if (setting == nullptr) {
 		return;
