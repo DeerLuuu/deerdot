@@ -1444,7 +1444,9 @@ void DocumentEditorContainer::_update_drop_preview() {
 			continue;
 		}
 		CodeEdit *code = Object::cast_to<CodeEdit>(seb->get_base_editor());
-		if (code != nullptr && code->is_visible_in_tree() && code->get_global_rect().has_point(mouse)) {
+		// Use the editor panel, not just its text area: the drop is accepted
+		// over the whole panel, including its margins and line number bar.
+		if (code != nullptr && seb->is_visible_in_tree() && seb->get_global_rect().has_point(mouse)) {
 			target = seb;
 			code_edit = code;
 			break;
