@@ -1815,6 +1815,166 @@ void DocumentEditorContainer::_hide_code_preview() {
 	}
 }
 
+Dictionary DocumentEditorContainer::_get_layout_presets() const {
+	if (!EditorSettings::get_singleton()) {
+		return Dictionary();
+	}
+	return EditorSettings::get_singleton()->get_project_metadata("script_editor_layouts", config_section, Dictionary());
+}
+
+void DocumentEditorContainer::_set_layout_presets(const Dictionary &p_presets) {
+	if (!EditorSettings::get_singleton()) {
+		return;
+	}
+	EditorSettings::get_singleton()->set_project_metadata("script_editor_layouts", config_section, p_presets);
+}
+
+// Fills the layout submenu with the saved layouts, from scratch every time.
+void DocumentEditorContainer::_update_layout_presets_menu() {
+	if (layout_presets_menu == nullptr) {
+		return;
+	}
+
+	layout_presets_menu->clear();
+	layout_preset_ids.clear();
+
+	Vector<String> names;
+	const Dictionary presets = _get_layout_presets();
+	for (const KeyValue<Variant, Variant> &E : presets) {
+		names.push_back(E.key);
+	}
+	names.sort();
+
+	if (names.is_empty()) {
+		layout_presets_menu->add_item(TTRC("No saved layouts"), -1);
+		layout_presets_menu->set_item_disabled(0, true);
+		return;
+	}
+
+	const int base_id = 200000;
+	for (int i = 0; i < names.size(); i++) {
+		const int id = base_id + i;
+		layout_preset_ids.insert(id, names[i]);
+		layout_presets_menu->add_item(names[i], id);
+	}
+}
+
+void DocumentEditorContainer::_update_layout_save_ok() {
+	if (layout_save_dialog == nullptr || layout_name_edit == nullptr) {
+		return;
+	}
+	layout_save_dialog->get_ok_button()->set_disabled(layout_name_edit->get_text().strip_edges().is_empty());
+}
+
+void DocumentEditorContainer::_update_layout_save_ok_unused(const String &p_text) {
+	_update_layout_save_ok();
+}
+
+void DocumentEditorContainer::_show_layout_save_dialog() {
+	if (layout_save_dialog == nullptr) {
+		return;
+	}
+	layout_name_edit->clear();
+	_update_layout_save_ok();
+	layout_save_dialog->popup_centered();
+	layout_name_edit->grab_focus();
+}
+
+void DocumentEditorContainer::_save_layout_preset(const String &p_name) {
+	const String name = p_name.strip_edges();
+	if (name.is_empty()) {
+		return;
+	}
+
+	Dictionary presets = _get_layout_presets();
+	presets[name] = _serialize_pane_layout(editor_split);
+	_set_layout_presets(presets);
+
+	EditorToaster::get_singleton()->popup_str(vformat(TTR("Saved layout \"%s\"."), name), EditorToaster::SEVERITY_INFO);
+}
+
+void DocumentEditorContainer::_apply_layout_preset(const String &p_name) {
+	const Dictionary presets = _get_layout_presets();
+	if (!presets.has(p_name)) {
+		return;
+	}
+
+	// Start from a single pane, so applying a layout cannot pile panes up.
+	_merge_all_panes();
+
+	restoring_layout = true;
+	_restore_pane_layout(presets[p_name], tab_container);
+	restoring_layout = false;
+
+	_update_filenames();
+	document_list->update_list();
+}
+
+void DocumentEditorContainer::_show_layout_delete_dialog() {
+	if (layout_delete_dialog == nullptr) {
+		return;
+	}
+
+	layout_delete_list->clear();
+	Vector<String> names;
+	const Dictionary presets = _get_layout_presets();
+	for (const KeyValue<Variant, Variant> &E : presets) {
+		names.push_back(E.key);
+	}
+	names.sort();
+	for (const String &name : names) {
+		layout_delete_list->add_item(name);
+	}
+
+	_update_layout_delete_ok();
+	layout_delete_dialog->popup_centered();
+}
+
+void DocumentEditorContainer::_delete_layout_preset(const String &p_name) {
+	Dictionary presets = _get_layout_presets();
+	if (!presets.has(p_name)) {
+		return;
+	}
+	presets.erase(p_name);
+	_set_layout_presets(presets);
+	_update_layout_presets_menu();
+}
+
+void DocumentEditorContainer::_update_layout_delete_ok() {
+	if (layout_delete_dialog == nullptr || layout_delete_list == nullptr) {
+		return;
+	}
+	layout_delete_dialog->get_ok_button()->set_disabled(layout_delete_list->get_selected_items().is_empty());
+}
+
+void DocumentEditorContainer::_on_layout_delete_selected(int p_index) {
+	_update_layout_delete_ok();
+}
+
+void DocumentEditorContainer::_layout_preset_selected(int p_id) {
+	const String *name = layout_preset_ids.getptr(p_id);
+	if (name != nullptr) {
+		_apply_layout_preset(*name);
+	}
+}
+
+void DocumentEditorContainer::_on_save_layout_confirmed() {
+	if (layout_name_edit != nullptr) {
+		_save_layout_preset(layout_name_edit->get_text());
+	}
+}
+
+void DocumentEditorContainer::_on_delete_layout_confirmed() {
+	if (layout_delete_list == nullptr) {
+		return;
+	}
+	const PackedInt32Array selected = layout_delete_list->get_selected_items();
+	if (!selected.is_empty()) {
+		_delete_layout_preset(layout_delete_list->get_item_text(selected[0]));
+	}
+	_update_layout_delete_ok();
+}
+
 bool DocumentEditorContainer::_has_text_selection() const {
 	TextEditorBase *teb = Object::cast_to<TextEditorBase>(_get_current_editor());
 	CodeEdit *code_edit = (teb != nullptr) ? Object::cast_to<CodeEdit>(teb->get_base_editor()) : nullptr;
@@ -2978,6 +3138,12 @@ void DocumentEditorContainer::_menu_option(int p_option) {
 			} break;
 			case FILE_MENU_SAVE_SNIPPET: {
 				_show_save_snippet_dialog();
+			} break;
+			case FILE_MENU_LAYOUT_SAVE: {
+				_show_layout_save_dialog();
+			} break;
+			case FILE_MENU_LAYOUT_DELETE: {
+				_show_layout_delete_dialog();
 			} break;
 			case FILE_MENU_SPLIT_EDITOR: {
 				_toggle_split_editor_view();
@@ -4371,6 +4537,8 @@ void DocumentEditorContainer::_prepare_file_menu() {
 	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_CLOSE), tab_container->get_tab_count() < 1);
 	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_CLOSE_ALL), tab_container->get_tab_count() < 1);
 
+	_update_layout_presets_menu();
+
 	// Turning the selection into a snippet needs a selection.
 	const int snippet_item = p_menu->get_item_index(FILE_MENU_SAVE_SNIPPET);
 	if (snippet_item != -1) {
@@ -4501,7 +4669,29 @@ void DocumentEditorContainer::_restore_pane_layout(const Variant &p_node, TabCon
 	const Array scripts = node.get("scripts", Array());
 	for (const Variant &script : scripts) {
 		const String path = script;
-		if (!path.is_empty() && _script_exists(path)) {
+		if (path.is_empty() || !_script_exists(path)) {
+			continue;
+		}
+
+		// A document that is already open is moved instead of opened twice.
+		bool moved = false;
+		for (TabContainer *other : panes) {
+			if (other == p_pane) {
+				continue;
+			}
+			for (int i = 0; i < other->get_tab_count(); i++) {
+				ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(other->get_tab_control(i));
+				if (seb != nullptr && seb->get_edited_resource()->get_path() == path) {
+					_move_tab_to_pane(other, i, p_pane);
+					moved = true;
+					break;
+				}
+			}
+			if (moved) {
+				break;
+			}
+		}
+		if (!moved) {
 			edit(ResourceLoader::load(path, "Script"), true, false, true);
 		}
 	}
@@ -5244,6 +5434,32 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	snippet_save_dialog->connect(SceneStringName(confirmed), callable_mp(this, &DocumentEditorContainer::_on_save_snippet_confirmed));
 	add_child(snippet_save_dialog);
 
+	// Naming a layout when it is saved, and picking one to delete.
+	layout_save_dialog = memnew(ConfirmationDialog);
+	layout_save_dialog->set_title(TTRC("Save Layout"));
+	layout_save_dialog->set_ok_button_text(TTRC("Save"));
+	layout_save_dialog->set_flag(Window::FLAG_RESIZE_DISABLED, true);
+	VBoxContainer *layout_dialog_box = memnew(VBoxContainer);
+	layout_save_dialog->add_child(layout_dialog_box);
+	layout_name_edit = memnew(LineEdit);
+	layout_name_edit->set_placeholder(TTRC("Layout name"));
+	layout_name_edit->set_custom_minimum_size(Size2(280, 0) * EDSCALE);
+	layout_dialog_box->add_child(layout_name_edit);
+	layout_name_edit->connect(SceneStringName(text_changed), callable_mp(this, &DocumentEditorContainer::_update_layout_save_ok_unused));
+	layout_save_dialog->register_text_enter(layout_name_edit);
+	layout_save_dialog->connect(SceneStringName(confirmed), callable_mp(this, &DocumentEditorContainer::_on_save_layout_confirmed));
+	add_child(layout_save_dialog);
+
+	layout_delete_dialog = memnew(ConfirmationDialog);
+	layout_delete_dialog->set_title(TTRC("Delete Layout"));
+	layout_delete_dialog->set_ok_button_text(TTRC("Delete"));
+	layout_delete_list = memnew(ItemList);
+	layout_delete_list->set_custom_minimum_size(Size2(280, 160) * EDSCALE);
+	layout_delete_dialog->add_child(layout_delete_list);
+	layout_delete_list->connect(SceneStringName(item_selected), callable_mp(this, &DocumentEditorContainer::_on_layout_delete_selected));
+	layout_delete_dialog->connect(SceneStringName(confirmed), callable_mp(this, &DocumentEditorContainer::_on_delete_layout_confirmed));
+	add_child(layout_delete_dialog);
+
 	tab_context_menu = memnew(PopupMenu);
 	add_child(tab_context_menu);
 	tab_context_menu->connect(SceneStringName(id_pressed), callable_mp(this, &DocumentEditorContainer::_tab_menu_option));
@@ -5375,6 +5591,16 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 			file_menu->get_popup()->add_separator();
 			file_menu->get_popup()->add_shortcut(ED_SHORTCUT("script_editor/code_snippets", TTRC("Code Snippets...")), FILE_MENU_SNIPPETS);
 			file_menu->get_popup()->add_shortcut(ED_SHORTCUT("script_editor/save_snippet", TTRC("Save Selection as Snippet...")), FILE_MENU_SAVE_SNIPPET);
+			file_menu->get_popup()->add_separator();
+			file_menu->get_popup()->add_item(TTRC("Save Layout..."), FILE_MENU_LAYOUT_SAVE);
+			file_menu->get_popup()->add_item(TTRC("Delete Layout..."), FILE_MENU_LAYOUT_DELETE);
+
+			// The saved layouts themselves, filled in when the menu opens.
+			layout_presets_menu = memnew(PopupMenu);
+			layout_presets_menu->set_name("__layout_presets");
+			file_menu->get_popup()->add_child(layout_presets_menu);
+			layout_presets_menu->connect(SceneStringName(id_pressed), callable_mp(this, &DocumentEditorContainer::_layout_preset_selected));
+			file_menu->get_popup()->add_submenu_item(TTRC("Layouts"), "__layout_presets");
 			file_menu->get_popup()->add_shortcut(ED_SHORTCUT("script_editor/split_editor_view", TTRC("Split Editor View"), KeyModifierMask::CMD_OR_CTRL | Key::BACKSLASH), FILE_MENU_SPLIT_EDITOR);
 		}
 		file_menu->get_popup()->add_separator();

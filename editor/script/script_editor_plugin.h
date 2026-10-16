@@ -210,6 +210,9 @@ class DocumentEditorContainer : public MarginContainer {
 
 		FILE_MENU_SPLIT_EDITOR,
 
+		FILE_MENU_LAYOUT_SAVE,
+		FILE_MENU_LAYOUT_DELETE,
+
 		// Search.
 		HELP_SEARCH_FIND,
 		HELP_SEARCH_FIND_NEXT,
@@ -250,6 +253,13 @@ class DocumentEditorContainer : public MarginContainer {
 	PopupMenu *recent_scripts = nullptr;
 	PopupMenu *theme_submenu = nullptr;
 	ConfirmationDialog *snippet_save_dialog = nullptr;
+	ConfirmationDialog *layout_save_dialog = nullptr;
+	LineEdit *layout_name_edit = nullptr;
+	ConfirmationDialog *layout_delete_dialog = nullptr;
+	ItemList *layout_delete_list = nullptr;
+	PopupMenu *layout_presets_menu = nullptr;
+	// Menu ids of the saved layouts, rebuilt whenever the menu is filled.
+	HashMap<int, String> layout_preset_ids;
 	LineEdit *snippet_prefix_edit = nullptr;
 
 	Button *help_search = nullptr;
@@ -484,6 +494,22 @@ class DocumentEditorContainer : public MarginContainer {
 	void _save_layout();
 	// Layout persistence: the panes as a tree, and rebuilding it on startup.
 	Variant _serialize_pane_layout(const Node *p_node) const;
+	// Saved layouts, by name, for the whole project.
+	Dictionary _get_layout_presets() const;
+	void _set_layout_presets(const Dictionary &p_presets);
+	void _update_layout_presets_menu();
+	void _update_layout_save_ok();
+	void _update_layout_save_ok_unused(const String &p_text = String());
+	void _show_layout_save_dialog();
+	void _save_layout_preset(const String &p_name);
+	void _apply_layout_preset(const String &p_name);
+	void _show_layout_delete_dialog();
+	void _delete_layout_preset(const String &p_name);
+	void _update_layout_delete_ok();
+	void _on_layout_delete_selected(int p_index);
+	void _layout_preset_selected(int p_id);
+	void _on_save_layout_confirmed();
+	void _on_delete_layout_confirmed();
 	void _restore_pane_layout(const Variant &p_node, TabContainer *p_pane);
 	void _apply_editor_settings();
 	void _update_filenames();
