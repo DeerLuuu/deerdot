@@ -260,7 +260,10 @@ class DocumentEditorContainer : public MarginContainer {
 	VSplitContainer *list_split = nullptr;
 	TabContainer *tab_container = nullptr;
 	SplitContainer *editor_split = nullptr; // Horizontal or vertical, depending on the split.
-	TabContainer *split_pane = nullptr; // Second pane for side-by-side editing.
+	// Editing panes, as leaves of a tree of split containers; the first one is
+	// the primary pane. Any pane can be split until MAX_PANES is reached.
+	LocalVector<TabContainer *> panes;
+	enum { MAX_PANES = 4 };
 
 	// Area of the editor where a drop is offered, highlighted by the overlay.
 	enum DropZone {
@@ -403,13 +406,21 @@ class DocumentEditorContainer : public MarginContainer {
 	void _focus_changed(Node *p_node);
 	void _go_to_tab(int p_idx, bool p_save_history = false);
 	void _toggle_split_editor_view();
-	void _remove_split_pane();
 	// Configures a pane (tab bar visibility, tab dragging between panes,
 	// per-tab close buttons) and connects its tab signals.
 	void _setup_pane(TabContainer *p_pane);
-	void _create_split_pane(DropZone p_zone = DROP_ZONE_RIGHT);
-	// Makes the split container match the requested direction, recreating it if the view is split the other way.
-	void _ensure_split_orientation(DropZone p_zone);
+	// Splits a pane, adding an empty pane on the requested side of it.
+	void _split_pane(TabContainer *p_target, DropZone p_zone);
+	// Drops a pane and collapses the split that held it.
+	void _remove_pane(TabContainer *p_pane);
+	// Moves every document back into the primary pane and drops the others.
+	void _merge_all_panes();
+	TabContainer *_pane_at(int p_index) const;
+	int _pane_index(const TabContainer *p_pane) const;
+	void _set_active_pane(TabContainer *p_pane);
+	TabContainer *_pane_under_mouse() const;
+	bool _can_add_pane() const;
+	void _show_drop_overlay_rect(const Rect2 &p_rect, DropZone p_zone, const String &p_hint);
 
 	bool _can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) const;
 	bool _can_drop_on_editor(const Vector2 &p_at_position, const Variant &p_data) const;

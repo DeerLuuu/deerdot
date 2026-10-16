@@ -467,10 +467,9 @@ static void _find_scripts(Node *p_base, Node *p_current, HashSet<Ref<Script>> &r
 
 void DocumentList::update_list() {
 	TabContainer *tab_container = document_editor_container->tab_container;
-	TabContainer *split_pane = document_editor_container->split_pane;
-	int num_open_editors = tab_container->get_tab_count();
-	if (split_pane != nullptr) {
-		num_open_editors += split_pane->get_tab_count();
+	int num_open_editors = 0;
+	for (TabContainer *pane : document_editor_container->panes) {
+		num_open_editors += pane->get_tab_count();
 	}
 	const Ref<Texture2D> &help_icon = get_editor_theme_icon(SNAME("Help"));
 
@@ -485,13 +484,7 @@ void DocumentList::update_list() {
 	items.clear();
 	items.reserve(num_open_editors);
 
-	LocalVector<TabContainer *> panes;
-	panes.push_back(tab_container);
-	if (split_pane != nullptr) {
-		panes.push_back(split_pane);
-	}
-
-	for (TabContainer *pane : panes) {
+	for (TabContainer *pane : document_editor_container->panes) {
 		for (int i = 0; i < pane->get_tab_count(); i++) {
 			ItemData item;
 			item.editor = pane->get_tab_control(i);
@@ -1085,7 +1078,7 @@ void DocumentEditorContainer::_setup_pane(TabContainer *p_pane) {
 }
 
 void DocumentEditorContainer::_pane_tab_selected(int p_tab, TabContainer *p_pane) {
-	active_pane = (p_pane == split_pane) ? 1 : 0;
+	_set_active_pane(p_pane);
 	ensure_select_current();
 }
 
@@ -1115,7 +1108,7 @@ void DocumentEditorContainer::_pane_tab_close_pressed(int p_tab, TabContainer *p
 	// Make the tab being closed the current document, so the shared close
 	// flows (save prompt, discard, save-then-close) act on it.
 	p_pane->set_current_tab(p_tab);
-	active_pane = (p_pane == split_pane) ? 1 : 0;
+	_set_active_pane(p_pane);
 
 	_request_close_tab(p_pane, p_tab);
 }
@@ -1132,7 +1125,7 @@ void DocumentEditorContainer::_show_tab_context_menu(int p_tab, TabContainer *p_
 
 	// Act on the tab that was clicked, like the rest of the editor would.
 	p_pane->set_current_tab(p_tab);
-	active_pane = (p_pane == split_pane) ? 1 : 0;
+	_set_active_pane(p_pane);
 
 	const Control *editor = p_pane->get_tab_control(p_tab);
 	ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(const_cast<Control *>(editor));
@@ -1144,12 +1137,13 @@ void DocumentEditorContainer::_show_tab_context_menu(int p_tab, TabContainer *p_
 	tab_context_menu->add_separator();
 	tab_context_menu->add_item(TTRC("Copy Path"), TAB_MENU_COPY_PATH);
 	tab_context_menu->add_separator();
-	if (split_pane == nullptr) {
-		// With a single pane, the tab is moved into a new one, on the right or
-		// below.
+	if (_can_add_pane()) {
+		// The tab is moved into a new pane, on the right or below this one.
 		tab_context_menu->add_item(TTRC("Split Right"), TAB_MENU_SPLIT_RIGHT);
 		tab_context_menu->add_item(TTRC("Split Down"), TAB_MENU_SPLIT_DOWN);
-	} else {
+	}
+	if (panes.size() == 2) {
+		// With exactly two panes, the tab goes to the other one.
 		tab_context_menu->add_item(TTRC("Move to Other Pane"), TAB_MENU_MOVE_TO_OTHER_PANE);
 	}
 
@@ -1190,16 +1184,18 @@ void DocumentEditorContainer::_tab_menu_option(int p_option) {
 				}
 			}
 		} break;
-		case TAB_MENU_SPLIT_RIGHT: {
-			_create_split_pane(DROP_ZONE_RIGHT);
-			_move_tab_to_pane(tab_context_pane, tab_context_index, split_pane);
-		} break;
+		case TAB_MENU_SPLIT_RIGHT:
 		case TAB_MENU_SPLIT_DOWN: {
-			_create_split_pane(DROP_ZONE_BOTTOM);
-			_move_tab_to_pane(tab_context_pane, tab_context_index, split_pane);
+			const DropZone zone = (p_option == TAB_MENU_SPLIT_DOWN) ? DROP_ZONE_BOTTOM : DROP_ZONE_RIGHT;
+			TabContainer *from = tab_context_pane;
+			const int index = tab_context_index;
+			_split_pane(from, zone);
+			if (panes.size() > 1) {
+				_move_tab_to_pane(from, index, panes[panes.size() - 1]);
+			}
 		} break;
 		case TAB_MENU_MOVE_TO_OTHER_PANE: {
-			TabContainer *to = (tab_context_pane == split_pane) ? tab_container : split_pane;
+			TabContainer *to = (tab_context_pane == panes[0]) ? panes[1] : panes[0];
 			_move_tab_to_pane(tab_context_pane, tab_context_index, to);
 		} break;
 		default:
@@ -1233,8 +1229,8 @@ void DocumentEditorContainer::_tab_menu_option_focused(int p_option) {
 			_show_highlight_overlay(_get_drop_overlay_rect(DROP_ZONE_BOTTOM), TTRC("New pane"));
 		} break;
 		case TAB_MENU_MOVE_TO_OTHER_PANE: {
-			TabContainer *to = (tab_context_pane == split_pane) ? tab_container : split_pane;
-			if (to != nullptr) {
+			if (panes.size() == 2) {
+				TabContainer *to = (tab_context_pane == panes[0]) ? panes[1] : panes[0];
 				_show_highlight_overlay(to->get_global_rect(), TTRC("Other pane"));
 			}
 		} break;
@@ -1252,7 +1248,7 @@ void DocumentEditorContainer::_move_tab_to_pane(TabContainer *p_from, int p_inde
 	_hide_drop_overlay();
 	p_to->move_tab_from_tab_container(p_from, p_index, p_to->get_tab_count());
 	p_to->set_current_tab(p_to->get_tab_count() - 1);
-	active_pane = (p_to == split_pane) ? 1 : 0;
+	_set_active_pane(p_to);
 
 	_update_filenames();
 	document_list->update_list();
@@ -1269,7 +1265,7 @@ void DocumentEditorContainer::_request_close_tab(TabContainer *p_pane, int p_idx
 	}
 
 	p_pane->set_current_tab(p_idx);
-	active_pane = (p_pane == split_pane) ? 1 : 0;
+	_set_active_pane(p_pane);
 
 	ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(p_pane->get_tab_control(p_idx));
 	if (seb != nullptr && seb->is_unsaved()) {
@@ -1280,10 +1276,15 @@ void DocumentEditorContainer::_request_close_tab(TabContainer *p_pane, int p_idx
 }
 
 void DocumentEditorContainer::_check_split_pane_empty() {
-	if (split_pane != nullptr && split_pane->get_tab_count() == 0) {
-		_remove_split_pane();
-		_update_filenames();
-		document_list->update_list();
+	// Panes other than the primary one are dropped once they hold nothing.
+	LocalVector<TabContainer *> empty;
+	for (uint32_t i = 1; i < panes.size(); i++) {
+		if (panes[i]->get_tab_count() == 0) {
+			empty.push_back(panes[i]);
+		}
+	}
+	for (TabContainer *pane : empty) {
+		_remove_pane(pane);
 	}
 }
 
@@ -1409,22 +1410,70 @@ void DocumentEditorContainer::_compress_history_patterns(bool p_once) {
 	}
 }
 
+TabContainer *DocumentEditorContainer::_pane_at(int p_index) const {
+	if (p_index < 0 || p_index >= (int)panes.size()) {
+		return panes.is_empty() ? nullptr : panes[0];
+	}
+	return panes[p_index];
+}
+
 TabContainer *DocumentEditorContainer::_active_pane_container() const {
-	return (active_pane == 1 && split_pane != nullptr) ? split_pane : tab_container;
+	return _pane_at(active_pane);
+}
+
+int DocumentEditorContainer::_pane_index(const TabContainer *p_pane) const {
+	for (uint32_t i = 0; i < panes.size(); i++) {
+		if (panes[i] == p_pane) {
+			return (int)i;
+		}
+	}
+	return -1;
+}
+
+void DocumentEditorContainer::_set_active_pane(TabContainer *p_pane) {
+	const int index = _pane_index(p_pane);
+	if (index >= 0) {
+		active_pane = index;
+	}
+}
+
+bool DocumentEditorContainer::_can_add_pane() const {
+	return panes.size() < (uint32_t)MAX_PANES;
+}
+
+TabContainer *DocumentEditorContainer::_pane_under_mouse() const {
+	Viewport *viewport = get_viewport();
+	if (viewport == nullptr) {
+		return nullptr;
+	}
+
+	// Panes are the leaves of the layout tree and never overlap, so the first
+	// one holding the pointer is the one the drop belongs to.
+	const Vector2 mouse = viewport->get_mouse_position();
+	for (TabContainer *pane : panes) {
+		if (pane->is_visible_in_tree() && pane->get_global_rect().has_point(mouse)) {
+			return pane;
+		}
+	}
+	return nullptr;
 }
 
 TabContainer *DocumentEditorContainer::_pane_of(Control *p_editor) const {
-	return p_editor ? Object::cast_to<TabContainer>(p_editor->get_parent()) : nullptr;
+	// The editor may sit in a nested pane, so walk up to the pane holding it.
+	for (Node *node = p_editor; node != nullptr; node = node->get_parent()) {
+		TabContainer *pane = Object::cast_to<TabContainer>(node);
+		if (pane != nullptr && _pane_index(pane) >= 0) {
+			return pane;
+		}
+	}
+	return nullptr;
 }
 
 LocalVector<Control *> DocumentEditorContainer::_get_all_pane_editors() const {
 	LocalVector<Control *> editors;
-	for (int i = 0; i < tab_container->get_tab_count(); i++) {
-		editors.push_back(tab_container->get_tab_control(i));
-	}
-	if (split_pane != nullptr) {
-		for (int i = 0; i < split_pane->get_tab_count(); i++) {
-			editors.push_back(split_pane->get_tab_control(i));
+	for (TabContainer *pane : panes) {
+		for (int i = 0; i < pane->get_tab_count(); i++) {
+			editors.push_back(pane->get_tab_control(i));
 		}
 	}
 	return editors;
@@ -1450,7 +1499,7 @@ void DocumentEditorContainer::_activate_document(Control *p_editor, bool p_focus
 	}
 
 	pane->set_current_tab(idx);
-	active_pane = (pane == split_pane) ? 1 : 0;
+	_set_active_pane(pane);
 
 	Control *c = pane->get_current_tab_control();
 
@@ -1488,52 +1537,109 @@ void DocumentEditorContainer::_activate_document(Control *p_editor, bool p_focus
 	_update_history_arrows();
 }
 
-// The split container follows the requested direction: to the right of the
-// first pane, or below it. A view split the other way is rebuilt.
-void DocumentEditorContainer::_ensure_split_orientation(DropZone p_zone) {
-	if (editor_split == nullptr) {
+// Splits the given pane, putting a new empty pane on the requested side of it.
+// The panes form a tree of split containers, so any pane can be split again
+// until the maximum number of panes is reached.
+void DocumentEditorContainer::_split_pane(TabContainer *p_target, DropZone p_zone) {
+	if (p_target == nullptr || p_zone == DROP_ZONE_NONE || !_can_add_pane()) {
 		return;
 	}
 
-	const bool want_vertical = (p_zone == DROP_ZONE_BOTTOM);
-	const bool is_vertical = Object::cast_to<VSplitContainer>(editor_split) != nullptr;
-	if (want_vertical == is_vertical) {
-		return;
-	}
+	const bool below = (p_zone == DROP_ZONE_BOTTOM);
+	TabContainer *new_pane = memnew(TabContainer);
+	new_pane->set_custom_minimum_size(below ? Size2(0, 100) * EDSCALE : Size2(200, 0) * EDSCALE);
+	new_pane->set_h_size_flags(SIZE_EXPAND_FILL);
+	new_pane->set_v_size_flags(SIZE_EXPAND_FILL);
 
-	// Switch the container, keeping the panes in it.
-	Control *parent = editor_split->get_parent_control();
-	SplitContainer *new_split = want_vertical ? (SplitContainer *)memnew(VSplitContainer) : (SplitContainer *)memnew(HSplitContainer);
-	parent->add_child(new_split);
-	parent->move_child(new_split, editor_split->get_index());
-	new_split->set_h_size_flags(SIZE_EXPAND_FILL);
-	new_split->set_v_size_flags(SIZE_EXPAND_FILL);
-	new_split->connect(SceneStringName(resized), callable_mp(this, &DocumentEditorContainer::_update_drop_overlay_rect));
+	// The split takes the place of the pane it splits, and holds both panes.
+	SplitContainer *split = below ? (SplitContainer *)memnew(VSplitContainer) : (SplitContainer *)memnew(HSplitContainer);
+	split->set_h_size_flags(SIZE_EXPAND_FILL);
+	split->set_v_size_flags(SIZE_EXPAND_FILL);
+	split->connect(SceneStringName(resized), callable_mp(this, &DocumentEditorContainer::_update_drop_overlay_rect));
 
-	editor_split->remove_child(tab_container);
-	new_split->add_child(tab_container);
-	if (split_pane != nullptr) {
-		editor_split->remove_child(split_pane);
-		new_split->add_child(split_pane);
-	}
+	Node *parent = p_target->get_parent();
+	parent->add_child(split);
+	parent->move_child(split, p_target->get_index());
 
-	editor_split->queue_free();
-	editor_split = new_split;
+	p_target->reparent(split);
+	split->add_child(new_pane);
+
+	panes.push_back(new_pane);
+	_setup_pane(new_pane);
+	active_pane = (int)panes.size() - 1;
+
+	_update_filenames();
+	document_list->update_list();
 }
 
-void DocumentEditorContainer::_create_split_pane(DropZone p_zone) {
-	if (split_pane != nullptr) {
+// Drops a pane, collapsing the split that held it so the layout stays a tree
+// of panes. The primary pane is never dropped.
+void DocumentEditorContainer::_remove_pane(TabContainer *p_pane) {
+	const int index = _pane_index(p_pane);
+	if (index <= 0) {
 		return;
 	}
 
-	_ensure_split_orientation(p_zone);
+	if (active_pane >= index) {
+		active_pane = MAX(0, active_pane - 1);
+	}
+	panes.remove_at(index);
 
-	split_pane = memnew(TabContainer);
-	split_pane->set_custom_minimum_size(p_zone == DROP_ZONE_BOTTOM ? Size2(0, 100) * EDSCALE : Size2(200, 0) * EDSCALE);
-	split_pane->set_h_size_flags(SIZE_EXPAND_FILL);
-	split_pane->set_v_size_flags(SIZE_EXPAND_FILL);
-	editor_split->add_child(split_pane);
-	_setup_pane(split_pane);
+	SplitContainer *split = Object::cast_to<SplitContainer>(p_pane->get_parent());
+	if (split != nullptr) {
+		Control *remaining = nullptr;
+		for (int i = 0; i < split->get_child_count(); i++) {
+			Control *child = Object::cast_to<Control>(split->get_child(i));
+			if (child != nullptr && child != p_pane) {
+				remaining = child;
+				break;
+			}
+		}
+
+		p_pane->get_parent()->remove_child(p_pane);
+		p_pane->queue_free();
+
+		if (remaining != nullptr && split != editor_split) {
+			// The split is left with a single child: it takes the split's place.
+			Node *grandparent = split->get_parent();
+			const int split_index = split->get_index();
+			split->remove_child(remaining);
+			grandparent->add_child(remaining);
+			grandparent->move_child(remaining, split_index);
+			split->queue_free();
+		}
+	} else {
+		p_pane->queue_free();
+	}
+
+	_update_filenames();
+	document_list->update_list();
+}
+
+// Moves every document back into the primary pane and drops the extra panes.
+void DocumentEditorContainer::_merge_all_panes() {
+	if (panes.size() <= 1) {
+		return;
+	}
+
+	TabContainer *target = panes[0];
+	LocalVector<TabContainer *> extras;
+	for (uint32_t i = 1; i < panes.size(); i++) {
+		extras.push_back(panes[i]);
+	}
+
+	for (TabContainer *pane : extras) {
+		while (pane->get_tab_count() > 0) {
+			target->move_tab_from_tab_container(pane, 0, target->get_tab_count());
+		}
+	}
+	for (TabContainer *pane : extras) {
+		_remove_pane(pane);
+	}
+
+	active_pane = 0;
+	_update_filenames();
+	document_list->update_list();
 }
 
 // Dragging a document tab into the highlighted area on the right of the editor
@@ -1541,7 +1647,7 @@ void DocumentEditorContainer::_create_split_pane(DropZone p_zone) {
 // Only the overlay covering that area is a drop target, so drops on the tabs
 // themselves keep using the built-in tab rearrangement.
 bool DocumentEditorContainer::_can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) const {
-	if (split_pane != nullptr || p_data.get_type() != Variant::DICTIONARY) {
+	if (!_can_add_pane() || p_data.get_type() != Variant::DICTIONARY) {
 		return false;
 	}
 
@@ -1566,20 +1672,24 @@ void DocumentEditorContainer::_update_drag_feedback() {
 
 	const Dictionary data = drag_data;
 	const String type = data.get("type", String());
-	const Vector2 mouse = viewport->get_mouse_position();
 
-	// Dragging a document tab: offer to split the view, to the right or below
-	// depending on the half of the editor the pointer is in, and only while the
-	// pointer is over the editor at all.
-	if (type == "tab" && String(data.get("tab_type", String())) == "tab_container_tab" && split_pane == nullptr) {
+	// Dragging a document tab: offer to split the pane under the pointer, to
+	// the right or below depending on which half it is over.
+	if (type == "tab" && String(data.get("tab_type", String())) == "tab_container_tab") {
 		_hide_code_preview();
-		const Rect2 area = editor_split->get_global_rect();
-		if (!area.has_point(mouse)) {
+		TabContainer *pane = _pane_under_mouse();
+		if (pane == nullptr || !_can_add_pane()) {
 			_hide_split_overlay();
 			return;
 		}
-		const bool below = mouse.y > area.position.y + area.size.y * 0.5f;
-		_show_drop_overlay(below ? DROP_ZONE_BOTTOM : DROP_ZONE_RIGHT, TTRC("Drop here to split the view"));
+
+		const Vector2 mouse = viewport->get_mouse_position();
+		const Rect2 pane_rect = pane->get_global_rect();
+		const bool below = mouse.y > pane_rect.position.y + pane_rect.size.y * 0.5f;
+		const Rect2 half = below
+				? Rect2(pane_rect.position + Point2(0, pane_rect.size.y * 0.5f), Size2(pane_rect.size.x, pane_rect.size.y * 0.5f))
+				: Rect2(pane_rect.position + Point2(pane_rect.size.x * 0.5f, 0), Size2(pane_rect.size.x * 0.5f, pane_rect.size.y));
+		_show_drop_overlay_rect(half, below ? DROP_ZONE_BOTTOM : DROP_ZONE_RIGHT, TTRC("Drop here to split the view"));
 		return;
 	}
 
@@ -1588,6 +1698,7 @@ void DocumentEditorContainer::_update_drag_feedback() {
 	_hide_split_overlay();
 	_update_drop_preview();
 }
+
 bool DocumentEditorContainer::_can_drop_on_editor(const Vector2 &p_at_position, const Variant &p_data) const {
 	switch (drop_overlay_zone) {
 		case DROP_ZONE_RIGHT:
@@ -1702,6 +1813,15 @@ void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &
 
 	drop_overlay_zone = p_zone;
 	_apply_drop_overlay(_get_drop_overlay_rect(p_zone), p_hint, true);
+}
+
+void DocumentEditorContainer::_show_drop_overlay_rect(const Rect2 &p_rect, DropZone p_zone, const String &p_hint) {
+	if (split_drop_overlay == nullptr) {
+		return;
+	}
+
+	drop_overlay_zone = p_zone;
+	_apply_drop_overlay(p_rect, p_hint, true);
 }
 
 void DocumentEditorContainer::_show_highlight_overlay(const Rect2 &p_rect, const String &p_hint) {
@@ -1819,53 +1939,37 @@ void DocumentEditorContainer::_drop_split_tab(const Vector2 &p_at_position, cons
 		return;
 	}
 
+	// The pane the pointer is over is the one being split, and the highlighted
+	// half says on which side the new pane goes.
 	const DropZone zone = drop_overlay_zone;
+	TabContainer *target = _pane_under_mouse();
 	_hide_drop_overlay();
+	if (target == nullptr) {
+		return;
+	}
 
-	_create_split_pane(zone);
-	split_pane->move_tab_from_tab_container(from, from_index, 0);
-	split_pane->set_current_tab(split_pane->get_tab_count() - 1);
-	active_pane = 1;
+	_split_pane(target, zone);
+	if (panes.size() < 2) {
+		return;
+	}
+
+	TabContainer *new_pane = panes[panes.size() - 1];
+	new_pane->move_tab_from_tab_container(from, from_index, 0);
+	new_pane->set_current_tab(new_pane->get_tab_count() - 1);
 
 	_update_filenames();
 	document_list->update_list();
 }
 
 void DocumentEditorContainer::_toggle_split_editor_view() {
-	_create_split_pane();
-
-	TabContainer *from = _active_pane_container();
-	TabContainer *to = (from == tab_container) ? split_pane : tab_container;
-
-	Control *editor = from->get_current_tab_control();
-	if (editor != nullptr) {
-		int from_idx = from->get_tab_idx_from_control(editor);
-		String title = from->get_tab_title(from_idx);
-		from->remove_child(editor);
-		to->add_child(editor);
-		to->set_tab_title(to->get_tab_count() - 1, title);
-		active_pane = (to == split_pane) ? 1 : 0;
-		to->set_current_tab(to->get_tab_count() - 1);
-	} else if (to->get_tab_count() > 0) {
-		active_pane = (to == split_pane) ? 1 : 0;
-		to->set_current_tab(to->get_tab_count() - 1);
-	}
-
-	if (split_pane != nullptr && split_pane->get_tab_count() == 0) {
-		_remove_split_pane();
-	}
-
-	_update_filenames();
-	document_list->update_list();
-}
-
-void DocumentEditorContainer::_remove_split_pane() {
-	if (split_pane == nullptr) {
+	// With a single pane this splits the pane being edited; with several panes
+	// it puts every document back into one.
+	if (panes.size() <= 1) {
+		_split_pane(_active_pane_container(), DROP_ZONE_RIGHT);
 		return;
 	}
-	split_pane->queue_free();
-	split_pane = nullptr;
-	active_pane = 0;
+
+	_merge_all_panes();
 }
 
 void DocumentEditorContainer::_add_recent_script(const String &p_path) {
@@ -2032,8 +2136,8 @@ void DocumentEditorContainer::_close_tab(TabContainer *p_pane, int p_idx, bool p
 	}
 
 	// An emptied split pane removes itself; its documents live in the primary.
-	if (p_pane == split_pane && split_pane != nullptr && split_pane->get_tab_count() == 0) {
-		_remove_split_pane();
+	if (_pane_index(p_pane) > 0 && p_pane->get_tab_count() == 0) {
+		_remove_pane(p_pane);
 	}
 }
 
@@ -2119,7 +2223,7 @@ void DocumentEditorContainer::_queue_close_tabs() {
 		script_close_queue.pop_front();
 
 		pane->set_current_tab(idx);
-		active_pane = (pane == split_pane) ? 1 : 0;
+		_set_active_pane(pane);
 		ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(pane->get_tab_control(idx));
 		if (seb) {
 			// Maybe there are unsaved changes.
@@ -3367,7 +3471,7 @@ bool DocumentEditorContainer::edit(const Ref<Resource> &p_resource, int p_line, 
 	// New documents open in the pane the user was last working in.
 	TabContainer *target_pane = _active_pane_container();
 	target_pane->set_current_tab(target_pane->get_tab_count() - 1);
-	active_pane = (target_pane == split_pane) ? 1 : 0;
+	_set_active_pane(target_pane);
 	ensure_select_current();
 	grab_focus_block = false;
 	_add_recent_script(p_resource->get_path());
@@ -3908,9 +4012,19 @@ void DocumentEditorContainer::_update_filenames() {
 		return;
 	}
 
-	// Disambiguate filenames.
-	const int num_open_editors = tab_container->get_tab_count();
+	// Names are disambiguated across every open document, in every pane.
+	LocalVector<Control *> editors;
+	LocalVector<TabContainer *> owners;
+	LocalVector<int> owner_indices;
+	for (TabContainer *pane : panes) {
+		for (int i = 0; i < pane->get_tab_count(); i++) {
+			editors.push_back(pane->get_tab_control(i));
+			owners.push_back(pane);
+			owner_indices.push_back(i);
+		}
+	}
 
+	const int num_open_editors = (int)editors.size();
 	PackedStringArray disambiguated_names;
 	disambiguated_names.reserve(num_open_editors);
 	PackedStringArray full_paths;
@@ -3920,7 +4034,7 @@ void DocumentEditorContainer::_update_filenames() {
 	unsaved.reserve(num_open_editors);
 
 	for (int i = 0; i < num_open_editors; i++) {
-		Control *editor = tab_container->get_tab_control(i);
+		Control *editor = editors[i];
 		ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor);
 		EditorHelp *eh = Object::cast_to<EditorHelp>(editor);
 		if (seb) {
@@ -3964,8 +4078,8 @@ void DocumentEditorContainer::_update_filenames() {
 		if (unsaved[i]) {
 			name += "(*)";
 		}
-		tab_container->set_tab_title(i, name);
-		tab_container->get_tab_control(i)->set_name(name);
+		owners[i]->set_tab_title(owner_indices[i], name);
+		owners[i]->get_tab_control(owner_indices[i])->set_name(name);
 	}
 
 	document_list->update_list();
@@ -4158,8 +4272,8 @@ void DocumentEditorContainer::_prepare_file_menu() {
 	// The split action turns into a merge action while a second pane exists.
 	const int split_item = p_menu->get_item_index(FILE_MENU_SPLIT_EDITOR);
 	if (split_item != -1) {
-		p_menu->set_item_text(split_item, split_pane != nullptr ? TTRC("Merge Editor Views") : TTRC("Split Editor View"));
-		p_menu->set_item_disabled(split_item, _get_current_editor() == nullptr && split_pane == nullptr);
+		p_menu->set_item_text(split_item, panes.size() > 1 ? TTRC("Merge Editor Views") : TTRC("Split Editor View"));
+		p_menu->set_item_disabled(split_item, _get_current_editor() == nullptr && panes.size() <= 1);
 	}
 
 	const Ref<Script> script = res;
@@ -4704,7 +4818,7 @@ void DocumentEditorContainer::_calculate_script_name_button_ratio() {
 }
 
 void DocumentEditorContainer::_focus_changed(Node *p_node) {
-	if (split_pane == nullptr) {
+	if (panes.size() <= 1) {
 		return;
 	}
 
@@ -4714,18 +4828,19 @@ void DocumentEditorContainer::_focus_changed(Node *p_node) {
 	}
 
 	TabContainer *pane = nullptr;
-	if (tab_container->is_ancestor_of(focused)) {
-		pane = tab_container;
-	} else if (split_pane->is_ancestor_of(focused)) {
-		pane = split_pane;
+	for (TabContainer *candidate : panes) {
+		if (candidate->is_ancestor_of(focused)) {
+			pane = candidate;
+			break;
+		}
 	}
 	if (pane == nullptr) {
 		// Focus moved outside the editing panes (file list, menus...).
 		return;
 	}
 
-	const int new_active = (pane == split_pane) ? 1 : 0;
-	if (active_pane == new_active) {
+	const int new_active = _pane_index(pane);
+	if (new_active < 0 || active_pane == new_active) {
 		return;
 	}
 
@@ -4887,6 +5002,7 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	tab_container->set_h_size_flags(SIZE_EXPAND_FILL);
 	tab_container->set_v_size_flags(SIZE_EXPAND_FILL);
 	_setup_pane(tab_container);
+	panes.push_back(tab_container);
 
 	find_replace_bar = memnew(FindReplaceBar);
 	code_editor_container->add_child(find_replace_bar);
