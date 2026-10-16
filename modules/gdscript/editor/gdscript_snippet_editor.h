@@ -36,6 +36,8 @@ class Button;
 class CodeEdit;
 class ItemList;
 class Label;
+class PopupMenu;
+class ScriptEditorBase;
 class SnippetJSONHighlighter;
 class TabContainer;
 
@@ -64,6 +66,11 @@ class GDScriptSnippetEditor : public AcceptDialog {
 	GDCLASS(GDScriptSnippetEditor, AcceptDialog);
 
 	static GDScriptSnippetEditor *singleton;
+
+	// Snippets offered by the context menu of the editor it was opened on.
+	static ScriptEditorBase *context_menu_editor;
+	static HashMap<int, String> context_menu_prefixes;
+	static void _expand_context_menu_snippet(int p_id);
 
 	struct SnippetDirTab {
 		String dir_path;
@@ -115,6 +122,10 @@ public:
 	// creates the window (as a child of EditorNode) and shows it.
 	static void open_snippets_editor();
 	static void reload_snippets();
+
+	// Adds the loaded snippets to a code editor's context menu, so one can be
+	// expanded at the caret without typing its prefix.
+	static void fill_context_menu(PopupMenu *p_menu, ScriptEditorBase *p_editor);
 
 	GDScriptSnippetEditor();
 };

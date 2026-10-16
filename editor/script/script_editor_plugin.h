@@ -614,6 +614,10 @@ public:
 	// Called after this editor writes a snippet, so languages can pick it up.
 	static void register_snippets_changed(void (*p_callback)()) { snippets_changed = p_callback; }
 	inline static void (*snippets_changed)() = nullptr;
+	// Lets a language add entries to the code editor's context menu, for
+	// actions only the language can carry out (such as expanding a snippet).
+	static void register_context_menu_contributor(void (*p_contributor)(PopupMenu *, ScriptEditorBase *)) { context_menu_contributor = p_contributor; }
+	inline static void (*context_menu_contributor)(PopupMenu *, ScriptEditorBase *) = nullptr;
 
 	DocumentEditorContainer(bool p_is_main_editor, const String &p_config_section, const String &p_cache_path);
 };

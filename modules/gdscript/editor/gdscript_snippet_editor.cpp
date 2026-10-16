@@ -42,16 +42,22 @@
 #include "core/os/os.h"
 #include "editor/editor_node.h"
 #include "editor/file_system/editor_paths.h"
+#include "editor/gui/snippet_parser.h"
+#include "editor/gui/snippet_session.h"
+#include "editor/script/script_editor_base.h"
 #include "editor/settings/editor_settings.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/code_edit.h"
 #include "scene/gui/item_list.h"
 #include "scene/gui/label.h"
+#include "scene/gui/popup_menu.h"
 #include "scene/gui/split_container.h"
 #include "scene/gui/tab_container.h"
 
 GDScriptSnippetEditor *GDScriptSnippetEditor::singleton = nullptr;
+ScriptEditorBase *GDScriptSnippetEditor::context_menu_editor = nullptr;
+HashMap<int, String> GDScriptSnippetEditor::context_menu_prefixes;
 
 void GDScriptSnippetEditor::reload_snippets() {
 	// Pick up snippets written outside this window, such as a selection saved
@@ -59,6 +65,93 @@ void GDScriptSnippetEditor::reload_snippets() {
 	if (GDScriptLanguage::get_singleton()) {
 		GDScriptLanguage::get_singleton()->load_snippets();
 	}
+}
+
+void GDScriptSnippetEditor::fill_context_menu(PopupMenu *p_menu, ScriptEditorBase *p_editor) {
+	if (GDScriptLanguage::get_singleton() == nullptr || p_editor == nullptr) {
+		return;
+	}
+
+	// Only scripts can be given a snippet.
+	Ref<GDScript> script = p_editor->get_edited_resource();
+	if (script.is_null()) {
+		return;
+	}
+
+	const HashMap<String, GDScriptLanguage::SnippetConfig> &snippets = GDScriptLanguage::get_singleton()->_get_snippets();
+	if (snippets.is_empty()) {
+		return;
+	}
+
+	context_menu_editor = p_editor;
+	context_menu_prefixes.clear();
+
+	// The menu frees its submenus whenever it is rebuilt, so a fresh submenu is
+	// created for this popup.
+	PopupMenu *submenu = memnew(PopupMenu);
+	submenu->set_name("__snippet_menu");
+	p_menu->add_child(submenu);
+	submenu->connect(SceneStringName(id_pressed), callable_mp_static(&GDScriptSnippetEditor::_expand_context_menu_snippet));
+
+	// Ids of the snippet entries, kept away from the editor's own ids.
+	const int base_id = 100000;
+	Vector<String> prefixes;
+	for (const KeyValue<String, GDScriptLanguage::SnippetConfig> &E : snippets) {
+		prefixes.push_back(E.key);
+	}
+	prefixes.sort();
+
+	for (int i = 0; i < prefixes.size(); i++) {
+		const int id = base_id + i;
+		context_menu_prefixes.insert(id, prefixes[i]);
+		submenu->add_item(prefixes[i], id);
+	}
+
+	p_menu->add_separator();
+	p_menu->add_submenu_item(TTRC("Insert Snippet"), "__snippet_menu");
+}
+
+void GDScriptSnippetEditor::_expand_context_menu_snippet(int p_id) {
+	const String *prefix = context_menu_prefixes.getptr(p_id);
+	if (prefix == nullptr || context_menu_editor == nullptr || GDScriptLanguage::get_singleton() == nullptr) {
+		return;
+	}
+
+	TextEditorBase *teb = Object::cast_to<TextEditorBase>(context_menu_editor);
+	CodeEdit *code_edit = (teb != nullptr) ? Object::cast_to<CodeEdit>(teb->get_base_editor()) : nullptr;
+	if (code_edit == nullptr) {
+		return;
+	}
+
+	const HashMap<String, GDScriptLanguage::SnippetConfig> &snippets = GDScriptLanguage::get_singleton()->_get_snippets();
+	const GDScriptLanguage::SnippetConfig *snippet = snippets.getptr(*prefix);
+	if (snippet == nullptr) {
+		return;
+	}
+
+	// Same variables as the completion entries, so both expand alike.
+	HashMap<String, String> variables;
+	const Ref<Resource> edited = context_menu_editor->get_edited_resource();
+	if (edited.is_valid()) {
+		const String &path = edited->get_path();
+		variables["TM_FILENAME"] = path.get_file();
+		variables["TM_FILENAME_BASE"] = path.get_file().get_basename();
+		variables["TM_DIRECTORY"] = path.get_base_dir();
+	}
+
+	List<SnippetTabStop> stops;
+	const String expanded = SnippetParser::parse(snippet->body, variables, stops);
+
+	code_edit->begin_complex_operation();
+	code_edit->insert_text_at_caret(expanded);
+	code_edit->end_complex_operation();
+
+	Vector<SnippetTabStop> stops_vector;
+	for (const SnippetTabStop &stop : stops) {
+		stops_vector.push_back(stop);
+	}
+	SnippetSession::get_for(code_edit)->arm(expanded, stops_vector);
+	code_edit->grab_focus();
 }
 
 void GDScriptSnippetEditor::open_snippets_editor() {
