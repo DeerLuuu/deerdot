@@ -424,6 +424,9 @@ class DocumentEditorContainer : public MarginContainer {
 	void _setup_pane(TabContainer *p_pane);
 	// Splits a pane, adding an empty pane on the requested side of it.
 	void _split_pane(TabContainer *p_target, DropZone p_zone);
+	// Splits any control in the pane tree, which is what building a layout
+	// out of saved panes needs (a saved pane may hold a whole subtree).
+	Control *_split_control(Control *p_target, DropZone p_zone);
 	// Drops a pane and collapses the split that held it.
 	void _remove_pane(TabContainer *p_pane);
 	// Moves every document back into the primary pane and drops the others.
@@ -476,9 +479,11 @@ class DocumentEditorContainer : public MarginContainer {
 	};
 
 	// Documents open in their own window, and the tab a drag would take out.
-	LocalVector<Window *> popout_windows;
-	TabContainer *pending_popout_pane = nullptr;
-	int pending_popout_index = -1;
+	// The pending tab is held by id, since the pane it came from can be dropped
+	// while the drag is still going.
+	LocalVector<ObjectID> popout_windows;
+	ObjectID pending_popout_pane;
+	ObjectID pending_popout_editor;
 
 	PopupMenu *tab_context_menu = nullptr;
 	TabContainer *tab_context_pane = nullptr; // Pane the tab menu was opened on.
@@ -521,7 +526,7 @@ class DocumentEditorContainer : public MarginContainer {
 	void _layout_preset_selected(int p_id);
 	void _on_save_layout_confirmed();
 	void _on_delete_layout_confirmed();
-	void _restore_pane_layout(const Variant &p_node, TabContainer *p_pane);
+	Control *_restore_pane_layout(const Variant &p_node, TabContainer *p_container);
 	void _apply_editor_settings();
 	void _update_filenames();
 	void _files_moved(const String &p_old_file, const String &p_new_file);

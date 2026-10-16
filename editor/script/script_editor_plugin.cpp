@@ -1184,7 +1184,7 @@ void DocumentEditorContainer::_popout_editor(TabContainer *p_pane, int p_index) 
 	window->add_child(editor);
 	editor->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
 
-	popout_windows.push_back(window);
+	popout_windows.push_back(window->get_instance_id());
 	window->popup_centered();
 
 	_check_split_pane_empty();
@@ -1219,7 +1219,7 @@ void DocumentEditorContainer::_return_popout(Window *p_window) {
 		editor->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
 	}
 
-	popout_windows.erase(p_window);
+	popout_windows.erase(p_window->get_instance_id());
 	p_window->queue_free();
 
 	_update_filenames();
@@ -1228,7 +1228,12 @@ void DocumentEditorContainer::_return_popout(Window *p_window) {
 
 void DocumentEditorContainer::_update_popout_windows() {
 	// Window titles follow the documents while they are renamed or saved.
-	for (Window *window : popout_windows) {
+	for (const ObjectID &window_id : popout_windows) {
+		Window *window = Object::cast_to<Window>(ObjectDB::get_instance(window_id));
+		if (window == nullptr) {
+			continue;
+		}
+
 		Control *editor = nullptr;
 		for (int i = 0; i < window->get_child_count(); i++) {
 			editor = Object::cast_to<Control>(window->get_child(i));
@@ -1370,6 +1375,11 @@ void DocumentEditorContainer::_request_close_tab(TabContainer *p_pane, int p_idx
 }
 
 void DocumentEditorContainer::_check_split_pane_empty() {
+	if (restoring_layout) {
+		// Panes are empty on purpose while a layout is being rebuilt.
+		return;
+	}
+
 	// Panes holding nothing are dropped, so an action that moves the documents
 	// out of a pane never leaves an empty area behind.
 	LocalVector<TabContainer *> empty;
@@ -1636,8 +1646,14 @@ void DocumentEditorContainer::_activate_document(Control *p_editor, bool p_focus
 // The panes form a tree of split containers, so any pane can be split again
 // until the maximum number of panes is reached.
 void DocumentEditorContainer::_split_pane(TabContainer *p_target, DropZone p_zone) {
+	_split_control(p_target, p_zone);
+}
+
+// Wraps a control of the pane tree in a new split holding it and a new empty
+// pane, and returns that pane. Returns nullptr when the split cannot be made.
+Control *DocumentEditorContainer::_split_control(Control *p_target, DropZone p_zone) {
 	if (p_target == nullptr || p_zone == DROP_ZONE_NONE || !_can_add_pane()) {
-		return;
+		return nullptr;
 	}
 
 	const bool below = (p_zone == DROP_ZONE_BOTTOM);
@@ -1665,6 +1681,8 @@ void DocumentEditorContainer::_split_pane(TabContainer *p_target, DropZone p_zon
 
 	_update_filenames();
 	document_list->update_list();
+
+	return new_pane;
 }
 
 // Drops a pane, collapsing the split that held it so the layout stays a tree
@@ -1767,13 +1785,21 @@ void DocumentEditorContainer::_update_drag_feedback() {
 	}
 
 	if (!viewport->gui_is_dragging()) {
-		// A tab released outside the panes becomes a window of its own.
-		if (pending_popout_pane != nullptr) {
-			TabContainer *pane = pending_popout_pane;
-			const int index = pending_popout_index;
-			pending_popout_pane = nullptr;
-			pending_popout_index = -1;
-			_popout_editor(pane, index);
+		// A tab released outside the panes becomes a window of its own. The pane
+		// and the document are looked up by id: either of them may have gone
+		// while the drag was in progress.
+		if (pending_popout_pane.is_valid()) {
+			TabContainer *pane = Object::cast_to<TabContainer>(ObjectDB::get_instance(pending_popout_pane));
+			Control *editor = Object::cast_to<Control>(ObjectDB::get_instance(pending_popout_editor));
+			pending_popout_pane = ObjectID();
+			pending_popout_editor = ObjectID();
+
+			if (pane != nullptr && editor != nullptr) {
+				const int index = pane->get_tab_idx_from_control(editor);
+				if (index >= 0 && _pane_under_mouse() == nullptr) {
+					_popout_editor(pane, index);
+				}
+			}
 		}
 		_hide_drop_overlay();
 		return;
@@ -1800,19 +1826,19 @@ void DocumentEditorContainer::_update_drag_feedback() {
 			TabContainer *from = (from_bar != nullptr) ? TabContainer::get_tab_bar_container(from_bar) : nullptr;
 			const int from_index = data.get("tab_index", -1);
 			if (from != nullptr && from_index >= 0 && from_index < from->get_tab_count()) {
-				pending_popout_pane = from;
-				pending_popout_index = from_index;
+				pending_popout_pane = from->get_instance_id();
+				pending_popout_editor = from->get_tab_control(from_index)->get_instance_id();
 				_show_highlight_overlay(Rect2(get_global_rect().position, get_global_rect().size), TTRC("Release to open in a new window"));
 			} else {
-				pending_popout_pane = nullptr;
-				pending_popout_index = -1;
+				pending_popout_pane = ObjectID();
+				pending_popout_editor = ObjectID();
 				_hide_split_overlay();
 			}
 			return;
 		}
 
-		pending_popout_pane = nullptr;
-		pending_popout_index = -1;
+		pending_popout_pane = ObjectID();
+		pending_popout_editor = ObjectID();
 
 		if (!_can_add_pane()) {
 			_hide_split_overlay();
@@ -3382,6 +3408,9 @@ void DocumentEditorContainer::_notification(int p_what) {
 
 			if (dragging) {
 				_update_drag_feedback();
+			} else if (pending_popout_pane.is_valid()) {
+				// The drag has just ended: a tab dragged out becomes a window.
+				_update_drag_feedback();
 			} else if (menu_open) {
 				_update_tab_menu_highlight();
 			} else {
@@ -4765,35 +4794,42 @@ void DocumentEditorContainer::sort_document_editors() {
 	document_list->update_list();
 }
 
-// Rebuilds the saved panes: the first pane already exists, and every other one
-// is created by splitting, in the same order the layout was saved in.
-void DocumentEditorContainer::_restore_pane_layout(const Variant &p_node, TabContainer *p_pane) {
-	if (p_node.get_type() != Variant::DICTIONARY || p_pane == nullptr) {
-		return;
+// Rebuilds the saved panes into the given pane, and returns the control that
+// stands for the part of the layout that was rebuilt: a pane for a leaf, or the
+// split holding the whole subtree.
+Control *DocumentEditorContainer::_restore_pane_layout(const Variant &p_node, TabContainer *p_container) {
+	if (p_node.get_type() != Variant::DICTIONARY || p_container == nullptr) {
+		return p_container;
 	}
 
 	Dictionary node = p_node;
 
 	if (node.has("first") && node.has("second")) {
-		_restore_pane_layout(node["first"], p_pane);
-
-		const bool vertical = String(node.get("direction", "horizontal")) == "vertical";
-		_split_pane(p_pane, vertical ? DROP_ZONE_BOTTOM : DROP_ZONE_RIGHT);
-		if (panes.size() < 2) {
-			return;
+		// The first half goes where the container is, and the second half into a
+		// pane split off the whole of it.
+		Control *first = _restore_pane_layout(node["first"], p_container);
+		if (first == nullptr) {
+			return p_container;
 		}
 
-		TabContainer *second = panes[panes.size() - 1];
+		const bool vertical = String(node.get("direction", "horizontal")) == "vertical";
+		TabContainer *second = Object::cast_to<TabContainer>(_split_control(first, vertical ? DROP_ZONE_BOTTOM : DROP_ZONE_RIGHT));
+		if (second == nullptr) {
+			return first;
+		}
+
 		_restore_pane_layout(node["second"], second);
 
 		if (SplitContainer *split = Object::cast_to<SplitContainer>(second->get_parent())) {
 			split->set_split_offset(node.get("offset", 0));
+			return split;
 		}
-		return;
+		return first;
 	}
 
 	// A pane: open its documents into it, which is where the active pane points.
-	active_pane = MAX(0, _pane_index(p_pane));
+	active_pane = MAX(0, _pane_index(p_container));
+	const List<String> extensions = _get_recognized_extensions();
 	const Array scripts = node.get("scripts", Array());
 	for (const Variant &script : scripts) {
 		const String path = script;
@@ -4804,13 +4840,13 @@ void DocumentEditorContainer::_restore_pane_layout(const Variant &p_node, TabCon
 		// A document that is already open is moved instead of opened twice.
 		bool moved = false;
 		for (TabContainer *other : panes) {
-			if (other == p_pane) {
+			if (other == p_container) {
 				continue;
 			}
 			for (int i = 0; i < other->get_tab_count(); i++) {
 				ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(other->get_tab_control(i));
 				if (seb != nullptr && seb->get_edited_resource()->get_path() == path) {
-					_move_tab_to_pane(other, i, p_pane);
+					_move_tab_to_pane(other, i, p_container);
 					moved = true;
 					break;
 				}
@@ -4819,8 +4855,26 @@ void DocumentEditorContainer::_restore_pane_layout(const Variant &p_node, TabCon
 				break;
 			}
 		}
-		if (!moved) {
-			edit(ResourceLoader::load(path, "Script"), true, false, true);
+		if (moved) {
+			continue;
+		}
+
+		// Scripts load as scripts, everything else (shaders, text files) as text.
+		bool is_script = ResourceCache::get_ref(path).is_valid();
+		if (!is_script && path.is_resource_file()) {
+			is_script = extensions.find(path.get_extension());
+		}
+		if (is_script) {
+			Ref<Resource> resource = ResourceLoader::load(path);
+			if (resource.is_valid()) {
+				edit(resource, false);
+			}
+		} else {
+			Error error = OK;
+			Ref<TextFile> text_file = _load_text_file(path, &error);
+			if (text_file.is_valid()) {
+				edit(text_file, false);
+			}
 		}
 	}
 	const Array pane_helps = node.get("help", Array());
@@ -4834,20 +4888,22 @@ void DocumentEditorContainer::_restore_pane_layout(const Variant &p_node, TabCon
 	// Go back to the document that was being edited in this pane.
 	const String selected = node.get("selected", String());
 	if (!selected.is_empty()) {
-		for (int i = 0; i < p_pane->get_tab_count(); i++) {
-			Control *editor = p_pane->get_tab_control(i);
+		for (int i = 0; i < p_container->get_tab_count(); i++) {
+			Control *editor = p_container->get_tab_control(i);
 			ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor);
 			if (seb != nullptr && seb->get_edited_resource()->get_path() == selected) {
-				p_pane->set_current_tab(i);
+				p_container->set_current_tab(i);
 				break;
 			}
 			EditorHelp *eh = Object::cast_to<EditorHelp>(editor);
 			if (eh != nullptr && eh->get_class() == selected) {
-				p_pane->set_current_tab(i);
+				p_container->set_current_tab(i);
 				break;
 			}
 		}
 	}
+
+	return p_container;
 }
 
 void DocumentEditorContainer::set_window_layout(Ref<ConfigFile> p_layout) {
