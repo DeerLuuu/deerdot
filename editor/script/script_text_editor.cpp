@@ -264,7 +264,7 @@ void ScriptTextEditor::_load_theme_settings() {
 				text_edit->set_line_background_color(i, updated_marked_line_color);
 			}
 
-			if (safe_line_number_color_updated && text_edit->get_line_gutter_item_color(i, line_number_gutter) != default_line_number_color) {
+			if (safe_line_number_color_updated && line_number_gutter >= 0 && line_number_gutter < text_edit->get_gutter_count() && text_edit->get_line_gutter_item_color(i, line_number_gutter) != default_line_number_color) {
 				text_edit->set_line_gutter_item_color(i, line_number_gutter, safe_line_number_color);
 			}
 
@@ -1087,7 +1087,14 @@ void ScriptTextEditor::_update_errors() {
 	bool last_is_safe = false;
 	CodeEdit *te = code_editor->get_text_editor();
 
-	for (int i = 0; i < te->get_line_count(); i++) {
+	// The gutters may not exist while the editor is being set up, in which case
+	// the cached indexes are not usable yet.
+	if (line_number_gutter < 0 || line_number_gutter >= te->get_gutter_count()) {
+		_update_gutter_indexes();
+	}
+	const bool has_line_number_gutter = line_number_gutter >= 0 && line_number_gutter < te->get_gutter_count();
+
+	for (int i = 0; has_line_number_gutter && i < te->get_line_count(); i++) {
 		if (highlight_safe) {
 			if (safe_lines.has(i + 1)) {
 				te->set_line_gutter_item_color(i, line_number_gutter, safe_line_number_color);
@@ -1098,7 +1105,7 @@ void ScriptTextEditor::_update_errors() {
 				te->set_line_gutter_item_color(i, line_number_gutter, default_line_number_color);
 				last_is_safe = false;
 			}
-		} else {
+		} else if (te->get_gutter_count() > 1) {
 			te->set_line_gutter_item_color(i, 1, default_line_number_color);
 		}
 	}

@@ -1276,11 +1276,12 @@ void DocumentEditorContainer::_request_close_tab(TabContainer *p_pane, int p_idx
 }
 
 void DocumentEditorContainer::_check_split_pane_empty() {
-	// Panes other than the primary one are dropped once they hold nothing.
+	// Panes holding nothing are dropped, so an action that moves the documents
+	// out of a pane never leaves an empty area behind.
 	LocalVector<TabContainer *> empty;
-	for (uint32_t i = 1; i < panes.size(); i++) {
-		if (panes[i]->get_tab_count() == 0) {
-			empty.push_back(panes[i]);
+	for (TabContainer *pane : panes) {
+		if (pane->get_tab_count() == 0) {
+			empty.push_back(pane);
 		}
 	}
 	for (TabContainer *pane : empty) {
@@ -1573,21 +1574,17 @@ void DocumentEditorContainer::_split_pane(TabContainer *p_target, DropZone p_zon
 }
 
 // Drops a pane, collapsing the split that held it so the layout stays a tree
-// of panes. The primary pane is never dropped.
+// of panes. The last pane always stays; the primary one is replaced by another
+// pane when it goes, so no empty area is left behind.
 void DocumentEditorContainer::_remove_pane(TabContainer *p_pane) {
 	const int index = _pane_index(p_pane);
-	if (index <= 0) {
+	if (index < 0 || panes.size() <= 1) {
 		return;
 	}
 
-	if (active_pane >= index) {
-		active_pane = MAX(0, active_pane - 1);
-	}
-	panes.remove_at(index);
-
 	SplitContainer *split = Object::cast_to<SplitContainer>(p_pane->get_parent());
+	Control *remaining = nullptr;
 	if (split != nullptr) {
-		Control *remaining = nullptr;
 		for (int i = 0; i < split->get_child_count(); i++) {
 			Control *child = Object::cast_to<Control>(split->get_child(i));
 			if (child != nullptr && child != p_pane) {
@@ -1595,12 +1592,15 @@ void DocumentEditorContainer::_remove_pane(TabContainer *p_pane) {
 				break;
 			}
 		}
+	}
 
-		p_pane->get_parent()->remove_child(p_pane);
-		p_pane->queue_free();
+	panes.remove_at(index);
+
+	if (split != nullptr) {
+		split->remove_child(p_pane);
 
 		if (remaining != nullptr && split != editor_split) {
-			// The split is left with a single child: it takes the split's place.
+			// Left with a single child: the split is replaced by it.
 			Node *grandparent = split->get_parent();
 			const int split_index = split->get_index();
 			split->remove_child(remaining);
@@ -1609,7 +1609,16 @@ void DocumentEditorContainer::_remove_pane(TabContainer *p_pane) {
 			split->queue_free();
 		}
 	} else {
-		p_pane->queue_free();
+		p_pane->get_parent()->remove_child(p_pane);
+	}
+	p_pane->queue_free();
+
+	if (index == 0) {
+		// The primary pane is simply the first one, so another takes its place.
+		tab_container = panes[0];
+		active_pane = 0;
+	} else if (active_pane >= index) {
+		active_pane = MAX(0, active_pane - 1);
 	}
 
 	_update_filenames();
@@ -2136,7 +2145,7 @@ void DocumentEditorContainer::_close_tab(TabContainer *p_pane, int p_idx, bool p
 	}
 
 	// An emptied split pane removes itself; its documents live in the primary.
-	if (_pane_index(p_pane) > 0 && p_pane->get_tab_count() == 0) {
+	if (p_pane->get_tab_count() == 0) {
 		_remove_pane(p_pane);
 	}
 }
