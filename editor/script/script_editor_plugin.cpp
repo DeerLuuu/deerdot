@@ -1810,7 +1810,8 @@ void DocumentEditorContainer::_update_drag_feedback() {
 			pending_popout_editor = ObjectID();
 
 			if (pane != nullptr && editor != nullptr) {
-				const int index = pane->get_tab_idx_from_control(editor);
+				// The document may have been dropped somewhere else already.
+				const int index = (editor->get_parent() == pane) ? pane->get_tab_idx_from_control(editor) : -1;
 				if (index >= 0 && _pane_under_mouse() == nullptr) {
 					_popout_editor(pane, index);
 				}
@@ -2546,7 +2547,8 @@ void DocumentEditorContainer::_close_tab(TabContainer *p_pane, int p_idx, bool p
 		}
 		if (idx >= 0) {
 			if (history_pos >= 0) {
-				idx = p_pane->get_tab_idx_from_control(history[history_pos].control);
+				Control *history_control = Object::cast_to<Control>(history[history_pos].control);
+				idx = (history_control != nullptr && history_control->get_parent() == p_pane) ? p_pane->get_tab_idx_from_control(history_control) : -1;
 			}
 			if (Control *c = p_pane->get_tab_control(idx)) {
 				_activate_document(c, true);
@@ -2572,7 +2574,9 @@ void DocumentEditorContainer::_close_current_tab(bool p_save) {
 	if (ScriptEditorBase *current = _get_current_editor()) {
 		Control *editor = Object::cast_to<Control>(current);
 		TabContainer *pane = _pane_of(editor);
-		_close_tab(pane, pane->get_tab_idx_from_control(editor), p_save);
+		if (pane != nullptr && editor->get_parent() == pane) {
+			_close_tab(pane, pane->get_tab_idx_from_control(editor), p_save);
+		}
 	}
 }
 
@@ -4332,7 +4336,9 @@ Error DocumentEditorContainer::close_file(const String &p_file) {
 				seb->get_edited_resource()->reload_from_file();
 			}
 			TabContainer *pane = _pane_of(pane_editor);
-			_close_tab(pane, pane->get_tab_idx_from_control(pane_editor), false);
+			if (pane != nullptr && pane_editor->get_parent() == pane) {
+				_close_tab(pane, pane->get_tab_idx_from_control(pane_editor), false);
+			}
 			return OK;
 		}
 	}
@@ -4567,7 +4573,9 @@ void DocumentEditorContainer::_file_removed(const String &p_removed_file) {
 
 	for (Control *editor : to_close) {
 		TabContainer *pane = _pane_of(editor);
-		_close_tab(pane, pane->get_tab_idx_from_control(editor), false);
+		if (pane != nullptr && editor->get_parent() == pane) {
+			_close_tab(pane, pane->get_tab_idx_from_control(editor), false);
+		}
 	}
 
 	// Check closed.
@@ -5305,11 +5313,18 @@ void DocumentEditorContainer::_update_selected_editor_menu() {
 }
 
 void DocumentEditorContainer::_update_history_pos(int p_new_pos) {
-	Node *n = tab_container->get_current_tab_control();
 	history_pos = p_new_pos;
-	tab_container->set_current_tab(tab_container->get_tab_idx_from_control(history[history_pos].control));
 
-	n = history[history_pos].control;
+	// The document the history points at can be in any pane by now, so the pane
+	// holding it is the one to switch.
+	Control *control = Object::cast_to<Control>(history[history_pos].control);
+	TabContainer *pane = (control != nullptr) ? _pane_of(control) : nullptr;
+	if (pane != nullptr && control->get_parent() == pane) {
+		pane->set_current_tab(pane->get_tab_idx_from_control(control));
+		_set_active_pane(pane);
+	}
+
+	Node *n = history[history_pos].control;
 
 	if (ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(n)) {
 		if (TextEditorBase *teb = Object::cast_to<TextEditorBase>(n)) {
