@@ -564,6 +564,9 @@ msgstr "无法保存片段：\"%s\" 不是有效的 JSON。"
 msgid "Hold %s+Shift: Add `uses` for the traits a script declares."
 msgstr "按住 %s+Shift：添加该脚本声明的 trait 的 `uses`。"
 
+msgid "Trait"
+msgstr "Trait（特性）"
+
 msgid "Hold %s+Shift: Add `uses` for the traits the scripts declare."
 msgstr "按住 %s+Shift：添加这些脚本声明的 trait 的 `uses`。"
 
