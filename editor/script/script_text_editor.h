@@ -227,6 +227,8 @@ public:
 
 	virtual EditMenusBase *create_edit_menu(DocumentEditorContainer *p_document_editor_container) override { return memnew(EditMenusScTE(p_document_editor_container)); }
 
+	virtual String get_drop_preview_text(const Variant &p_data) override;
+
 	virtual Ref<Texture2D> get_theme_icon() override;
 
 	virtual Variant get_edit_state() override;

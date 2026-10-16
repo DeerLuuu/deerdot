@@ -80,6 +80,10 @@ public:
 
 	virtual void add_syntax_highlighter(Ref<EditorSyntaxHighlighter> p_highlighter) {}
 	virtual Control *get_base_editor() const { return nullptr; }
+
+	// Text this editor would insert if the given drag data were dropped at the
+	// caret, used to preview the drop. Empty when there is nothing to preview.
+	virtual String get_drop_preview_text(const Variant &p_data) { return String(); }
 };
 
 typedef ScriptEditorBase *(*CreateScriptEditorFunc)(const Ref<Resource> &p_resource);

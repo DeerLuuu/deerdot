@@ -2102,6 +2102,34 @@ String ScriptTextEditor::_get_dropped_resource_as_exported_member(const Ref<Reso
 	return vformat("@export var %s: %s", variable_name, class_name);
 }
 
+String ScriptTextEditor::get_drop_preview_text(const Variant &p_data) {
+	if (p_data.get_type() != Variant::DICTIONARY) {
+		return String();
+	}
+
+	Dictionary d = p_data;
+	if (String(d.get("type", "")) != "nodes") {
+		// Only node drops are previewed for now.
+		return String();
+	}
+
+	// Check what the drop itself checks, without the warnings: an invalid drop
+	// should not complain while the user is still dragging.
+	Node *scene_root = get_tree()->get_edited_scene_root();
+	Ref<Script> script = edited_res;
+	if (scene_root == nullptr || script.is_null() || !ClassDB::is_parent_class(script->get_instance_base_type(), "Node")) {
+		return String();
+	}
+
+	int line = 0;
+	int column = 0;
+	bool is_empty_line = false;
+	// The preview shows what inserting at the caret would produce.
+	_get_drop_position(Vector2(Math::INF, Math::INF), line, column, is_empty_line);
+
+	return _build_drop_text(d, line, column, is_empty_line, false).text;
+}
+
 void ScriptTextEditor::drop_data_fw(const Point2 &p_point, const Variant &p_data, Control *p_from) {
 	Dictionary d = p_data;
 
