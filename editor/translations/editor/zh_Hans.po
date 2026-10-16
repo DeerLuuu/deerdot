@@ -531,6 +531,9 @@ msgstr "保存为代码片段"
 msgid "Snippet prefix"
 msgstr "片段前缀"
 
+msgid "Insert Snippet"
+msgstr "插入代码片段"
+
 msgid "Saved snippet \"%s\"."
 msgstr "已保存片段 \"%s\"。"
 
