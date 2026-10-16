@@ -79,9 +79,6 @@ void GDScriptSnippetEditor::fill_context_menu(PopupMenu *p_menu, ScriptEditorBas
 	}
 
 	const HashMap<String, GDScriptLanguage::SnippetConfig> &snippets = GDScriptLanguage::get_singleton()->_get_snippets();
-	if (snippets.is_empty()) {
-		return;
-	}
 
 	context_menu_editor = p_editor;
 	context_menu_prefixes.clear();
@@ -92,6 +89,15 @@ void GDScriptSnippetEditor::fill_context_menu(PopupMenu *p_menu, ScriptEditorBas
 	submenu->set_name("__snippet_menu");
 	p_menu->add_child(submenu);
 	submenu->connect(SceneStringName(id_pressed), callable_mp_static(&GDScriptSnippetEditor::_expand_context_menu_snippet));
+
+	if (snippets.is_empty()) {
+		// Keep the entry visible even then, so the feature can be found.
+		submenu->add_item(TTRC("No snippets found"), -1);
+		submenu->set_item_disabled(0, true);
+		p_menu->add_separator();
+		p_menu->add_submenu_item(TTRC("Insert Snippet"), "__snippet_menu");
+		return;
+	}
 
 	// Ids of the snippet entries, kept away from the editor's own ids.
 	const int base_id = 100000;
