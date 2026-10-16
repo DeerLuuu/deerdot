@@ -2124,8 +2124,9 @@ String ScriptTextEditor::get_drop_preview_text(const Variant &p_data) {
 	int line = 0;
 	int column = 0;
 	bool is_empty_line = false;
-	// The preview shows what inserting at the caret would produce.
-	_get_drop_position(Vector2(Math::INF, Math::INF), line, column, is_empty_line);
+	// The drop inserts where the mouse is, so the preview must describe that
+	// same position.
+	_get_drop_position(code_editor->get_text_editor()->get_local_mouse_position(), line, column, is_empty_line);
 
 	return _build_drop_text(d, line, column, is_empty_line, false).text;
 }

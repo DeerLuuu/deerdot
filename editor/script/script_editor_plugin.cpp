@@ -1463,10 +1463,12 @@ void DocumentEditorContainer::_update_drop_preview() {
 	drop_code_preview->set_text(preview);
 	drop_code_preview->show();
 
-	// The preview belongs to a line of the editor: keep it aligned while the
-	// editor scrolls, and hide it when that line is out of view.
-	const int line = code_edit->get_caret_line();
-	const int column = code_edit->get_caret_column();
+	// The drop inserts where the mouse is, so the preview is placed there too;
+	// it follows the editor while it scrolls and hides when the line is out of
+	// view.
+	const Point2i drop_pos = code_edit->get_line_column_at_pos(code_edit->get_local_mouse_position());
+	const int line = drop_pos.y;
+	const int column = drop_pos.x;
 	if (line < code_edit->get_first_visible_line() || line > code_edit->get_last_full_visible_line()) {
 		drop_code_preview->hide();
 		return;
