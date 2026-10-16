@@ -1357,29 +1357,85 @@ bool DocumentEditorContainer::_can_drop_split_tab(const Vector2 &p_at_position, 
 	return String(data.get("type", String())) == "tab" && String(data.get("tab_type", String())) == "tab_container_tab";
 }
 
-// The overlay is shown while a tab is being dragged and the view is not split
-// yet. It doubles as the visual hint of where the new pane will appear.
+// The overlay is shown while a supported drag is in progress, highlighting the
+// area that will react to the drop. It doubles as the drop target for those
+// gestures, since the code editors below it stop drag propagation.
 void DocumentEditorContainer::_check_drop_overlay() {
 	if (split_drop_overlay == nullptr) {
 		return;
 	}
 
-	bool show = false;
 	Viewport *viewport = get_viewport();
-	if (split_pane == nullptr && viewport != nullptr && viewport->gui_is_dragging()) {
-		const Variant drag_data = viewport->gui_get_drag_data();
-		if (drag_data.get_type() == Variant::DICTIONARY) {
-			const Dictionary data = drag_data;
-			show = String(data.get("type", String())) == "tab" && String(data.get("tab_type", String())) == "tab_container_tab";
-		}
-	}
-
-	if (!show) {
+	if (viewport == nullptr || !viewport->gui_is_dragging()) {
 		_hide_drop_overlay();
 		return;
 	}
 
-	_show_drop_overlay(DROP_ZONE_RIGHT, TTRC("Drop here to split the view"));
+	const Variant drag_data = viewport->gui_get_drag_data();
+	if (drag_data.get_type() != Variant::DICTIONARY) {
+		_hide_drop_overlay();
+		return;
+	}
+
+	const Dictionary data = drag_data;
+	const String type = data.get("type", String());
+
+	// Dragging a document tab: offer to split the view on the right.
+	if (type == "tab" && String(data.get("tab_type", String())) == "tab_container_tab" && split_pane == nullptr) {
+		_show_drop_overlay(DROP_ZONE_RIGHT, TTRC("Drop here to split the view"));
+		return;
+	}
+
+	// Dragging nodes from the scene tree: offer to reference them in the script.
+	if (type == "nodes") {
+		_show_drop_overlay(DROP_ZONE_EDITOR, TTRC("Drop here to reference the node in the script"));
+		return;
+	}
+
+	_hide_drop_overlay();
+}
+
+bool DocumentEditorContainer::_can_drop_on_editor(const Vector2 &p_at_position, const Variant &p_data) const {
+	switch (drop_overlay_zone) {
+		case DROP_ZONE_RIGHT:
+		case DROP_ZONE_BOTTOM:
+			return _can_drop_split_tab(p_at_position, p_data);
+		case DROP_ZONE_EDITOR:
+			return _can_drop_nodes(p_data);
+		default:
+			return false;
+	}
+}
+
+void DocumentEditorContainer::_drop_on_editor(const Vector2 &p_at_position, const Variant &p_data) {
+	switch (drop_overlay_zone) {
+		case DROP_ZONE_RIGHT:
+		case DROP_ZONE_BOTTOM:
+			_drop_split_tab(p_at_position, p_data);
+			break;
+		case DROP_ZONE_EDITOR:
+			_drop_nodes(p_data);
+			break;
+		default:
+			break;
+	}
+}
+
+bool DocumentEditorContainer::_can_drop_nodes(const Variant &p_data) const {
+	if (p_data.get_type() != Variant::DICTIONARY) {
+		return false;
+	}
+
+	const Dictionary data = p_data;
+	return String(data.get("type", String())) == "nodes" && data.has("nodes") && data.has("scene_root");
+}
+
+void DocumentEditorContainer::_drop_nodes(const Variant &p_data) {
+	if (!_can_drop_nodes(p_data)) {
+		return;
+	}
+
+	_hide_drop_overlay();
 }
 
 void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &p_hint) {
@@ -1423,6 +1479,8 @@ Rect2 DocumentEditorContainer::_get_drop_overlay_rect(DropZone p_zone) const {
 			const float half = content.size.y * 0.5f;
 			return Rect2(content.position + Point2(0, content.size.y - half), Size2(content.size.x, half));
 		} break;
+		case DROP_ZONE_EDITOR:
+			return content;
 		default:
 			return Rect2();
 	}
@@ -4455,7 +4513,7 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	split_drop_overlay = memnew(Panel);
 	split_drop_overlay->set_as_top_level(true);
 	split_drop_overlay->set_mouse_filter(Control::MOUSE_FILTER_STOP);
-	split_drop_overlay->set_drag_forwarding(Callable(), callable_mp(this, &DocumentEditorContainer::_can_drop_split_tab), callable_mp(this, &DocumentEditorContainer::_drop_split_tab));
+	split_drop_overlay->set_drag_forwarding(Callable(), callable_mp(this, &DocumentEditorContainer::_can_drop_on_editor), callable_mp(this, &DocumentEditorContainer::_drop_on_editor));
 	split_drop_overlay->hide();
 	code_editor_container->add_child(split_drop_overlay);
 

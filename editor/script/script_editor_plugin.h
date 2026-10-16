@@ -259,6 +259,7 @@ class DocumentEditorContainer : public MarginContainer {
 		DROP_ZONE_NONE,
 		DROP_ZONE_RIGHT,
 		DROP_ZONE_BOTTOM,
+		DROP_ZONE_EDITOR, // The whole editing area, for drops that act on the script.
 	};
 
 	Panel *split_drop_overlay = nullptr;
@@ -399,6 +400,10 @@ class DocumentEditorContainer : public MarginContainer {
 	void _create_split_pane();
 
 	bool _can_drop_split_tab(const Vector2 &p_at_position, const Variant &p_data) const;
+	bool _can_drop_on_editor(const Vector2 &p_at_position, const Variant &p_data) const;
+	void _drop_on_editor(const Vector2 &p_at_position, const Variant &p_data);
+	bool _can_drop_nodes(const Variant &p_data) const;
+	void _drop_nodes(const Variant &p_data);
 	void _check_drop_overlay();
 	void _show_drop_overlay(DropZone p_zone, const String &p_hint);
 	void _hide_drop_overlay();
