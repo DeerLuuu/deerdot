@@ -1483,18 +1483,20 @@ void DocumentEditorContainer::_update_drop_preview() {
 	drop_code_preview->show();
 
 	// The preview belongs to a line of the editor: keep it aligned while the
-	// editor scrolls, and hide it when that line is out of view.
+	// editor scrolls, and hide it only when that line is fully out of view.
+	// Partly visible lines still count, which matters at the bottom edge where
+	// the last line usually is not fully visible.
 	const Point2i drop_pos = code_edit->get_line_column_at_pos(code_edit->get_local_mouse_position());
-	const int line = drop_pos.y;
-	const int column = drop_pos.x;
-	if (line < code_edit->get_first_visible_line() || line > code_edit->get_last_full_visible_line()) {
+	const Rect2i drop_rect = code_edit->get_rect_at_line_column(drop_pos.y, drop_pos.x);
+	const int line_height = code_edit->get_line_height();
+	if (drop_rect.position.y + line_height <= 0 || drop_rect.position.y >= code_edit->get_size().y) {
 		drop_code_preview->hide();
 		return;
 	}
 
 	const Color accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
 	drop_code_preview->set_modulate(Color(accent.r, accent.g, accent.b, 0.7f));
-	drop_code_preview->set_position(code_edit->get_rect_at_line_column(line, column).position);
+	drop_code_preview->set_position(drop_rect.position);
 }
 
 void DocumentEditorContainer::_hide_code_preview() {
