@@ -114,6 +114,7 @@ public:
 	// Registered as the script editor's "Code Snippets..." opener. Lazily
 	// creates the window (as a child of EditorNode) and shows it.
 	static void open_snippets_editor();
+	static void reload_snippets();
 
 	GDScriptSnippetEditor();
 };

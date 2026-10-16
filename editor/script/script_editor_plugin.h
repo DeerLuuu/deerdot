@@ -206,6 +206,7 @@ class DocumentEditorContainer : public MarginContainer {
 		FILE_MENU_SORT,
 
 		FILE_MENU_SNIPPETS,
+		FILE_MENU_SAVE_SNIPPET,
 
 		FILE_MENU_SPLIT_EDITOR,
 
@@ -248,6 +249,8 @@ class DocumentEditorContainer : public MarginContainer {
 
 	PopupMenu *recent_scripts = nullptr;
 	PopupMenu *theme_submenu = nullptr;
+	ConfirmationDialog *snippet_save_dialog = nullptr;
+	LineEdit *snippet_prefix_edit = nullptr;
 
 	Button *help_search = nullptr;
 	Button *site_search = nullptr;
@@ -428,6 +431,11 @@ class DocumentEditorContainer : public MarginContainer {
 	void _update_drag_feedback();
 	void _hide_split_overlay();
 	void _update_tab_menu_highlight();
+	void _show_save_snippet_dialog();
+	void _save_selection_as_snippet(const String &p_prefix);
+	void _on_save_snippet_confirmed();
+	void _update_snippet_dialog_ok(const String &p_text = String());
+	bool _has_text_selection() const;
 	void _show_drop_overlay(DropZone p_zone, const String &p_hint);
 	// Highlights an explicit area without accepting drops, used by menu
 	// actions that hint where a document will go.
@@ -603,6 +611,9 @@ public:
 	// calling it.
 	static void register_snippets_opener(void (*p_opener)()) { snippets_opener = p_opener; }
 	inline static void (*snippets_opener)() = nullptr;
+	// Called after this editor writes a snippet, so languages can pick it up.
+	static void register_snippets_changed(void (*p_callback)()) { snippets_changed = p_callback; }
+	inline static void (*snippets_changed)() = nullptr;
 
 	DocumentEditorContainer(bool p_is_main_editor, const String &p_config_section, const String &p_cache_path);
 };

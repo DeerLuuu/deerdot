@@ -1815,6 +1815,96 @@ void DocumentEditorContainer::_hide_code_preview() {
 	}
 }
 
+bool DocumentEditorContainer::_has_text_selection() const {
+	TextEditorBase *teb = Object::cast_to<TextEditorBase>(_get_current_editor());
+	CodeEdit *code_edit = (teb != nullptr) ? Object::cast_to<CodeEdit>(teb->get_base_editor()) : nullptr;
+	return code_edit != nullptr && code_edit->has_selection();
+}
+
+void DocumentEditorContainer::_show_save_snippet_dialog() {
+	if (snippet_save_dialog == nullptr || !_has_text_selection()) {
+		return;
+	}
+
+	snippet_prefix_edit->clear();
+	_update_snippet_dialog_ok();
+	snippet_save_dialog->popup_centered();
+	snippet_prefix_edit->grab_focus();
+}
+
+void DocumentEditorContainer::_update_snippet_dialog_ok(const String &p_text) {
+	if (snippet_save_dialog == nullptr || snippet_prefix_edit == nullptr) {
+		return;
+	}
+
+	// A snippet needs a prefix to be typed.
+	const bool empty = snippet_prefix_edit->get_text().strip_edges().is_empty();
+	snippet_save_dialog->get_ok_button()->set_disabled(empty);
+}
+
+void DocumentEditorContainer::_on_save_snippet_confirmed() {
+	if (snippet_prefix_edit == nullptr) {
+		return;
+	}
+	_save_selection_as_snippet(snippet_prefix_edit->get_text());
+}
+
+// Writes the selected code into the project's snippets as a new snippet, so it
+// can be expanded by prefix like any other snippet.
+void DocumentEditorContainer::_save_selection_as_snippet(const String &p_prefix) {
+	const String prefix = p_prefix.strip_edges();
+	if (prefix.is_empty() || !_has_text_selection()) {
+		return;
+	}
+
+	TextEditorBase *teb = Object::cast_to<TextEditorBase>(_get_current_editor());
+	CodeEdit *code_edit = (teb != nullptr) ? Object::cast_to<CodeEdit>(teb->get_base_editor()) : nullptr;
+	if (code_edit == nullptr) {
+		return;
+	}
+	const String body = code_edit->get_selected_text();
+
+	const String dir = EditorPaths::get_singleton()->get_project_snippets_dir();
+	DirAccess::make_dir_recursive_absolute(dir);
+	const String path = dir.path_join("user_snippets.json");
+
+	// Keep whatever the file already holds; it may have been written before.
+	Dictionary data;
+	if (FileAccess::exists(path)) {
+		Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ);
+		if (file.is_valid()) {
+			JSON json;
+			if (json.parse(file->get_as_text()) != OK || json.get_data().get_type() != Variant::DICTIONARY) {
+				// Never overwrite a file that cannot be understood.
+				error_dialog->set_text(vformat(TTR("Could not save the snippet: \"%s\" is not valid JSON."), path));
+				error_dialog->popup_centered();
+				return;
+			}
+			data = json.get_data();
+		}
+	}
+
+	Dictionary snippet;
+	snippet["prefix"] = prefix;
+	snippet["body"] = body;
+	data[prefix] = snippet;
+
+	Ref<FileAccess> out = FileAccess::open(path, FileAccess::WRITE);
+	if (out.is_null()) {
+		error_dialog->set_text(vformat(TTR("Could not write \"%s\"."), path));
+		error_dialog->popup_centered();
+		return;
+	}
+	out->store_string(JSON::stringify(data, "\t"));
+	out->flush();
+
+	if (snippets_changed) {
+		snippets_changed();
+	}
+
+	EditorToaster::get_singleton()->popup_str(vformat(TTR("Saved snippet \"%s\"."), prefix), EditorToaster::SEVERITY_INFO);
+}
+
 void DocumentEditorContainer::_show_drop_overlay(DropZone p_zone, const String &p_hint) {
 	if (split_drop_overlay == nullptr || p_zone == DROP_ZONE_NONE) {
 		return;
@@ -2885,6 +2975,9 @@ void DocumentEditorContainer::_menu_option(int p_option) {
 				if (snippets_opener) {
 					snippets_opener();
 				}
+			} break;
+			case FILE_MENU_SAVE_SNIPPET: {
+				_show_save_snippet_dialog();
 			} break;
 			case FILE_MENU_SPLIT_EDITOR: {
 				_toggle_split_editor_view();
@@ -4278,6 +4371,12 @@ void DocumentEditorContainer::_prepare_file_menu() {
 	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_CLOSE), tab_container->get_tab_count() < 1);
 	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_CLOSE_ALL), tab_container->get_tab_count() < 1);
 
+	// Turning the selection into a snippet needs a selection.
+	const int snippet_item = p_menu->get_item_index(FILE_MENU_SAVE_SNIPPET);
+	if (snippet_item != -1) {
+		p_menu->set_item_disabled(snippet_item, !_has_text_selection());
+	}
+
 	// The split action turns into a merge action while a second pane exists.
 	const int split_item = p_menu->get_item_index(FILE_MENU_SPLIT_EDITOR);
 	if (split_item != -1) {
@@ -4998,6 +5097,22 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	split_drop_box->add_child(split_drop_hint);
 
 	// Menu opened by right-clicking a document tab.
+	// Asking for the prefix when turning the selection into a snippet.
+	snippet_save_dialog = memnew(ConfirmationDialog);
+	snippet_save_dialog->set_title(TTRC("Save Selection as Snippet"));
+	snippet_save_dialog->set_ok_button_text(TTRC("Save"));
+	snippet_save_dialog->set_flag(Window::FLAG_RESIZE_DISABLED, true);
+	VBoxContainer *snippet_dialog_box = memnew(VBoxContainer);
+	snippet_save_dialog->add_child(snippet_dialog_box);
+	snippet_prefix_edit = memnew(LineEdit);
+	snippet_prefix_edit->set_placeholder(TTRC("Snippet prefix"));
+	snippet_prefix_edit->set_custom_minimum_size(Size2(280, 0) * EDSCALE);
+	snippet_dialog_box->add_child(snippet_prefix_edit);
+	snippet_save_dialog->register_text_enter(snippet_prefix_edit);
+	snippet_prefix_edit->connect(SceneStringName(text_changed), callable_mp(this, &DocumentEditorContainer::_update_snippet_dialog_ok));
+	snippet_save_dialog->connect(SceneStringName(confirmed), callable_mp(this, &DocumentEditorContainer::_on_save_snippet_confirmed));
+	add_child(snippet_save_dialog);
+
 	tab_context_menu = memnew(PopupMenu);
 	add_child(tab_context_menu);
 	tab_context_menu->connect(SceneStringName(id_pressed), callable_mp(this, &DocumentEditorContainer::_tab_menu_option));
@@ -5128,6 +5243,7 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 		if (snippets_opener) {
 			file_menu->get_popup()->add_separator();
 			file_menu->get_popup()->add_shortcut(ED_SHORTCUT("script_editor/code_snippets", TTRC("Code Snippets...")), FILE_MENU_SNIPPETS);
+			file_menu->get_popup()->add_shortcut(ED_SHORTCUT("script_editor/save_snippet", TTRC("Save Selection as Snippet...")), FILE_MENU_SAVE_SNIPPET);
 			file_menu->get_popup()->add_shortcut(ED_SHORTCUT("script_editor/split_editor_view", TTRC("Split Editor View"), KeyModifierMask::CMD_OR_CTRL | Key::BACKSLASH), FILE_MENU_SPLIT_EDITOR);
 		}
 		file_menu->get_popup()->add_separator();

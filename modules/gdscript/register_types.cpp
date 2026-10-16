@@ -161,6 +161,7 @@ void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 
 		// Must happen before the script editor builds its File menu.
 		DocumentEditorContainer::register_snippets_opener(&GDScriptSnippetEditor::open_snippets_editor);
+		DocumentEditorContainer::register_snippets_changed(&GDScriptSnippetEditor::reload_snippets);
 
 		gdscript_translation_parser_plugin.instantiate();
 		EditorTranslationParser::get_singleton()->add_parser(gdscript_translation_parser_plugin, EditorTranslationParser::STANDARD);

@@ -53,6 +53,14 @@
 
 GDScriptSnippetEditor *GDScriptSnippetEditor::singleton = nullptr;
 
+void GDScriptSnippetEditor::reload_snippets() {
+	// Pick up snippets written outside this window, such as a selection saved
+	// from the script editor.
+	if (GDScriptLanguage::get_singleton()) {
+		GDScriptLanguage::get_singleton()->load_snippets();
+	}
+}
+
 void GDScriptSnippetEditor::open_snippets_editor() {
 	if (!singleton) {
 		singleton = memnew(GDScriptSnippetEditor);
