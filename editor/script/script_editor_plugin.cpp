@@ -692,8 +692,17 @@ void DocumentOutline::_tree_selected() {
 	if (updating_outline) {
 		return;
 	}
+	// The selection can be gone by the time the signal is delivered: rebuilding
+	// the tree (on a filter change, or a new member list) clears it, and the
+	// tree still reports the selection change. Reading it unconditionally
+	// dereferenced a null item.
+	TreeItem *selected = tree->get_selected();
+	if (selected == nullptr) {
+		return;
+	}
+
 	Control *active_editor = document_editor_container->get_active_editor();
-	int line = tree->get_selected()->get_metadata(0);
+	int line = selected->get_metadata(0);
 	if (line < 0) {
 		return;
 	}
