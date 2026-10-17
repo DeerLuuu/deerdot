@@ -1,0 +1,3 @@
+GDTEST_ANALYZER_ERROR
+>> ERROR at line 7: "T" is a trait, so it can't be used as a type. Use "uses" to bring its members into a class.
+>> ERROR at line 10: "T" is a trait, so it can't be used as a type. Use "uses" to bring its members into a class.

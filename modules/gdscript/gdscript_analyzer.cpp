@@ -1089,9 +1089,12 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 							found = true;
 							break;
 						case GDScriptParser::ClassNode::Member::TRAIT:
-							result = member.get_datatype();
-							found = true;
-							break;
+							// A trait is not a type: no value can have it as its type,
+							// not even an instance of a class that uses it, because the
+							// members are copied in and the trait leaves no trace in
+							// the value. `uses` is the way to refer to its members.
+							push_error(vformat(R"("%s" is a trait, so it can't be used as a type. Use "uses" to bring its members into a class.)", first), p_type);
+							return bad_type;
 						case GDScriptParser::ClassNode::Member::ENUM:
 							result = member.get_datatype();
 							found = true;
@@ -1127,7 +1130,13 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 	}
 
 	if (!result.is_set()) {
-		push_error(vformat(R"(Could not find type "%s" in the current scope.)", first), p_type);
+		// A trait declared in another script is not a type either, and the
+		// generic "not found" would read as a typo in the type name.
+		if (may_name_trait(first)) {
+			push_error(vformat(R"("%s" is a trait, so it can't be used as a type. Use "uses" to bring its members into a class.)", first), p_type);
+		} else {
+			push_error(vformat(R"(Could not find type "%s" in the current scope.)", first), p_type);
+		}
 		return bad_type;
 	}
 
