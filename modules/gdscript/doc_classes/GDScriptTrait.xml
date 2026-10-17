@@ -39,7 +39,8 @@
 		[b]Traits are not base types:[/b] A trait cannot be instantiated, and [code]extends SomeTrait[/code] is an error. To use a trait, declare it and then [code]uses[/code] it from a class. A class can use several traits by writing one [code]uses[/code] statement per trait.
 		[b]Overriding members:[/b] A member declared on the class itself always wins over a trait member with the same name. Declaring a function with a trait's signature in the class overrides the trait's implementation, which is how a trait can offer a default that a class customizes.
 		[b]Errors:[/b] A trait cannot contain inner classes or other traits. Using the same trait more than once in one class is an error. Calling a trait's functions directly, through a trait reference rather than an instance, is an error, because a trait has no instance of its own — call them on a class that uses it.
-		[b]Note:[/b] Traits can only be declared and used within the same script file. Referencing a trait from another file, declaring a trait with [code]trait_name[/code], and testing a trait with [code]is[/code] or [code]as[/code] are not supported yet.
+		[b]Traits across files:[/b] A trait declared at the top level of a script is known to the whole project, so another script can use it by name with [code]uses[/code]. A trait declared inside an inner class is only reachable from that file, written with dots as [code]uses Inner.SomeTrait[/code].
+		[b]Note:[/b] A trait is not a type yet: testing one with [code]is[/code] or [code]as[/code], or naming one in a type hint, is not supported.
 	</description>
 	<tutorials>
 		<link title="GDScript reference">$DOCS_URL/tutorials/scripting/gdscript/gdscript_basics.html</link>
