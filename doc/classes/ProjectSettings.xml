@@ -642,6 +642,9 @@
 		<member name="debug/gdscript/warnings/shadowed_global_identifier" type="int" setter="" getter="" default="1">
 			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when defining a local or member variable, signal, or enum that would have the same name as a built-in function or global class name, thus shadowing it.
 		</member>
+		<member name="debug/gdscript/warnings/shadowed_trait_member" type="int" setter="" getter="" default="1">
+			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a trait's member is not copied in a class that uses the trait, because the class or one of its base classes already has a member with the same name.
+		</member>
 		<member name="debug/gdscript/warnings/shadowed_variable" type="int" setter="" getter="" default="1">
 			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a local variable or local constant shadows a member declared in the current class.
 		</member>

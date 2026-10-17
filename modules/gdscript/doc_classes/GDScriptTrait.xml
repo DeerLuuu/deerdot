@@ -36,11 +36,11 @@
 			health -= amount
 		[/codeblock]
 		Such a trait is registered globally, so any script can use it by name. Only one trait can describe a file, and it must be written at the top level of that file.
-		[b]Traits are not base types:[/b] A trait cannot be instantiated, and [code]extends SomeTrait[/code] is an error. To use a trait, declare it and then [code]uses[/code] it from a class. A class can use several traits by writing one [code]uses[/code] statement per trait.
+		[b]Traits are not base types:[/b] A trait is not a type, so it cannot be instantiated, and using it in [code]extends[/code], as a type hint, in an [code]as[/code] cast or in a typed container is an error. To use a trait, declare it and then [code]uses[/code] it from a class. A class can use several traits by writing one [code]uses[/code] statement per trait.
 		[b]Overriding members:[/b] A member declared on the class itself always wins over a trait member with the same name. Declaring a function with a trait's signature in the class overrides the trait's implementation, which is how a trait can offer a default that a class customizes.
 		[b]Errors:[/b] A trait cannot contain inner classes or other traits. Using the same trait more than once in one class is an error. Calling a trait's functions directly, through a trait reference rather than an instance, is an error, because a trait has no instance of its own — call them on a class that uses it.
 		[b]Traits across files:[/b] A trait declared at the top level of a script is known to the whole project, so another script can use it by name with [code]uses[/code]. A trait declared inside an inner class is only reachable from that file, written with dots as [code]uses Inner.SomeTrait[/code].
-		[b]Type tests:[/b] [code]value is SomeTrait[/code] answers whether the class of [code]value[/code] took that trait, directly or through a base class. The answer is known while the script is analyzed, so the expression costs nothing at runtime. A trait is not a type, so [code]as[/code] and type hints have nothing to refer to.
+		[b]Type tests:[/b] [code]value is SomeTrait[/code] answers whether the class of [code]value[/code] took that trait, directly or through a base class. Like [code]is SomeClass[/code], it asks about the value itself: when the class of [code]value[/code] is known to take the trait, the answer is decided while the script is analyzed and costs nothing at runtime; otherwise the value's script is asked at runtime, so a value whose static type is a base class or [Variant] still gets the correct answer.
 	</description>
 	<tutorials>
 		<link title="GDScript reference">$DOCS_URL/tutorials/scripting/gdscript/gdscript_basics.html</link>
