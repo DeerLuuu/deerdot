@@ -6061,7 +6061,9 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 			file_menu->get_popup()->add_child(layout_presets_menu);
 			layout_presets_menu->connect(SceneStringName(id_pressed), callable_mp(this, &DocumentEditorContainer::_layout_preset_selected));
 			file_menu->get_popup()->add_submenu_item(TTRC("Layouts"), "__layout_presets");
-			file_menu->get_popup()->add_shortcut(ED_SHORTCUT("script_editor/split_editor_view", TTRC("Split Editor View"), KeyModifierMask::CMD_OR_CTRL | Key::BACKSLASH), FILE_MENU_SPLIT_EDITOR);
+			// Ctrl+\ is the files panel toggle, so the split view needs its own
+			// shortcut; with the old one only the toggle ever fired.
+			file_menu->get_popup()->add_shortcut(ED_SHORTCUT("script_editor/split_editor_view", TTRC("Split Editor View"), KeyModifierMask::CMD_OR_CTRL | KeyModifierMask::ALT | Key::BACKSLASH), FILE_MENU_SPLIT_EDITOR);
 		}
 		file_menu->get_popup()->add_separator();
 	}
