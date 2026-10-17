@@ -844,6 +844,9 @@ Error GDScriptAnalyzer::resolve_class_uses(GDScriptParser::ClassNode *p_class, c
 			// live in the file that declares the trait, and must not be changed by
 			// the classes that use it.
 			copied.trait_origin.push_back(trait->fqcn);
+			// Remember where the member came in, so the outline can point at a line
+			// of this file instead of one from the trait's file.
+			copied.trait_use_line = uses->start_line;
 			// Copied members arrive as full Member records; store them directly.
 			p_class->members_indices[member_name] = p_class->members.size();
 			p_class->members.push_back(copied);

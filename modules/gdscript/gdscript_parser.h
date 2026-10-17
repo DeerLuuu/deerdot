@@ -612,6 +612,9 @@ public:
 			// so a trait's own members are never modified by the classes that use
 			// it.
 			Vector<String> trait_origin;
+			// For a copied member, the line of the `uses` statement that copied it,
+			// which is a line of the consuming file. -1 otherwise.
+			int trait_use_line = -1;
 
 			String get_name() const {
 				switch (type) {

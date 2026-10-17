@@ -161,8 +161,10 @@ Vector<ScriptLanguage::ScriptTemplate> GDScriptLanguage::get_built_in_templates(
 
 // Collects one entry per member as "name:line:kind", so the editor can show the
 // icon matching the kind. Members of an inner class are listed under the class,
-// and members taken from a trait are listed under the trait.
-static void get_member_names_recursively(const GDScriptParser::ClassNode *p_class, const String &p_prefix, HashMap<int, String> &r_members) {
+// and members taken from a trait are listed under the trait. The entries are
+// appended in declaration order: a line number cannot be the key, since two
+// members (a copied one included) can share a line and one entry would be lost.
+static void get_member_names_recursively(const GDScriptParser::ClassNode *p_class, const String &p_prefix, Vector<String> &r_members) {
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
 		if (member.type == GDScriptParser::ClassNode::Member::CLASS || member.type == GDScriptParser::ClassNode::Member::TRAIT) {
 			const String new_prefix = member.m_class->identifier->name;
@@ -198,16 +200,23 @@ static void get_member_names_recursively(const GDScriptParser::ClassNode *p_clas
 		}
 
 		String prefix = p_prefix;
+		int line = node->start_line;
 		if (!member.trait_origin.is_empty()) {
 			// The first trait that brought this member in names the group it is
 			// listed under, like the class of a member of an inner class.
 			const String &origin = member.trait_origin[0];
 			const String trait_name = origin.get_slice("::", origin.get_slice_count("::") - 1);
 			prefix = prefix.is_empty() ? trait_name : prefix + "." + trait_name;
+			// The member was declared in the trait's file, so its line is
+			// meaningless here. The `uses` statement that brought it in is the
+			// closest place in this document.
+			if (member.trait_use_line > 0) {
+				line = member.trait_use_line;
+			}
 		}
 
 		const String full_name = prefix.is_empty() ? String(member_name) : prefix + "." + String(member_name);
-		r_members[node->start_line] = full_name + ":" + itos(node->start_line) + ":" + kind;
+		r_members.push_back(full_name + ":" + itos(line) + ":" + kind);
 	}
 }
 
@@ -276,12 +285,12 @@ bool GDScriptEditorLanguage::validate(const String &p_script, const String &p_pa
 		return false;
 	} else if (r_functions) {
 		const GDScriptParser::ClassNode *cl = parser.get_tree();
-		HashMap<int, String> members;
+		Vector<String> members;
 
 		get_member_names_recursively(cl, "", members);
 
-		for (const KeyValue<int, String> &E : members) {
-			r_functions->push_back(E.value);
+		for (const String &member : members) {
+			r_functions->push_back(member);
 		}
 	}
 
