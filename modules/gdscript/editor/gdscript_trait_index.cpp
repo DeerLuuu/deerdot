@@ -76,4 +76,6 @@ void gdscript_scan_project_traits() {
 
 	EditorFileSystemDirectory *root = EditorFileSystem::get_singleton()->get_filesystem();
 	_scan_traits_in_dir(root);
+
+	print_verbose("GDScript: registered traits declared by the project.");
 }

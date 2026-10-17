@@ -139,6 +139,22 @@ static void _editor_init() {
 
 #endif // TOOLS_ENABLED
 
+static void _init_trait_scan() {
+	// Runs while the editor is starting, when the filesystem exists and the
+	// project can be read for the traits its scripts declare.
+	EditorFileSystem *file_system = EditorFileSystem::get_singleton();
+	if (file_system == nullptr) {
+		return;
+	}
+
+	if (!file_system->is_connected("filesystem_changed", callable_mp_static(gdscript_scan_project_traits))) {
+		file_system->connect("filesystem_changed", callable_mp_static(gdscript_scan_project_traits));
+	}
+
+	// An initial pass, since the first `filesystem_changed` may be a while away.
+	gdscript_scan_project_traits();
+}
+
 void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		GDREGISTER_CLASS(GDScript);
@@ -167,10 +183,9 @@ void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 		DocumentEditorContainer::register_snippets_changed(&GDScriptSnippetEditor::reload_snippets);
 		DocumentEditorContainer::register_context_menu_contributor(&GDScriptSnippetEditor::fill_context_menu);
 		// Traits are registered while scripts are parsed, so read them from the
-		// project as soon as the filesystem is known.
-		if (EditorFileSystem::get_singleton() != nullptr) {
-			EditorFileSystem::get_singleton()->connect("filesystem_changed", callable_mp_static(gdscript_scan_project_traits));
-		}
+		// project too. The filesystem does not exist yet at this point, so the
+		// reading starts once the editor is being set up.
+		EditorNode::add_init_callback(_init_trait_scan);
 
 		gdscript_translation_parser_plugin.instantiate();
 		EditorTranslationParser::get_singleton()->add_parser(gdscript_translation_parser_plugin, EditorTranslationParser::STANDARD);
