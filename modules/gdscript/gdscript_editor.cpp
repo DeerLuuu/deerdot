@@ -4609,7 +4609,7 @@ static bool _code_uses_trait(const String &p_code, const StringName &p_name) {
 	// The caret is marked in the code, so drop that character first.
 	const String code = p_code.remove_char(0xFFFF);
 	for (const String &line : code.split("\n")) {
-		const String stripped = line.strip_edges();
+		const String stripped = line.remove_char(0xFEFF).strip_edges();
 		if (!stripped.begins_with("uses")) {
 			continue;
 		}
@@ -4639,7 +4639,7 @@ static int _find_trait_declaration_line(const String &p_path, const StringName &
 
 	const Vector<String> lines = file->get_as_text().split("\n");
 	for (int i = 0; i < lines.size(); i++) {
-		const String line = lines[i].strip_edges();
+		const String line = lines[i].remove_char(0xFEFF).strip_edges();
 		if (!line.begins_with("trait ")) {
 			continue;
 		}

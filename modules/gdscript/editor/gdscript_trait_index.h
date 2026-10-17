@@ -30,6 +30,13 @@
 
 #pragma once
 
+#include "core/string/string_name.h"
+
 // Reads the traits declared by the scripts of the project, so a `uses` can be
 // resolved without the declaring script having been parsed first.
 void gdscript_scan_project_traits();
+
+// Whether the project declares a trait with this name. Reads the project when
+// it has not been read yet, since scripts can be analyzed before the
+// filesystem scan finishes (restored scripts, for instance).
+bool gdscript_project_has_trait(const StringName &p_name);

@@ -36,6 +36,9 @@
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
+#ifdef TOOLS_ENABLED
+#include "editor/gdscript_trait_index.h"
+#endif
 #include "core/core_constants.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
@@ -5498,14 +5501,8 @@ void GDScriptAnalyzer::reduce_type_test(GDScriptParser::TypeTestNode *p_type_tes
 	// still a fair question, and it is answered here: whether the class of the
 	// operand took that trait.
 	const String trait_name = _name_of_type_test(p_type_test->test_type);
-	if (!trait_name.is_empty()) {
-		bool is_trait = GDScriptLanguage::has_global_trait(trait_name);
-		if (!is_trait) {
-			GDScriptParser::ClassNode *found = parser->find_class(trait_name.replace(".", "::"));
-			is_trait = found != nullptr && found->type == GDScriptParser::Node::TRAIT;
-		}
-
-		if (is_trait) {
+	if (!trait_name.is_empty() && may_name_trait(trait_name)) {
+		{
 			reduce_expression(p_type_test->operand);
 
 			bool took_trait = false;
@@ -6629,6 +6626,52 @@ GDScriptParser::DataType GDScriptAnalyzer::get_operation_type(Variant::Operator 
 	}
 
 	return result;
+}
+
+bool GDScriptAnalyzer::may_name_trait(const String &p_name) const {
+	// A name that is a type of this file wins, unless it is a trait of it.
+	GDScriptParser::ClassNode *found = parser->find_class(p_name.replace(".", "::"));
+	if (found != nullptr) {
+		return found->type == GDScriptParser::Node::TRAIT;
+	}
+
+	// Same for the types the engine knows about.
+	if (ClassDB::class_exists(p_name) || ScriptServer::is_global_class(p_name) || Variant::get_type_by_name(p_name) < Variant::VARIANT_MAX) {
+		return false;
+	}
+
+	// A member keeps its meaning too: a constant holding a script can be used in
+	// a type test, and must not be read as a trait.
+	{
+		LocalVector<const GDScriptParser::ClassNode *> classes;
+		classes.push_back(parser->get_tree());
+		while (!classes.is_empty()) {
+			const GDScriptParser::ClassNode *cls = classes[classes.size() - 1];
+			classes.remove_at(classes.size() - 1);
+			if (cls == nullptr) {
+				continue;
+			}
+			if (cls->has_member(p_name)) {
+				return false;
+			}
+			for (const GDScriptParser::ClassNode::Member &member : cls->members) {
+				if (member.type == GDScriptParser::ClassNode::Member::CLASS || member.type == GDScriptParser::ClassNode::Member::TRAIT) {
+					classes.push_back(member.m_class);
+				}
+			}
+		}
+	}
+
+	if (GDScriptLanguage::has_global_trait(p_name)) {
+		return true;
+	}
+
+#ifdef TOOLS_ENABLED
+	// The project may not have been read yet, so ask it.
+	return gdscript_project_has_trait(p_name);
+#else
+	return false;
+#endif
 }
 
 StringName GDScriptAnalyzer::trait_name_from_fqcn(const String &p_fqcn) {

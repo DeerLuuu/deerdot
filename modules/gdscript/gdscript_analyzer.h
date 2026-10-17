@@ -174,6 +174,9 @@ public:
 	// level trait is stored as "res://path.gd::Name", one of an inner class as
 	// "Inner::Nested".
 	static StringName trait_name_from_fqcn(const String &p_fqcn);
+	// Whether a name written in a type test may be naming a trait rather than a
+	// type. Types win: a trait never shadows a type with the same name.
+	bool may_name_trait(const String &p_name) const;
 
 	Error resolve_inheritance();
 	Error resolve_interface();

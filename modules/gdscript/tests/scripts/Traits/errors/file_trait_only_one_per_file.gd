@@ -1,2 +1,2 @@
-trait A
-trait B
+trait First
+trait Second

@@ -2130,11 +2130,13 @@ PackedStringArray ScriptTextEditor::_get_trait_names_in_file(const String &p_pat
 	}
 
 	for (const String &line : file->get_as_text().split("\n")) {
-		// Top level declarations start at the first column.
-		if (!line.begins_with("trait ")) {
+		// Top level declarations start at the first column, after a possible
+		// byte order mark.
+		const String code = line.remove_char(0xFEFF);
+		if (!code.begins_with("trait ")) {
 			continue;
 		}
-		String name = line.substr(6).strip_edges().split(":")[0].split("(")[0].strip_edges();
+		String name = code.substr(6).strip_edges().split(":")[0].split("(")[0].strip_edges();
 		if (name.is_valid_identifier()) {
 			names.push_back(name);
 		}
