@@ -5706,10 +5706,16 @@ void DocumentEditorContainer::_focus_changed(Node *p_node) {
 	}
 
 	// The user started working in the other pane: follow it everywhere the
-	// current document matters, including the name shown at the top.
+	// current document matters, including the name shown at the top, the
+	// outline (which lists the members of the active document) and the menus
+	// that depend on whether that document is a script or a help page.
 	active_pane = new_active;
 	_update_document_name_button();
 	document_list->update_list();
+	_update_selected_editor_menu();
+	_update_online_doc();
+	document_outline->update_outline();
+	document_outline->update_visibility();
 }
 
 void DocumentEditorContainer::_update_document_name_button() {
