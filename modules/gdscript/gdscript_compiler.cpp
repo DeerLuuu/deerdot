@@ -2847,6 +2847,18 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 		p_script->rpc_config = p_script->base->rpc_config.duplicate();
 	}
 
+	// Member indices inherited from the base class are kept, and members added
+	// here must not reuse them. A class can have a member with the same name as
+	// one of its base class (a trait's member may shadow an inherited one), and
+	// the instance's member array is sized by `member_indices.size()`. Reusing
+	// the inherited index would make `member_indices[name]` overwrite the base's
+	// entry, so the map would not grow while an initializer still writes at the
+	// dropped index, corrupting the instance (out-of-bounds write on `new()`).
+	int next_member_index = 0;
+	for (const KeyValue<StringName, GDScript::MemberInfo> &E : p_script->member_indices) {
+		next_member_index = MAX(next_member_index, E.value.index + 1);
+	}
+
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
 		switch (member.type) {
 			case GDScriptParser::ClassNode::Member::VARIABLE: {
@@ -2919,7 +2931,7 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 					minfo.index = p_script->static_variables_indices.size();
 					p_script->static_variables_indices[name] = minfo;
 				} else {
-					minfo.index = p_script->member_indices.size();
+					minfo.index = next_member_index++;
 					p_script->member_indices[name] = minfo;
 					p_script->members.insert(name);
 				}
@@ -2969,7 +2981,7 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 
 				// This is not a normal member, but we need this to keep indices in order.
 				GDScript::MemberInfo minfo;
-				minfo.index = p_script->member_indices.size();
+				minfo.index = next_member_index++;
 
 				PropertyInfo prop_info;
 				prop_info.name = annotation->export_info.name;

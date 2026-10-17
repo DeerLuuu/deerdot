@@ -1,0 +1,2 @@
+GDTEST_OK
+~~ WARNING at line 18: (SHADOWED_TRAIT_MEMBER) The member "x" from trait "T" is not copied because the class already has a member with that name.

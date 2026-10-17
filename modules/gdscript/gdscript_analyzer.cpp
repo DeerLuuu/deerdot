@@ -809,6 +809,28 @@ Error GDScriptAnalyzer::resolve_class_uses(GDScriptParser::ClassNode *p_class, c
 				continue;
 			}
 
+			// A member already provided by a base class is not copied for
+			// variables: the class would get a second member slot for a name it
+			// already has, which the trait promise ("the trait's member is
+			// copied") does not cover for inherited state, and the derived
+			// initializer would silently replace the base's value. The class's
+			// inherited member is used instead, and the user is told about it.
+			if (member.type == GDScriptParser::ClassNode::Member::VARIABLE) {
+				const GDScriptParser::ClassNode *base = p_class->base_type.class_type;
+				bool inherited = false;
+				while (base != nullptr) {
+					if (base->has_member(member_name)) {
+						inherited = true;
+						break;
+					}
+					base = base->base_type.class_type;
+				}
+				if (inherited) {
+					parser->push_warning(uses, GDScriptWarning::SHADOWED_TRAIT_MEMBER, member_name, uses->fqtn);
+					continue;
+				}
+			}
+
 			GDScriptParser::ClassNode::Member copied = member;
 			GDScriptParser::Node *source = copied.get_source_node();
 			if (source != nullptr) {
@@ -1506,17 +1528,18 @@ void GDScriptAnalyzer::resolve_class_interface(GDScriptParser::ClassNode *p_clas
 			return;
 		}
 
-		// Bring in the members of any traits this class/trait uses.
-		// Done after inheritance so a trait can override inherited members.
-		if (resolve_class_uses(p_class) != OK) {
-			return;
-		}
-
+		// Resolve the base class interface first: `uses` below needs to know which
+		// members the class already inherits before it copies a trait's members.
 		GDScriptParser::DataType base_type = p_class->base_type;
 		if (base_type.kind == GDScriptParser::DataType::CLASS ||
 				base_type.kind == GDScriptParser::DataType::TRAIT) {
 			GDScriptParser::ClassNode *base_class = base_type.class_type;
 			resolve_class_interface(base_class, p_class);
+		}
+
+		// Bring in the members of any traits this class/trait uses.
+		if (resolve_class_uses(p_class) != OK) {
+			return;
 		}
 
 		for (uint32_t i = 0; i < p_class->members.size(); i++) {

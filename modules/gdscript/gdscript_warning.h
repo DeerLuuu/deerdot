@@ -98,6 +98,7 @@ public:
 		CONSTANT_USED_AS_FUNCTION, // Function not found, but there's a constant with the same name.
 		FUNCTION_USED_AS_PROPERTY, // Property not found, but there's a function with the same name.
 #endif // DISABLE_DEPRECATED
+		SHADOWED_TRAIT_MEMBER, // A trait's member is not copied because the class already has a member with that name.
 		WARNING_MAX,
 	};
 
@@ -158,6 +159,7 @@ public:
 		WARN, // CONSTANT_USED_AS_FUNCTION
 		WARN, // FUNCTION_USED_AS_PROPERTY
 #endif // DISABLE_DEPRECATED
+		WARN, // SHADOWED_TRAIT_MEMBER
 	};
 
 	static_assert(std_size(default_warning_levels) == WARNING_MAX, "Amount of default levels does not match the amount of warnings.");
