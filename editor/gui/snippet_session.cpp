@@ -54,6 +54,7 @@ Ref<SnippetSession> SnippetSession::get_for(CodeEdit *p_edit) {
 	// session can consume Tab while active (see Control::_call_gui_input).
 	p_edit->connect("gui_input", callable_mp(session.ptr(), &SnippetSession::_on_gui_input));
 	p_edit->connect("text_changed", callable_mp(session.ptr(), &SnippetSession::_on_text_changed));
+	p_edit->connect("text_set", callable_mp(session.ptr(), &SnippetSession::_on_text_set));
 	p_edit->connect("caret_changed", callable_mp(session.ptr(), &SnippetSession::_on_caret_changed));
 
 	p_edit->set_meta(META_NAME, session);
@@ -67,6 +68,7 @@ void SnippetSession::begin(const Vector<SnippetTabStop> &p_stops) {
 	stops = p_stops;
 	current = -1;
 	active = true;
+	last_version = code_edit->get_version();
 	_apply_stop(0);
 }
 
@@ -230,6 +232,23 @@ void SnippetSession::_on_gui_input(const Ref<InputEvent> &p_event) {
 		return;
 	}
 
+	// Undo and redo rewrite the text the recorded stops point into, and the
+	// session cannot follow that: end it here, before the event reaches the
+	// editor, so the key that follows cannot navigate into stale positions.
+	// The event is not consumed, so the editor still undoes or redoes.
+	if (key->is_action("ui_undo", true)) {
+		if (code_edit->has_undo()) {
+			end();
+		}
+		return;
+	}
+	if (key->is_action("ui_redo", true)) {
+		if (code_edit->has_redo()) {
+			end();
+		}
+		return;
+	}
+
 	if (key->get_keycode() != Key::TAB) {
 		return;
 	}
@@ -250,6 +269,19 @@ void SnippetSession::_on_gui_input(const Ref<InputEvent> &p_event) {
 }
 
 void SnippetSession::_on_text_changed() {
+	if (active) {
+		const uint32_t version = code_edit->get_version();
+		if (version < last_version) {
+			// The text went back to an earlier version: an undo (from a menu, a
+			// plugin, or a key the gui_input handler did not see) removed text
+			// the stops and the snapshot describe. Anything navigated from here
+			// on would be an unrelated place in the document.
+			end();
+		} else {
+			last_version = version;
+		}
+	}
+
 	if (!pending.is_empty()) {
 		// A completion option carrying tab stops may just have been inserted:
 		// match the text ending at the caret against the armed candidates.
@@ -300,7 +332,32 @@ void SnippetSession::_on_text_changed() {
 		stops.write[current].end_col = code_edit->get_caret_column();
 	}
 
+	// The shifts above only follow a local edit. If they left a stop outside the
+	// text (the snippet, or part of it, was deleted or replaced), navigating to
+	// the closest place in range would land somewhere unrelated to the snippet,
+	// so the session ends instead of guessing.
+	for (const SnippetTabStop &stop : stops) {
+		if (stop.start_line < 0 || stop.start_line >= current_lines.size() ||
+				stop.end_line < 0 || stop.end_line >= current_lines.size() ||
+				stop.start_col < 0 || stop.start_col > current_lines[stop.start_line].length() ||
+				stop.end_col < 0 || stop.end_col > current_lines[stop.end_line].length() ||
+				stop.start_line > stop.end_line ||
+				(stop.start_line == stop.end_line && stop.start_col > stop.end_col)) {
+			end();
+			return;
+		}
+	}
+
 	_take_snapshot();
+}
+
+void SnippetSession::_on_text_set() {
+	// The whole text was replaced (document reloaded, buffer cleared): neither
+	// the stops nor the armed candidates refer to the text in the editor
+	// anymore. set_text() does not emit text_changed, so this is the only
+	// notification that the session gets.
+	end();
+	pending.clear();
 }
 
 void SnippetSession::_on_caret_changed() {

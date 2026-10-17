@@ -46,8 +46,8 @@ class InputEvent;
 //     it; zero-width stops just place the cursor.
 //   - Editing inside the current stop keeps the remaining stop positions
 //     in sync (stops after the edit are shifted).
-//   - Escape, moving the caret out of the current stop, or ending the
-//     text cancels the session.
+//   - Escape, moving the caret out of the current stop, undoing or redoing
+//     text, or ending the text cancels the session.
 //
 // Sessions are obtained through get_for(), which stores them as metadata
 // on the CodeEdit, so any consumer (snippets, script templates, quick
@@ -66,10 +66,15 @@ class SnippetSession : public RefCounted {
 	Vector<SnippetTabStop> stops;
 	Vector<String> snapshot; // Line snapshot used to track edit offsets.
 	Vector<PendingSnippet> pending; // Armed by completion, consumed on insert.
+	// Text version the stops were computed for. Text operations move it
+	// forward, undo moves it back: a version below this one means the text was
+	// undone past the session, so the stops no longer describe the document.
+	uint32_t last_version = 0;
 	bool navigating = false;
 
 	void _on_gui_input(const Ref<InputEvent> &p_event);
 	void _on_text_changed();
+	void _on_text_set();
 	void _on_caret_changed();
 
 	void _apply_stop(int p_index);
