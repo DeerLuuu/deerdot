@@ -4650,8 +4650,9 @@ void DocumentEditorContainer::_apply_editor_settings() {
 
 	ScriptServer::set_reload_scripts_on_save(EDITOR_GET("text_editor/behavior/files/auto_reload_and_parse_scripts_on_save"));
 
-	for (int i = 0; i < tab_container->get_tab_count(); i++) {
-		if (TextEditorBase *teb = Object::cast_to<TextEditorBase>(tab_container->get_tab_control(i))) {
+	// Settings apply to the editors of every pane, not only the primary one.
+	for (Control *editor : _get_all_pane_editors()) {
+		if (TextEditorBase *teb = Object::cast_to<TextEditorBase>(editor)) {
 			teb->update_settings();
 		}
 	}
