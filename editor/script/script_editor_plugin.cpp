@@ -367,12 +367,18 @@ void DocumentList::_document_clicked(int p_index, Vector2 p_local_mouse_pos, Mou
 void DocumentList::_show_context_menu() {
 	context_menu->clear();
 
-	int selected = document_editor_container->tab_container->get_current_tab();
+	// The menu acts on the current document, which lives in the active pane.
+	TabContainer *pane = document_editor_container->_active_pane_container();
+	if (pane == nullptr) {
+		return;
+	}
+
+	int selected = pane->get_current_tab();
 	if (selected < 0) {
 		return;
 	}
 
-	ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(document_editor_container->tab_container->get_tab_control(selected));
+	ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(pane->get_tab_control(selected));
 	const Ref<Resource> res = seb ? seb->get_edited_resource() : Ref<Resource>();
 	const Ref<Script> script = res;
 	{
@@ -413,10 +419,10 @@ void DocumentList::_show_context_menu() {
 
 	{
 		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_SAVE), !seb);
-		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_CLOSE), document_editor_container->tab_container->get_tab_count() < 1);
-		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_CLOSE_OTHER_TABS), document_editor_container->tab_container->get_tab_count() <= 1);
-		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_CLOSE_TABS_BELOW), document_editor_container->tab_container->get_current_tab() >= document_editor_container->tab_container->get_tab_count() - 1);
-		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_CLOSE_ALL), document_editor_container->tab_container->get_tab_count() < 1);
+		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_CLOSE), pane->get_tab_count() < 1);
+		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_CLOSE_OTHER_TABS), pane->get_tab_count() <= 1);
+		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_CLOSE_TABS_BELOW), pane->get_current_tab() >= pane->get_tab_count() - 1);
+		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_CLOSE_ALL), pane->get_tab_count() < 1);
 		if (document_editor_container->is_main_editor) {
 			context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_CLOSE_DOCS), !document_editor_container->_has_docs_tab());
 			context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_SOFT_RELOAD_TOOL), script.is_null() || !script->is_tool());
@@ -429,14 +435,14 @@ void DocumentList::_show_context_menu() {
 			context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_INSPECT), !seb);
 			context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_INSPECT_NATIVE_SHADER_CODE), !seb);
 		}
-		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_MOVE_UP), document_editor_container->tab_container->get_current_tab() <= 0);
-		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_MOVE_DOWN), document_editor_container->tab_container->get_current_tab() >= document_editor_container->tab_container->get_tab_count() - 1);
-		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_SORT), document_editor_container->tab_container->get_tab_count() <= 1);
+		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_MOVE_UP), pane->get_current_tab() <= 0);
+		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_MOVE_DOWN), pane->get_current_tab() >= pane->get_tab_count() - 1);
+		context_menu->set_item_disabled(context_menu->get_item_index(DocumentEditorContainer::FILE_MENU_SORT), pane->get_tab_count() <= 1);
 	}
 
 	// Context menu plugin.
 	if (EditorContextMenuPluginManager::get_singleton()->has_plugins_for_slot(EditorContextMenuPlugin::CONTEXT_SLOT_SCRIPT_EDITOR)) {
-		EditorContextMenuPlugin::OptionsData context_data = DocumentEditorContainer::get_context_data(document_editor_container->tab_container->get_tab_control(selected));
+		EditorContextMenuPlugin::OptionsData context_data = DocumentEditorContainer::get_context_data(pane->get_tab_control(selected));
 		EditorContextMenuPluginManager::get_singleton()->add_options_from_plugins(context_menu, EditorContextMenuPlugin::CONTEXT_SLOT_SCRIPT_EDITOR, context_data);
 
 #ifndef DISABLE_DEPRECATED
@@ -1029,8 +1035,8 @@ void DocumentEditorContainer::_goto_script_line(Ref<RefCounted> p_script, int p_
 void DocumentEditorContainer::_change_execution(Ref<RefCounted> p_script, int p_line, bool p_set) {
 	Ref<Script> scr = Object::cast_to<Script>(*p_script);
 	if (scr.is_valid() && (scr->has_source_code() || scr->get_path().is_resource_file())) {
-		for (int i = 0; i < tab_container->get_tab_count(); i++) {
-			if (TextEditorBase *teb = Object::cast_to<TextEditorBase>(tab_container->get_tab_control(i))) {
+		for (Control *editor : _get_all_pane_editors()) {
+			if (TextEditorBase *teb = Object::cast_to<TextEditorBase>(editor)) {
 				if ((scr.is_valid() && teb->get_edited_resource() == p_script) || teb->get_edited_resource()->get_path() == scr->get_path()) {
 					if (p_set) {
 						teb->set_executing_line(p_line);
@@ -1047,8 +1053,8 @@ void DocumentEditorContainer::_set_breakpoint(Ref<RefCounted> p_script, int p_li
 	Ref<Script> scr = Object::cast_to<Script>(*p_script);
 	if (scr.is_valid() && (scr->has_source_code() || scr->get_path().is_resource_file())) {
 		// Update if open.
-		for (int i = 0; i < tab_container->get_tab_count(); i++) {
-			CodeEditorBase *ceb = Object::cast_to<CodeEditorBase>(tab_container->get_tab_control(i));
+		for (Control *editor : _get_all_pane_editors()) {
+			CodeEditorBase *ceb = Object::cast_to<CodeEditorBase>(editor);
 			if (ceb && ceb->get_edited_resource()->get_path() == scr->get_path()) {
 				ceb->set_breakpoint(p_line, p_enabled);
 				return;
@@ -1076,8 +1082,8 @@ void DocumentEditorContainer::_set_breakpoint(Ref<RefCounted> p_script, int p_li
 }
 
 void DocumentEditorContainer::_clear_breakpoints() {
-	for (int i = 0; i < tab_container->get_tab_count(); i++) {
-		if (CodeEditorBase *ceb = Object::cast_to<CodeEditorBase>(tab_container->get_tab_control(i))) {
+	for (Control *editor : _get_all_pane_editors()) {
+		if (CodeEditorBase *ceb = Object::cast_to<CodeEditorBase>(editor)) {
 			ceb->clear_breakpoints();
 		}
 	}
@@ -2733,11 +2739,17 @@ void DocumentEditorContainer::_close_discard_current_tab(const String &p_str) {
 }
 
 void DocumentEditorContainer::_close_docs_tab() {
-	int child_count = tab_container->get_tab_count();
-	for (int i = child_count - 1; i >= 0; i--) {
-		if (Object::cast_to<EditorHelp>(tab_container->get_tab_control(i))) {
-			_close_tab(tab_container, i, true);
+	// Help pages can be open in any pane, so they are all considered.
+	for (Control *editor : _get_all_pane_editors()) {
+		EditorHelp *eh = Object::cast_to<EditorHelp>(editor);
+		if (eh == nullptr) {
+			continue;
 		}
+		TabContainer *pane = _pane_of(eh);
+		if (pane == nullptr || eh->get_parent() != pane) {
+			continue;
+		}
+		_close_tab(pane, pane->get_tab_idx_from_control(eh), true);
 	}
 }
 
@@ -2756,10 +2768,16 @@ void DocumentEditorContainer::_copy_script_uid() {
 	}
 }
 
+// Closing several tabs at once acts on the documents of the active pane, like
+// the other actions that work on "the current document".
 void DocumentEditorContainer::_close_other_tabs() {
-	script_close_queue_pane = ObjectID();
-	int current_idx = tab_container->get_current_tab();
-	for (int i = tab_container->get_tab_count() - 1; i >= 0; i--) {
+	TabContainer *pane = _active_pane_container();
+	if (pane == nullptr) {
+		return;
+	}
+	script_close_queue_pane = pane->get_instance_id();
+	int current_idx = pane->get_current_tab();
+	for (int i = pane->get_tab_count() - 1; i >= 0; i--) {
 		if (i != current_idx) {
 			script_close_queue.push_back(i);
 		}
@@ -2768,17 +2786,33 @@ void DocumentEditorContainer::_close_other_tabs() {
 }
 
 void DocumentEditorContainer::_close_tabs_below() {
-	int current_idx = tab_container->get_current_tab();
-	for (int i = tab_container->get_tab_count() - 1; i > current_idx; i--) {
+	TabContainer *pane = _active_pane_container();
+	if (pane == nullptr) {
+		return;
+	}
+	const int current_idx = pane->get_current_tab();
+	if (current_idx < 0) {
+		return;
+	}
+	for (int i = pane->get_tab_count() - 1; i > current_idx; i--) {
 		script_close_queue.push_back(i);
 	}
-	_go_to_tab(current_idx, true);
+	script_close_queue_pane = pane->get_instance_id();
+	if (pane == tab_container) {
+		// Record the history state before the tabs after it go away. The path
+		// only makes sense for the primary pane, whose tabs _go_to_tab indexes.
+		_go_to_tab(current_idx, true);
+	}
 	_queue_close_tabs();
 }
 
 void DocumentEditorContainer::_close_all_tabs() {
-	script_close_queue_pane = ObjectID();
-	for (int i = tab_container->get_tab_count() - 1; i >= 0; i--) {
+	TabContainer *pane = _active_pane_container();
+	if (pane == nullptr) {
+		return;
+	}
+	script_close_queue_pane = pane->get_instance_id();
+	for (int i = pane->get_tab_count() - 1; i >= 0; i--) {
 		script_close_queue.push_back(i);
 	}
 	_queue_close_tabs();
@@ -2861,8 +2895,9 @@ void DocumentEditorContainer::_resave_scripts(const String &p_str) {
 }
 
 void DocumentEditorContainer::_res_saved_callback(const Ref<Resource> &p_res) {
-	for (int i = 0; i < tab_container->get_tab_count(); i++) {
-		if (ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(tab_container->get_tab_control(i))) {
+	// The document may be open in any pane, and it is the same resource there.
+	for (Control *editor : _get_all_pane_editors()) {
+		if (ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor)) {
 			if (seb->get_edited_resource() == p_res) {
 				seb->tag_saved_version();
 			}
@@ -3371,14 +3406,21 @@ void DocumentEditorContainer::_menu_option(int p_option) {
 			_close_all_tabs();
 		} break;
 		case FILE_MENU_MOVE_UP: {
-			if (tab_container->get_current_tab() > 0) {
-				tab_container->move_child(current_editor, tab_container->get_current_tab() - 1);
+			// The document being moved is the active pane's current one, so it is
+			// that pane which has to move it. Node::move_child() only accepts its
+			// own children.
+			TabContainer *pane = _active_pane_container();
+			const int tab = (pane != nullptr) ? pane->get_current_tab() : -1;
+			if (pane != nullptr && current_editor != nullptr && tab > 0) {
+				pane->move_child(current_editor, tab - 1);
 				document_list->update_list();
 			}
 		} break;
 		case FILE_MENU_MOVE_DOWN: {
-			if (tab_container->get_current_tab() < tab_container->get_tab_count() - 1) {
-				tab_container->move_child(current_editor, tab_container->get_current_tab() + 1);
+			TabContainer *pane = _active_pane_container();
+			const int tab = (pane != nullptr) ? pane->get_current_tab() : -1;
+			if (pane != nullptr && current_editor != nullptr && tab >= 0 && tab < pane->get_tab_count() - 1) {
+				pane->move_child(current_editor, tab + 1);
 				document_list->update_list();
 			}
 		} break;
@@ -3536,9 +3578,9 @@ void DocumentEditorContainer::_show_save_theme_as_dialog() {
 }
 
 bool DocumentEditorContainer::_has_docs_tab() const {
-	const int child_count = tab_container->get_tab_count();
-	for (int i = 0; i < child_count; i++) {
-		if (Object::cast_to<EditorHelp>(tab_container->get_tab_control(i))) {
+	// A help page can be open in any pane.
+	for (Control *editor : _get_all_pane_editors()) {
+		if (Object::cast_to<EditorHelp>(editor)) {
 			return true;
 		}
 	}
@@ -3546,9 +3588,9 @@ bool DocumentEditorContainer::_has_docs_tab() const {
 }
 
 bool DocumentEditorContainer::_has_script_tab() const {
-	const int child_count = tab_container->get_tab_count();
-	for (int i = 0; i < child_count; i++) {
-		if (Object::cast_to<ScriptEditorBase>(tab_container->get_tab_control(i))) {
+	// Saving everything covers the documents of every pane.
+	for (Control *editor : _get_all_pane_editors()) {
+		if (Object::cast_to<ScriptEditorBase>(editor)) {
 			return true;
 		}
 	}
@@ -3714,14 +3756,20 @@ void DocumentEditorContainer::_notification(int p_what) {
 }
 
 void DocumentEditorContainer::_close_builtin_scripts_from_scene(const String &p_scene) {
-	for (int i = 0; i < tab_container->get_tab_count(); i++) {
-		if (ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(tab_container->get_tab_control(i))) {
-			Ref<Resource> res = seb->get_edited_resource();
-			if (res.is_valid() && res->is_built_in() && res->get_path().begins_with(p_scene)) { // Is an internal script and belongs to scene being closed.
-				_close_tab(tab_container, i, false);
-				i--;
-			}
+	for (Control *editor : _get_all_pane_editors()) {
+		ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor);
+		if (seb == nullptr) {
+			continue;
 		}
+		Ref<Resource> res = seb->get_edited_resource();
+		if (!res.is_valid() || !res->is_built_in() || !res->get_path().begins_with(p_scene)) { // Is an internal script and belongs to scene being closed.
+			continue;
+		}
+		TabContainer *pane = _pane_of(editor);
+		if (pane == nullptr || editor->get_parent() != pane) {
+			continue;
+		}
+		_close_tab(pane, pane->get_tab_idx_from_control(editor), false);
 	}
 }
 
@@ -3749,8 +3797,8 @@ Vector<String> DocumentEditorContainer::_get_breakpoints() {
 
 void DocumentEditorContainer::get_breakpoints(List<String> *p_breakpoints) {
 	HashSet<String> loaded_scripts;
-	for (int i = 0; i < tab_container->get_tab_count(); i++) {
-		CodeEditorBase *ceb = Object::cast_to<CodeEditorBase>(tab_container->get_tab_control(i));
+	for (Control *editor : _get_all_pane_editors()) {
+		CodeEditorBase *ceb = Object::cast_to<CodeEditorBase>(editor);
 		if (!ceb) {
 			continue;
 		}
@@ -3790,7 +3838,10 @@ void DocumentEditorContainer::ensure_select_current() {
 	if (restoring_layout) {
 		return;
 	}
-	if (tab_container->get_current_tab() >= 0) {
+	// The document that matters is the one of the pane being worked in, so the
+	// gate is that pane's current tab, not the primary pane's.
+	TabContainer *pane = _active_pane_container();
+	if (pane != nullptr && pane->get_current_tab() >= 0) {
 		TextEditorBase *teb = Object::cast_to<TextEditorBase>(_get_current_editor());
 		if (teb) {
 			teb->enable_editor();
@@ -3849,7 +3900,8 @@ void DocumentEditorContainer::_queue_update_list() {
 }
 
 void DocumentEditorContainer::_update_online_doc() {
-	Node *current = tab_container->get_current_tab_control();
+	TabContainer *pane = _active_pane_container();
+	Node *current = (pane != nullptr) ? pane->get_current_tab_control() : nullptr;
 
 	EditorHelp *eh = Object::cast_to<EditorHelp>(current);
 	bool native_class_doc = false;
@@ -4171,14 +4223,17 @@ void DocumentEditorContainer::reload_open_files() {
 }
 
 Control *DocumentEditorContainer::get_active_editor() const {
-	return tab_container->get_current_tab_control();
+	TabContainer *pane = _active_pane_container();
+	return (pane != nullptr) ? pane->get_current_tab_control() : nullptr;
 }
 
 Vector<Control *> DocumentEditorContainer::get_all_editors() const {
+	// Documents live in every pane, not only the primary one.
 	Vector<Control *> editors;
-	editors.reserve(tab_container->get_tab_count());
-	for (int i = 0; i < tab_container->get_tab_count(); i++) {
-		editors.push_back(tab_container->get_tab_control(i));
+	for (TabContainer *pane : panes) {
+		for (int i = 0; i < pane->get_tab_count(); i++) {
+			editors.push_back(pane->get_tab_control(i));
+		}
 	}
 	return editors;
 }
@@ -4840,7 +4895,7 @@ void DocumentEditorContainer::shortcut_input(const Ref<InputEvent> &p_event) {
 
 	const Callable custom_callback = EditorContextMenuPluginManager::get_singleton()->match_custom_shortcut(EditorContextMenuPlugin::CONTEXT_SLOT_SCRIPT_EDITOR, p_event);
 	if (custom_callback.is_valid()) {
-		EditorContextMenuPlugin::OptionsData context_data = DocumentEditorContainer::get_context_data(tab_container->get_current_tab_control());
+		EditorContextMenuPlugin::OptionsData context_data = DocumentEditorContainer::get_context_data(get_active_editor());
 #ifndef DISABLE_DEPRECATED
 		if (p_event->get_meta("_legacy_shortcut", false)) {
 			EditorContextMenuPluginManager::get_singleton()->invoke_callback(custom_callback, context_data["selected_resource"]);
@@ -4864,8 +4919,12 @@ void DocumentEditorContainer::_prepare_file_menu() {
 		p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_SAVE_AS), res.is_null());
 	}
 	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_SAVE_ALL), !_has_script_tab());
-	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_CLOSE), tab_container->get_tab_count() < 1);
-	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_CLOSE_ALL), tab_container->get_tab_count() < 1);
+	// Closing acts on the documents of the active pane, so that is the pane
+	// whose documents decide whether there is anything to close.
+	TabContainer *active_pane = _active_pane_container();
+	const int active_tab_count = (active_pane != nullptr) ? active_pane->get_tab_count() : 0;
+	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_CLOSE), active_tab_count < 1);
+	p_menu->set_item_disabled(p_menu->get_item_index(FILE_MENU_CLOSE_ALL), active_tab_count < 1);
 
 	_update_layout_presets_menu();
 
@@ -4920,48 +4979,52 @@ void DocumentEditorContainer::sort_document_editors() {
 	if (document_sort_by_mode == SORT_BY_NONE && !document_sort_group_help_pages) {
 		return;
 	}
-	const int num_open_editors = tab_container->get_tab_count();
+	// The panes are independent tab bars, so each one is sorted on its own: a
+	// document cannot be moved into another pane by sorting.
+	for (TabContainer *pane : panes) {
+		const int num_open_editors = pane->get_tab_count();
 
-	LocalVector<SortItemData> sort_items;
-	sort_items.reserve(num_open_editors);
+		LocalVector<SortItemData> sort_items;
+		sort_items.reserve(num_open_editors);
 
-	for (int i = 0; i < num_open_editors; i++) {
-		Control *editor = tab_container->get_tab_control(i);
-		SortItemData item;
-		item.index = i;
-		item.editor = editor;
+		for (int i = 0; i < num_open_editors; i++) {
+			Control *editor = pane->get_tab_control(i);
+			SortItemData item;
+			item.index = i;
+			item.editor = editor;
 
-		ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor);
-		EditorHelp *eh = Object::cast_to<EditorHelp>(editor);
-		if (seb) {
-			item.category = 0;
+			ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor);
+			EditorHelp *eh = Object::cast_to<EditorHelp>(editor);
+			if (seb) {
+				item.category = 0;
 
-			switch (document_sort_by_mode) {
-				case SORT_BY_NAME: {
-					const String &name = seb->get_document_name();
-					item.sort_key = name.to_lower();
-				} break;
-				case SORT_BY_PATH: {
-					const String &path = seb->get_edited_resource()->get_path();
-					item.sort_key = path;
-				} break;
-				default:
-					break;
+				switch (document_sort_by_mode) {
+					case SORT_BY_NAME: {
+						const String &name = seb->get_document_name();
+						item.sort_key = name.to_lower();
+					} break;
+					case SORT_BY_PATH: {
+						const String &path = seb->get_edited_resource()->get_path();
+						item.sort_key = path;
+					} break;
+					default:
+						break;
+				}
 			}
+			if (eh) {
+				const String name = eh->get_class().is_empty() ? TTR("Unknown Help Class") : eh->get_class().unquote();
+
+				item.category = document_sort_group_help_pages ? 1 : 0;
+				item.sort_key = name.to_lower();
+			}
+			sort_items.push_back(item);
 		}
-		if (eh) {
-			const String name = eh->get_class().is_empty() ? TTR("Unknown Help Class") : eh->get_class().unquote();
 
-			item.category = document_sort_group_help_pages ? 1 : 0;
-			item.sort_key = name.to_lower();
+		sort_items.sort();
+
+		for (int i = 0; i < (int)sort_items.size(); i++) {
+			pane->move_child(sort_items[i].editor, i);
 		}
-		sort_items.push_back(item);
-	}
-
-	sort_items.sort();
-
-	for (int i = 0; i < (int)sort_items.size(); i++) {
-		tab_container->move_child(sort_items[i].editor, i);
 	}
 
 	document_list->update_list();
@@ -5443,7 +5506,12 @@ void DocumentEditorContainer::_update_selected_editor_menu() {
 
 	PopupMenu *search_popup = script_search_menu->get_popup();
 	search_popup->clear();
-	if (Object::cast_to<EditorHelp>(tab_container->get_current_tab_control())) {
+	// What the search menu offers depends on the current document, which lives
+	// in the active pane.
+	TabContainer *pane = _active_pane_container();
+	Control *current = (pane != nullptr) ? pane->get_current_tab_control() : nullptr;
+	const int tab_count = (pane != nullptr) ? pane->get_tab_count() : 0;
+	if (Object::cast_to<EditorHelp>(current)) {
 		search_popup->add_shortcut(ED_SHORTCUT("script_editor/find", TTRC("Find..."), KeyModifierMask::CMD_OR_CTRL | Key::F), HELP_SEARCH_FIND);
 		search_popup->add_shortcut(ED_SHORTCUT("script_editor/find_next", TTRC("Find Next"), Key::F3), HELP_SEARCH_FIND_NEXT);
 		search_popup->add_shortcut(ED_SHORTCUT("script_editor/find_previous", TTRC("Find Previous"), KeyModifierMask::SHIFT | Key::F3), HELP_SEARCH_FIND_PREVIOUS);
@@ -5452,7 +5520,7 @@ void DocumentEditorContainer::_update_selected_editor_menu() {
 		search_popup->add_shortcut(ED_GET_SHORTCUT("editor/replace_in_files"), REPLACE_IN_FILES);
 		script_search_menu->show();
 	} else {
-		if (tab_container->get_tab_count() == 0) {
+		if (tab_count == 0) {
 			search_popup->add_shortcut(ED_GET_SHORTCUT("editor/find_in_files"), SEARCH_IN_FILES);
 			search_popup->add_shortcut(ED_GET_SHORTCUT("editor/replace_in_files"), REPLACE_IN_FILES);
 			script_search_menu->show();
