@@ -1234,7 +1234,7 @@ void DocumentEditorContainer::_show_tab_context_menu(int p_tab, TabContainer *p_
 		return;
 	}
 
-	tab_context_pane = p_pane;
+	tab_context_pane_id = p_pane->get_instance_id();
 	tab_context_index = p_tab;
 
 	// Act on the tab that was clicked, like the rest of the editor would.
@@ -1382,17 +1382,20 @@ void DocumentEditorContainer::_update_popout_windows() {
 }
 
 void DocumentEditorContainer::_tab_menu_option(int p_option) {
-	if (tab_context_pane == nullptr) {
+	// The menu is asynchronous: the pane it was opened on, and the tab it was
+	// opened for, may be gone by the time an entry is picked.
+	TabContainer *pane = _tab_context_pane();
+	if (pane == nullptr || _pane_index(pane) < 0 || tab_context_index < 0 || tab_context_index >= pane->get_tab_count()) {
 		return;
 	}
 
 	switch (p_option) {
 		case TAB_MENU_CLOSE: {
-			_request_close_tab(tab_context_pane, tab_context_index);
+			_request_close_tab(pane, tab_context_index);
 		} break;
 		case TAB_MENU_CLOSE_OTHERS: {
-			script_close_queue_pane = tab_context_pane;
-			for (int i = tab_context_pane->get_tab_count() - 1; i >= 0; i--) {
+			script_close_queue_pane = pane->get_instance_id();
+			for (int i = pane->get_tab_count() - 1; i >= 0; i--) {
 				if (i != tab_context_index) {
 					script_close_queue.push_back(i);
 				}
@@ -1400,7 +1403,7 @@ void DocumentEditorContainer::_tab_menu_option(int p_option) {
 			_queue_close_tabs();
 		} break;
 		case TAB_MENU_COPY_PATH: {
-			Control *editor = tab_context_pane->get_tab_control(tab_context_index);
+			Control *editor = pane->get_tab_control(tab_context_index);
 			ScriptEditorBase *seb = Object::cast_to<ScriptEditorBase>(editor);
 			if (seb != nullptr) {
 				const Ref<Resource> res = seb->get_edited_resource();
@@ -1412,7 +1415,7 @@ void DocumentEditorContainer::_tab_menu_option(int p_option) {
 		case TAB_MENU_SPLIT_RIGHT:
 		case TAB_MENU_SPLIT_DOWN: {
 			const DropZone zone = (p_option == TAB_MENU_SPLIT_DOWN) ? DROP_ZONE_BOTTOM : DROP_ZONE_RIGHT;
-			TabContainer *from = tab_context_pane;
+			TabContainer *from = pane;
 			const int index = tab_context_index;
 			_split_pane(from, zone);
 			if (panes.size() > 1) {
@@ -1420,11 +1423,13 @@ void DocumentEditorContainer::_tab_menu_option(int p_option) {
 			}
 		} break;
 		case TAB_MENU_OPEN_IN_WINDOW: {
-			_popout_editor(tab_context_pane, tab_context_index);
+			_popout_editor(pane, tab_context_index);
 		} break;
 		case TAB_MENU_MOVE_TO_OTHER_PANE: {
-			TabContainer *to = (tab_context_pane == panes[0]) ? panes[1] : panes[0];
-			_move_tab_to_pane(tab_context_pane, tab_context_index, to);
+			if (panes.size() == 2) {
+				TabContainer *to = (pane == panes[0]) ? panes[1] : panes[0];
+				_move_tab_to_pane(pane, tab_context_index, to);
+			}
 		} break;
 		default:
 			break;
@@ -1449,6 +1454,7 @@ void DocumentEditorContainer::_update_tab_menu_highlight() {
 }
 
 void DocumentEditorContainer::_tab_menu_option_focused(int p_option) {
+	TabContainer *pane = _tab_context_pane();
 	switch (p_option) {
 		case TAB_MENU_SPLIT_RIGHT: {
 			_show_highlight_overlay(_get_drop_overlay_rect(DROP_ZONE_RIGHT), TTRC("New pane"));
@@ -1457,8 +1463,8 @@ void DocumentEditorContainer::_tab_menu_option_focused(int p_option) {
 			_show_highlight_overlay(_get_drop_overlay_rect(DROP_ZONE_BOTTOM), TTRC("New pane"));
 		} break;
 		case TAB_MENU_MOVE_TO_OTHER_PANE: {
-			if (panes.size() == 2) {
-				TabContainer *to = (tab_context_pane == panes[0]) ? panes[1] : panes[0];
+			if (pane != nullptr && panes.size() == 2) {
+				TabContainer *to = (pane == panes[0]) ? panes[1] : panes[0];
 				_show_highlight_overlay(to->get_global_rect(), TTRC("Other pane"));
 			}
 		} break;
@@ -1653,6 +1659,10 @@ TabContainer *DocumentEditorContainer::_pane_at(int p_index) const {
 
 TabContainer *DocumentEditorContainer::_active_pane_container() const {
 	return _pane_at(active_pane);
+}
+
+TabContainer *DocumentEditorContainer::_tab_context_pane() const {
+	return Object::cast_to<TabContainer>(ObjectDB::get_instance(tab_context_pane_id));
 }
 
 int DocumentEditorContainer::_pane_index(const TabContainer *p_pane) const {
@@ -1860,6 +1870,18 @@ void DocumentEditorContainer::_remove_pane(TabContainer *p_pane) {
 		active_pane = 0;
 	} else if (active_pane >= index) {
 		active_pane = MAX(0, active_pane - 1);
+	}
+
+	// The tab menu and the queued closes hold this pane or its tabs, which are
+	// about to be freed: forget them instead of keeping a stale reference.
+	const ObjectID removed_id = p_pane->get_instance_id();
+	if (tab_context_pane_id == removed_id) {
+		tab_context_pane_id = ObjectID();
+		tab_context_index = -1;
+	}
+	if (script_close_queue_pane == removed_id) {
+		script_close_queue_pane = ObjectID();
+		script_close_queue.clear();
 	}
 
 	_update_filenames();
@@ -2731,7 +2753,7 @@ void DocumentEditorContainer::_copy_script_uid() {
 }
 
 void DocumentEditorContainer::_close_other_tabs() {
-	script_close_queue_pane = nullptr;
+	script_close_queue_pane = ObjectID();
 	int current_idx = tab_container->get_current_tab();
 	for (int i = tab_container->get_tab_count() - 1; i >= 0; i--) {
 		if (i != current_idx) {
@@ -2751,7 +2773,7 @@ void DocumentEditorContainer::_close_tabs_below() {
 }
 
 void DocumentEditorContainer::_close_all_tabs() {
-	script_close_queue_pane = nullptr;
+	script_close_queue_pane = ObjectID();
 	for (int i = tab_container->get_tab_count() - 1; i >= 0; i--) {
 		script_close_queue.push_back(i);
 	}
@@ -2760,8 +2782,18 @@ void DocumentEditorContainer::_close_all_tabs() {
 
 void DocumentEditorContainer::_queue_close_tabs() {
 	// The queue belongs to one pane; closing several tabs at once is offered
-	// from the tab menu, which can target either pane.
-	TabContainer *pane = (script_close_queue_pane != nullptr) ? script_close_queue_pane : tab_container;
+	// from the tab menu, which can target either pane. The pane is looked up by
+	// id: it may have been dropped while the queue waited on the user.
+	TabContainer *pane = tab_container;
+	if (script_close_queue_pane.is_valid()) {
+		pane = Object::cast_to<TabContainer>(ObjectDB::get_instance(script_close_queue_pane));
+		if (pane == nullptr || _pane_index(pane) < 0) {
+			// The queued indices point into a pane that is gone.
+			script_close_queue.clear();
+			script_close_queue_pane = ObjectID();
+			pane = tab_container;
+		}
+	}
 
 	while (!script_close_queue.is_empty()) {
 		int idx = script_close_queue.front()->get();
@@ -2783,7 +2815,7 @@ void DocumentEditorContainer::_queue_close_tabs() {
 	}
 
 	if (script_close_queue.is_empty()) {
-		script_close_queue_pane = nullptr;
+		script_close_queue_pane = ObjectID();
 	}
 	_update_find_replace_bar();
 }

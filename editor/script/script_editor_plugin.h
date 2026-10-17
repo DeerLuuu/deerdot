@@ -471,6 +471,8 @@ class DocumentEditorContainer : public MarginContainer {
 	void _show_highlight_overlay(const Rect2 &p_rect, const String &p_hint);
 	void _apply_drop_overlay(const Rect2 &p_rect, const String &p_hint, bool p_accept_drops);
 	void _tab_menu_option_focused(int p_option);
+	// The pane the tab menu acts on, or null when it was dropped meanwhile.
+	TabContainer *_tab_context_pane() const;
 	void _update_drop_preview();
 	void _hide_code_preview();
 	void _hide_drop_overlay();
@@ -502,11 +504,14 @@ class DocumentEditorContainer : public MarginContainer {
 	ObjectID pending_popout_editor;
 
 	PopupMenu *tab_context_menu = nullptr;
-	TabContainer *tab_context_pane = nullptr; // Pane the tab menu was opened on.
+	// The pane and the tab the menu was opened on. The pane is held by id: the
+	// menu is asynchronous, so the pane can be dropped while it is still open.
+	ObjectID tab_context_pane_id;
 	int tab_context_index = -1;
 	int tab_menu_hovered_id = -1; // Item the menu pointer is on, or -1.
-	// Pane the queued tab closes belong to; the primary pane when unset.
-	TabContainer *script_close_queue_pane = nullptr;
+	// Pane the queued tab closes belong to, also by id; the primary pane when
+	// unset. The pane can be dropped while a close asks about unsaved changes.
+	ObjectID script_close_queue_pane;
 
 	void _show_tab_context_menu(int p_tab, TabContainer *p_pane);
 	void _tab_menu_option(int p_option);
