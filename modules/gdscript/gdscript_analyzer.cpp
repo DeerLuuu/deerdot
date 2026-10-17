@@ -6688,36 +6688,37 @@ GDScriptParser::DataType GDScriptAnalyzer::get_operation_type(Variant::Operator 
 
 bool GDScriptAnalyzer::may_name_trait(const String &p_name) const {
 	// A name that is a type of this file wins, unless it is a trait of it.
-	GDScriptParser::ClassNode *found = parser->find_class(p_name.replace(".", "::"));
-	if (found != nullptr) {
-		return found->type == GDScriptParser::Node::TRAIT;
+	// A dotted name (`Inner.Trait`) is resolved across the file, since it names
+	// the path explicitly.
+	if (p_name.contains(".")) {
+		GDScriptParser::ClassNode *found = parser->find_class(p_name.replace(".", "::"));
+		if (found != nullptr) {
+			return found->type == GDScriptParser::Node::TRAIT;
+		}
+	} else {
+		// A bare name only competes with the classes and members the expression
+		// can actually name: the current class, its outer classes and their base
+		// classes. Scanning every class of the file (as this used to do) let a
+		// member of an unrelated inner class hide a project trait from `is`.
+		const GDScriptParser::ClassNode *scope = parser->current_class != nullptr ? parser->current_class : parser->get_tree();
+		for (const GDScriptParser::ClassNode *cls = scope; cls != nullptr; cls = cls->outer) {
+			for (const GDScriptParser::ClassNode *look = cls; look != nullptr; look = look->base_type.class_type) {
+				if (look->identifier != nullptr && look->identifier->name == p_name) {
+					return look->type == GDScriptParser::Node::TRAIT;
+				}
+				if (look->has_member(p_name)) {
+					// A member of this scope keeps its meaning: a constant holding a
+					// script can be used in a type test, and must not be read as a
+					// trait. A trait member is the trait, of course.
+					return look->get_member(p_name).type == GDScriptParser::ClassNode::Member::TRAIT;
+				}
+			}
+		}
 	}
 
 	// Same for the types the engine knows about.
 	if (ClassDB::class_exists(p_name) || ScriptServer::is_global_class(p_name) || Variant::get_type_by_name(p_name) < Variant::VARIANT_MAX) {
 		return false;
-	}
-
-	// A member keeps its meaning too: a constant holding a script can be used in
-	// a type test, and must not be read as a trait.
-	{
-		LocalVector<const GDScriptParser::ClassNode *> classes;
-		classes.push_back(parser->get_tree());
-		while (!classes.is_empty()) {
-			const GDScriptParser::ClassNode *cls = classes[classes.size() - 1];
-			classes.remove_at(classes.size() - 1);
-			if (cls == nullptr) {
-				continue;
-			}
-			if (cls->has_member(p_name)) {
-				return false;
-			}
-			for (const GDScriptParser::ClassNode::Member &member : cls->members) {
-				if (member.type == GDScriptParser::ClassNode::Member::CLASS || member.type == GDScriptParser::ClassNode::Member::TRAIT) {
-					classes.push_back(member.m_class);
-				}
-			}
-		}
 	}
 
 	if (GDScriptLanguage::has_global_trait(p_name)) {
