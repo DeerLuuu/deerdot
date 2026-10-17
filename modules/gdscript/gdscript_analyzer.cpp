@@ -696,6 +696,11 @@ GDScriptParser::TraitNode *GDScriptAnalyzer::get_global_trait(GDScriptParser *p_
 
 	Ref<GDScriptParserRef> ref = p_parser->get_depended_parser_for(path);
 	if (ref.is_null()) {
+		// A registration outlives the script it points to when the script is
+		// deleted: drop it instead of resolving to a stale path forever.
+		if (!FileAccess::exists(path)) {
+			GDScriptLanguage::unregister_global_trait(p_fqtn);
+		}
 		return nullptr;
 	}
 	if (ref->raise_status(GDScriptParserRef::FULLY_SOLVED) != OK) {
@@ -712,6 +717,8 @@ GDScriptParser::TraitNode *GDScriptAnalyzer::get_global_trait(GDScriptParser *p_
 			return static_cast<GDScriptParser::TraitNode *>(member.m_class);
 		}
 	}
+	// The file still exists but no longer declares this trait: it was renamed.
+	GDScriptLanguage::unregister_global_trait(p_fqtn);
 	return nullptr;
 }
 
@@ -6725,7 +6732,16 @@ bool GDScriptAnalyzer::may_name_trait(const String &p_name) const {
 	}
 
 	if (GDScriptLanguage::has_global_trait(p_name)) {
-		return true;
+		const String trait_path = GDScriptLanguage::get_global_trait_path(p_name);
+		if (!trait_path.is_empty() && !FileAccess::exists(trait_path)) {
+			// The script that declared this trait was deleted: forget the trait
+			// instead of letting a stale name answer `is` and appear in `uses`
+			// completion. A rename of the trait inside an existing file is cleaned
+			// up by the project scan.
+			GDScriptLanguage::unregister_global_trait(p_name);
+		} else {
+			return true;
+		}
 	}
 
 #ifdef TOOLS_ENABLED

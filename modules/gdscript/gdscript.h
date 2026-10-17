@@ -694,8 +694,11 @@ public:
 	// that declares them. Populated whenever a script declaring a top-level
 	// trait is parsed; the analyzer resolves cross-file `uses` through it.
 	static void register_global_trait(const StringName &p_name, const String &p_path);
+	// Forgets a trait whose declaration is gone (file deleted, trait renamed):
+	// the registry is otherwise only ever grown, and a stale entry silently
+	// answers `is` and shows up in `uses` completion.
+	static void unregister_global_trait(const StringName &p_name);
 	static String get_global_trait_path(const StringName &p_name);
-	static uint64_t get_global_trait_path_version(const String &p_path);
 	static bool has_global_trait(const StringName &p_name);
 	static void get_global_trait_names(List<StringName> *r_names);
 
