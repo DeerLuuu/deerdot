@@ -255,12 +255,12 @@ String GDScriptWarning::get_name_from_code(Code p_code) {
 		PNAME("GET_NODE_DEFAULT_WITHOUT_ONREADY"),
 		PNAME("ONREADY_WITH_EXPORT"),
 		PNAME("ONREADY_WITH_CAST"),
+		PNAME("SHADOWED_TRAIT_MEMBER"),
 #ifndef DISABLE_DEPRECATED
 		"PROPERTY_USED_AS_FUNCTION",
 		"CONSTANT_USED_AS_FUNCTION",
 		"FUNCTION_USED_AS_PROPERTY",
 #endif // DISABLE_DEPRECATED
-		PNAME("SHADOWED_TRAIT_MEMBER"),
 	};
 
 	static_assert(std_size(names) == WARNING_MAX, "Amount of warning types don't match the amount of warning names.");

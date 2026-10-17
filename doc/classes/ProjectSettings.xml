@@ -1221,6 +1221,8 @@
 		<member name="editor/script/templates_search_path" type="String" setter="" getter="" default="&quot;res://script_templates&quot;">
 			Search path for project-specific script templates. Godot will search for script templates both in the editor-specific path and in this project-specific path.
 		</member>
+		<member name="editor/snippets/search_path" type="String" setter="" getter="" default="&quot;res://snippets&quot;">
+		</member>
 		<member name="editor/version_control/autoload_on_startup" type="bool" setter="" getter="" default="false">
 		</member>
 		<member name="editor/version_control/plugin_name" type="String" setter="" getter="" default="&quot;&quot;">
