@@ -1,0 +1,3 @@
+GDTEST_RUNTIME_ERROR
+>> SCRIPT ERROR at Traits/errors/trait_type_test_on_freed_uses.gd:15 on test_trait(): Left operand of 'is' is a previously freed instance.
+>> SCRIPT ERROR at Traits/errors/trait_type_test_on_freed_uses.gd:21 on test_class(): Left operand of 'is' is a previously freed instance.

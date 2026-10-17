@@ -5,3 +5,4 @@ GDTEST_ANALYZER_ERROR
 >> ERROR at line 23: "T" is a trait, so it can't be used as a type. Use "uses" to bring its members into a class.
 >> ERROR at line 27: "Holder.Inner" is a trait, so it can't be used as a type. Use "uses" to bring its members into a class.
 >> ERROR at line 32: "Holder.Inner" is a trait, so it can't be used as a type. Use "uses" to bring its members into a class.
+>> ERROR at line 36: Expression is of type "Uses" so it can't be of type "T".

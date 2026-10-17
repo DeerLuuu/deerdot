@@ -1,5 +1,6 @@
 # `is Trait` asks about the actual object, not about the operand's static type:
-# a base class, `Variant` or a null value does not decide the answer.
+# a base class, `Variant` or a null value does not decide the answer, exactly
+# like `is SomeClass`.
 
 trait T:
 	var x := 1
@@ -18,7 +19,8 @@ class Derived extends Base:
 
 
 func test():
-	# A static type that is the using class itself is answered while analyzing.
+	# A static type that is the using class does not settle the answer for a
+	# variable: the value itself is asked, like `is Uses` does.
 	var u: Uses = Uses.new()
 	print(u is T)
 
@@ -41,6 +43,12 @@ func test():
 	# A null value cannot be of the trait.
 	var nothing = null
 	print(nothing is T)
+
+	# A null value typed as the using class is not of the trait, and it is not
+	# of the class either: the value decides, not the static type.
+	var uses_null: Uses = null
+	print(uses_null is T)
+	print(uses_null is Uses)
 
 	u.free()
 	n.free()

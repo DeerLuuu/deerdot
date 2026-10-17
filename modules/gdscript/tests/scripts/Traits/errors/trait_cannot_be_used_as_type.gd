@@ -30,3 +30,7 @@ func g() -> Holder.Inner:
 
 func test():
 	var casted = null as Holder.Inner
+
+	# A class object is not an instance that took the trait, just like
+	# `Uses is Uses` is rejected: a type test asks about a value.
+	print(Uses is T)

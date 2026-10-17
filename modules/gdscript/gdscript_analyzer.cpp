@@ -5581,6 +5581,14 @@ void GDScriptAnalyzer::reduce_type_test(GDScriptParser::TypeTestNode *p_type_tes
 	if (!trait_name.is_empty() && may_name_trait(written_trait_name)) {
 		reduce_expression(p_type_test->operand);
 
+		// A class object is not an instance of anything: `is SomeClass` rejects
+		// it as a type test, and asking whether it took a trait is just as
+		// meaningless. It used to be answered `true` from the static type.
+		if (p_type_test->operand->type_constraint.is_meta_type) {
+			push_error(vformat(R"(Expression is of type "%s" so it can't be of type "%s".)", p_type_test->operand->type_constraint.to_string(), written_trait_name), p_type_test->operand);
+			return;
+		}
+
 		// When the operand's own class is known to take the trait, the answer is
 		// already settled: `true` costs nothing at runtime.
 		bool took_trait = false;
@@ -5601,8 +5609,22 @@ void GDScriptAnalyzer::reduce_type_test(GDScriptParser::TypeTestNode *p_type_tes
 		}
 
 		if (took_trait) {
-			p_type_test->is_constant = true;
-			p_type_test->reduced_value = true;
+			// The static type says the class of the operand took the trait, but
+			// that only settles the answer for a known, live instance. A null
+			// value and a freed instance must answer exactly like `is SomeClass`
+			// does (false and a "previously freed" error, not true): those go to
+			// the VM, which asks the value's script with OPCODE_TYPE_TEST_TRAIT.
+			const bool constant_instance = p_type_test->operand->is_constant &&
+					!p_type_test->operand->type_constraint.is_meta_type &&
+					p_type_test->operand->reduced_value.get_type() == Variant::OBJECT &&
+					!p_type_test->operand->reduced_value.is_null();
+			if (constant_instance) {
+				p_type_test->is_constant = true;
+				p_type_test->reduced_value = true;
+				return;
+			}
+
+			p_type_test->runtime_trait_name = trait_name;
 			return;
 		}
 
