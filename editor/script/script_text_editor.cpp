@@ -250,8 +250,8 @@ void ScriptTextEditor::_load_theme_settings() {
 	Color updated_folded_code_region_color = EDITOR_GET("text_editor/theme/highlighting/folded_code_region_color");
 
 	// The lines were painted with the applied colors; the colors above follow
-	// the settings and cannot name them. Nothing is retinted before the first
-	// paint, since every line would match the unset color.
+	// the settings and cannot name them. The line sets record which lines were
+	// painted, so a transparent old color cannot match the unpainted lines.
 	const Color previous_warning_line_color = applied_warning_line_color;
 	const Color previous_marked_line_color = applied_marked_line_color;
 	const Color previous_folded_code_region_color = applied_folded_code_region_color;
@@ -261,32 +261,52 @@ void ScriptTextEditor::_load_theme_settings() {
 	bool marked_line_color_updated = updated_marked_line_color != previous_marked_line_color;
 	bool safe_line_number_color_updated = updated_safe_line_number_color != safe_line_number_color;
 	bool folded_code_region_color_updated = updated_folded_code_region_color != previous_folded_code_region_color;
-	if (safe_line_number_color_updated || warning_line_color_updated || marked_line_color_updated || folded_code_region_color_updated) {
+	if (safe_line_number_color_updated || (line_colors_were_applied && (warning_line_color_updated || marked_line_color_updated || folded_code_region_color_updated))) {
 		safe_line_number_color = updated_safe_line_number_color;
-		for (int i = 0; i < text_edit->get_line_count(); i++) {
-			if (line_colors_were_applied && warning_line_color_updated && text_edit->get_line_background_color(i) == previous_warning_line_color) {
-				text_edit->set_line_background_color(i, updated_warning_line_color);
-			}
 
-			if (line_colors_were_applied && marked_line_color_updated && text_edit->get_line_background_color(i) == previous_marked_line_color) {
-				text_edit->set_line_background_color(i, updated_marked_line_color);
-			}
-
-			if (safe_line_number_color_updated && line_number_gutter >= 0 && line_number_gutter < text_edit->get_gutter_count() && text_edit->get_line_gutter_item_color(i, line_number_gutter) != default_line_number_color) {
-				text_edit->set_line_gutter_item_color(i, line_number_gutter, safe_line_number_color);
-			}
-
-			if (line_colors_were_applied && folded_code_region_color_updated && text_edit->get_line_background_color(i) == previous_folded_code_region_color) {
-				text_edit->set_line_background_color(i, updated_folded_code_region_color);
+		// Retint the lines that were painted, and only them. Comparing against
+		// the old color alone is not enough: with a custom theme, the old color
+		// can be fully transparent, which is what every unpainted line has.
+		if (warning_line_color_updated) {
+			for (const int line : warning_line_backgrounds) {
+				if (line >= 0 && line < text_edit->get_line_count() && text_edit->get_line_background_color(line) == previous_warning_line_color) {
+					text_edit->set_line_background_color(line, updated_warning_line_color);
+				}
 			}
 		}
+
+		if (marked_line_color_updated) {
+			for (const int line : marked_line_backgrounds) {
+				if (line >= 0 && line < text_edit->get_line_count() && text_edit->get_line_background_color(line) == previous_marked_line_color) {
+					text_edit->set_line_background_color(line, updated_marked_line_color);
+				}
+			}
+		}
+
+		if (folded_code_region_color_updated) {
+			for (const int line : folded_code_region_backgrounds) {
+				if (line >= 0 && line < text_edit->get_line_count() && text_edit->get_line_background_color(line) == previous_folded_code_region_color) {
+					text_edit->set_line_background_color(line, updated_folded_code_region_color);
+				}
+			}
+		}
+
+		if (safe_line_number_color_updated && line_number_gutter >= 0) {
+			for (int i = 0; i < text_edit->get_line_count(); i++) {
+				if (line_number_gutter < text_edit->get_gutter_count() && text_edit->get_line_gutter_item_color(i, line_number_gutter) != default_line_number_color) {
+					text_edit->set_line_gutter_item_color(i, line_number_gutter, safe_line_number_color);
+				}
+			}
+		}
+
 		warning_line_color = updated_warning_line_color;
 		marked_line_color = updated_marked_line_color;
 		folded_code_region_color = updated_folded_code_region_color;
 		applied_warning_line_color = updated_warning_line_color;
 		applied_marked_line_color = updated_marked_line_color;
 		applied_folded_code_region_color = updated_folded_code_region_color;
-		line_colors_applied = true;
+		// line_colors_applied stays as the last paint left it: retinting does
+		// not change whether these colors are on screen.
 	}
 
 	Color updated_warning_underline_color = EDITOR_GET("text_editor/theme/highlighting/warning_underline_color");
@@ -766,11 +786,20 @@ void ScriptTextEditor::_load_line_colors() {
 void ScriptTextEditor::_update_background_color() {
 	_load_line_colors();
 
-	// Clear background lines.
 	CodeEdit *te = code_editor->get_text_editor();
+
+	// These describe this paint only.
+	warning_line_backgrounds.clear();
+	marked_line_backgrounds.clear();
+	folded_code_region_backgrounds.clear();
+
+	// Clear background lines.
 	for (int i = 0; i < te->get_line_count(); i++) {
 		bool is_folded_code_region = te->is_line_code_region_start(i) && te->is_line_folded(i);
 		te->set_line_background_color(i, is_folded_code_region ? folded_code_region_color : Color(0, 0, 0, 0));
+		if (is_folded_code_region) {
+			folded_code_region_backgrounds.insert(i);
+		}
 	}
 
 	te->clear_underlines();
@@ -793,9 +822,11 @@ void ScriptTextEditor::_update_background_color() {
 				const int warning_max_lines = 20;
 
 				te->set_line_background_color(folded_line_header, warning_line_color);
+				warning_line_backgrounds.insert(folded_line_header);
 				if (warning_end_line - warning_start_line < warning_max_lines) {
 					for (int i = warning_start_line + 1; i <= warning_end_line; i++) {
 						te->set_line_background_color(i, warning_line_color);
+						warning_line_backgrounds.insert(i);
 					}
 				}
 			}
@@ -817,15 +848,17 @@ void ScriptTextEditor::_update_background_color() {
 
 			if (marked_line_color.a != 0.0) {
 				te->set_line_background_color(folded_line_header, marked_line_color);
+				marked_line_backgrounds.insert(folded_line_header);
 			}
 		}
 	}
 
-	// The lines now carry these colors; a theme change retints them in place.
+	// The lines now carry these colors; a theme change retints exactly these
+	// lines in place.
 	applied_marked_line_color = marked_line_color;
 	applied_warning_line_color = warning_line_color;
 	applied_folded_code_region_color = folded_code_region_color;
-	line_colors_applied = true;
+	line_colors_applied = !warning_line_backgrounds.is_empty() || !marked_line_backgrounds.is_empty() || !folded_code_region_backgrounds.is_empty();
 }
 
 void ScriptTextEditor::_update_color_text() {

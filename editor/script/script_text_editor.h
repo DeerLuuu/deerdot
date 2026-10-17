@@ -97,13 +97,20 @@ class ScriptTextEditor : public CodeEditorBase {
 	Color warning_underline_color = Color(0, 0, 0, 0);
 	Color error_underline_color = Color(0, 0, 0, 0);
 
-	// Colors the lines were last painted with, and whether they were painted at
-	// all. Kept apart from the colors above: those are refreshed from the
+	// Colors the lines were last painted with, and whether any line was painted
+	// at all. Kept apart from the colors above: those are refreshed from the
 	// editor settings before every paint, so they cannot tell which color an
 	// already painted line has when the theme changes.
 	Color applied_marked_line_color = Color(0, 0, 0, 0);
 	Color applied_warning_line_color = Color(0, 0, 0, 0);
 	Color applied_folded_code_region_color = Color(0, 0, 0, 0);
+	// The lines that were actually painted with each color. A theme change
+	// retints only these: with a custom theme whose old color is fully
+	// transparent, every unpainted (transparent) line would compare equal to
+	// the old color and the whole document would be painted over.
+	HashSet<int> warning_line_backgrounds;
+	HashSet<int> marked_line_backgrounds;
+	HashSet<int> folded_code_region_backgrounds;
 	bool line_colors_applied = false;
 
 	bool theme_loaded = false;
