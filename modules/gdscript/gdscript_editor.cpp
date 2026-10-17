@@ -4619,7 +4619,12 @@ static bool _code_uses_trait(const String &p_code, const StringName &p_name) {
 	const String code = p_code.remove_char(0xFFFF);
 	for (const String &line : code.split("\n")) {
 		const String stripped = line.remove_char(0xFEFF).strip_edges();
-		if (!stripped.begins_with("uses")) {
+		// `uses` is a keyword: a name that merely starts with it (`useful = 1`)
+		// does not take a trait.
+		if (!stripped.begins_with("uses") || stripped.length() <= 4) {
+			continue;
+		}
+		if (stripped[4] != ' ' && stripped[4] != '\t') {
 			continue;
 		}
 
@@ -4638,6 +4643,25 @@ static bool _code_uses_trait(const String &p_code, const StringName &p_name) {
 	return false;
 }
 
+// Finds a trait declared anywhere in a parsed file (`Outer.Inner` included).
+static const GDScriptParser::TraitNode *_find_trait_in_tree(const GDScriptParser::ClassNode *p_class, const StringName &p_name) {
+	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+		if (member.type == GDScriptParser::ClassNode::Member::TRAIT) {
+			if (member.m_class != nullptr && member.m_class->identifier != nullptr && member.m_class->identifier->name == p_name) {
+				return static_cast<const GDScriptParser::TraitNode *>(member.m_class);
+			}
+			if (const GDScriptParser::TraitNode *inner = _find_trait_in_tree(member.m_class, p_name)) {
+				return inner;
+			}
+		} else if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
+			if (const GDScriptParser::TraitNode *inner = _find_trait_in_tree(member.m_class, p_name)) {
+				return inner;
+			}
+		}
+	}
+	return nullptr;
+}
+
 // Line (1-based) where a script declares a trait, or -1 if it does not. The
 // documentation comments above the declaration are reported as well.
 static int _find_trait_declaration_line(const String &p_path, const StringName &p_name, String *r_description = nullptr) {
@@ -4648,7 +4672,13 @@ static int _find_trait_declaration_line(const String &p_path, const StringName &
 
 	const Vector<String> lines = file->get_as_text().split("\n");
 	for (int i = 0; i < lines.size(); i++) {
-		const String line = lines[i].remove_char(0xFEFF).strip_edges();
+		const String raw = lines[i].remove_char(0xFEFF);
+		if (raw.is_empty() || raw[0] == ' ' || raw[0] == '\t') {
+			// A trait declared inside a class is indented, so it does not describe
+			// the file and cannot be the global trait of this name.
+			continue;
+		}
+		const String line = raw.strip_edges();
 		if (!line.begins_with("trait ")) {
 			continue;
 		}
@@ -4700,6 +4730,16 @@ static int _find_trait_declaration_line(const String &p_path, const StringName &
 	// A trait name in a `uses` statement points at the script declaring it, so
 	// ctrl+clicking it opens that script and the tooltip describes the trait.
 	if (GDScriptLanguage::get_singleton() != nullptr && p_symbol.is_valid_identifier() && _code_uses_trait(p_code, p_symbol)) {
+		// A trait declared in this file, including one inside an inner class
+		// (`uses Outer.Inner`), is found in the tree the parser just built.
+		if (const GDScriptParser::TraitNode *trait = _find_trait_in_tree(parser.get_tree(), p_symbol)) {
+			r_result.type = LookupResult::Type::TRAIT;
+			r_result.class_name = p_symbol;
+			r_result.script_path = p_path;
+			r_result.location = trait->start_line;
+			return OK;
+		}
+
 		const String trait_path = GDScriptLanguage::get_singleton()->get_global_trait_path(p_symbol);
 		if (!trait_path.is_empty()) {
 			String documentation;
