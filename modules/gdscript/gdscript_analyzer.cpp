@@ -5535,7 +5535,10 @@ void GDScriptAnalyzer::reduce_type_test(GDScriptParser::TypeTestNode *p_type_tes
 	// A trait is not a type, so `is SomeTrait` is not a checked cast. It is
 	// still a fair question, and it is answered here: whether the class of the
 	// operand took that trait.
-	const String trait_name = _name_of_type_test(p_type_test->test_type);
+	// `is Inner.Trait` names the trait the way `uses` does, while a trait is
+	// identified by its own name in `traits_fqtn` and in the compiled script,
+	// so normalize the name before comparing.
+	const String trait_name = trait_name_from_fqcn(_name_of_type_test(p_type_test->test_type));
 	if (!trait_name.is_empty() && may_name_trait(trait_name)) {
 		{
 			reduce_expression(p_type_test->operand);
@@ -6710,10 +6713,18 @@ bool GDScriptAnalyzer::may_name_trait(const String &p_name) const {
 }
 
 StringName GDScriptAnalyzer::trait_name_from_fqcn(const String &p_fqcn) {
-	if (p_fqcn.contains("/")) {
+	// A trait's fully-qualified name is "<script path>::<trait>", or
+	// "<script path or class name>::<inner class>::<trait>" for a trait declared
+	// in an inner class. A type test may also write it with dots
+	// ("Inner.SomeTrait"). What `is` compares, and what the runtime registry
+	// stores, is the last segment: the trait's own name.
+	if (p_fqcn.contains("::")) {
 		return p_fqcn.get_slice("::", p_fqcn.get_slice_count("::") - 1);
 	}
-	return p_fqcn.replace("::", ".");
+	if (p_fqcn.contains(".")) {
+		return p_fqcn.get_slice(".", p_fqcn.get_slice_count(".") - 1);
+	}
+	return p_fqcn;
 }
 
 bool GDScriptAnalyzer::is_type_compatible(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source, bool p_allow_implicit_conversion, const GDScriptParser::Node *p_source_node) {

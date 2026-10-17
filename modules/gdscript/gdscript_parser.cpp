@@ -932,6 +932,13 @@ bool GDScriptParser::has_class(const GDScriptParser::ClassNode *p_class) const {
 		return find_class(p_class->fqcn.trim_prefix(head->fqcn)) == p_class;
 	}
 
+	// A file-level trait is named after the script file, not after the head
+	// class, which `class_name` can rename at any point of the file.
+	const String script_fqcn = GDScript::canonicalize_path(script_path);
+	if (!script_fqcn.is_empty() && p_class->fqcn.begins_with(script_fqcn)) {
+		return find_class(p_class->fqcn.trim_prefix(script_fqcn)) == p_class;
+	}
+
 	return false;
 }
 
@@ -1001,7 +1008,18 @@ GDScriptParser::TraitNode *GDScriptParser::parse_trait(bool p_is_static) {
 
 	if (consume(GDScriptTokenizer::Token::IDENTIFIER, R"(Expected identifier for the trait name after "trait".)")) {
 		n_trait->identifier = parse_identifier();
-		if (n_trait->outer) {
+		// Traits declared at the top level of a script file are globally
+		// registered, so `uses` can resolve them from other scripts. The head
+		// class is the only ClassNode with no outer class.
+		const bool is_file_level = n_trait->outer == nullptr || n_trait->outer->outer == nullptr;
+		if (is_file_level) {
+			// The trait is identified by the file it describes, not by the head
+			// class's name: `class_name` overrides that name (and may do so after
+			// the trait was parsed), and the trait's identity, which `is` and the
+			// global registry rely on, must not depend on it.
+			n_trait->fqcn = GDScript::canonicalize_path(script_path) + "::" + n_trait->identifier->name;
+			GDScriptLanguage::register_global_trait(n_trait->identifier->name, script_path);
+		} else if (n_trait->outer) {
 			String fqcn = n_trait->outer->fqcn;
 			if (fqcn.is_empty()) {
 				fqcn = GDScript::canonicalize_path(script_path);
@@ -1009,13 +1027,6 @@ GDScriptParser::TraitNode *GDScriptParser::parse_trait(bool p_is_static) {
 			n_trait->fqcn = fqcn + "::" + n_trait->identifier->name;
 		} else {
 			n_trait->fqcn = n_trait->identifier->name;
-		}
-		// Traits declared at the top level of a script file are globally
-		// registered, so `uses` can resolve them from other scripts. The head
-		// class is the only ClassNode with no outer class.
-		const bool is_file_level = n_trait->outer == nullptr || n_trait->outer->outer == nullptr;
-		if (is_file_level) {
-			GDScriptLanguage::register_global_trait(n_trait->identifier->name, script_path);
 		}
 
 		// `trait Name` on its own means the whole file is the trait, so it has
