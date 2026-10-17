@@ -24,7 +24,7 @@
 			func take_damage(amount: int) -> void:
 				health -= amount * 2
 		[/codeblock]
-		[b]Copying, not inheriting:[/b] When a class uses a trait, the trait's members are copied into that class. This is what separates a trait from a base class: every class that uses the trait gets its own copy of its variables, so two classes using the same trait do not share state. A trait is not in the inheritance chain, so it has no parent and no children of its own.
+		[b]Copying, not inheriting:[/b] When a class uses a trait, the trait's members are copied into that class. This is what separates a trait from a base class: every class that uses the trait gets its own copy of its variables, so two classes using the same trait do not share state. There is one exception: a variable the trait provides is not copied when one of the class's base classes already has a variable with that name — the inherited variable is used instead, so the class shares the base class's state for it, and a [code]SHADOWED_TRAIT_MEMBER[/code] warning points at the [code]uses[/code] statement. A member declared on the class itself wins over the trait's member and needs no copy either (see Overriding below). A trait is not in the inheritance chain, so it has no parent and no children of its own.
 		[b]A trait that describes a whole file:[/b] Writing [code]trait Name[/code] on its own, without a body, declares that the script file itself is the trait, in the style of [code]class_name[/code]. The file's top level members (its variables, constants, functions and signals) then belong to that trait, which keeps one trait per file:
 		[codeblock]
 		# damageable.gd
