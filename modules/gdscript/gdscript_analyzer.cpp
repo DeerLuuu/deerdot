@@ -1183,6 +1183,24 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 		}
 	}
 
+	if (result.kind == GDScriptParser::DataType::TRAIT) {
+		// A trait reached through a dotted path (like `Holder.Inner`) is a trait
+		// just like a bare name, and is no more usable as a type. The check on
+		// the first identifier above only covers the bare form; the chain
+		// resolution sets the type of the member, so look at it now. This also
+		// covers container element types, whose type nodes are resolved on their
+		// own (arrays, dictionaries) and `as` casts.
+		String type_name;
+		for (const GDScriptParser::IdentifierNode *identifier : p_type->type_chain) {
+			if (!type_name.is_empty()) {
+				type_name += ".";
+			}
+			type_name += identifier->name;
+		}
+		push_error(vformat(R"("%s" is a trait, so it can't be used as a type. Use "uses" to bring its members into a class.)", type_name), p_type);
+		return bad_type;
+	}
+
 	if (!p_type->container_types.is_empty()) {
 		if (result.builtin_type == Variant::ARRAY) {
 			if (p_type->container_types.size() != 1) {
