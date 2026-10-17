@@ -86,6 +86,10 @@ class GDScript : public Script {
 	// Members are just indices to the instantiated script.
 	HashMap<StringName, MemberInfo> member_indices; // Includes member info of all base GDScript classes.
 	HashSet<StringName> members; // Only members of the current class.
+	// Traits this script took, directly or through its base, named as in a
+	// `uses` statement. Members are copied, so this is what remains of the
+	// trait, and what `is` answers from.
+	HashSet<StringName> traits;
 #ifdef DEBUG_ENABLED
 	HashMap<StringName, MemberInfo> old_member_indices; // Used for hot reloading. Empty while not compiling.
 #endif // DEBUG_ENABLED
@@ -244,6 +248,8 @@ public:
 	const HashMap<StringName, Ref<GDScript>> &get_subclasses() const { return subclasses; }
 	const HashMap<StringName, Variant> &get_constants() const { return constants; }
 	const HashSet<StringName> &get_members() const { return members; }
+	void add_trait(const StringName &p_name) { traits.insert(p_name); }
+	bool has_trait(const StringName &p_name) const { return traits.has(p_name); }
 	const GDScriptDataType &get_member_type(const StringName &p_member) const {
 		CRASH_COND(!member_indices.has(p_member));
 		return member_indices[p_member].data_type;

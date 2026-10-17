@@ -3305,6 +3305,19 @@ Error GDScriptCompiler::compile(const GDScriptParser *p_parser, GDScript *p_scri
 	main_script->_owner = nullptr;
 	RETURN_IF_ERROR(_prepare_compilation(main_script, parser->get_tree(), p_keep_state));
 
+	// Keep the traits the script took, and the ones its base took, so `is` can
+	// answer for a script that is already compiled.
+	{
+		HashSet<StringName> traits;
+		if (main_script->base.is_valid()) {
+			traits = main_script->base->traits;
+		}
+		for (const String &trait_fqcn : root->traits_fqtn) {
+			traits.insert(GDScriptAnalyzer::trait_name_from_fqcn(trait_fqcn));
+		}
+		main_script->traits = traits;
+	}
+
 	RETURN_IF_ERROR(_compile_class(main_script, root, p_keep_state));
 
 	ScriptLambdaInfo new_lambda_info = _get_script_lambda_replacement_info(p_script);

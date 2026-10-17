@@ -5470,6 +5470,19 @@ void GDScriptAnalyzer::reduce_ternary_op(GDScriptParser::TernaryOpNode *p_ternar
 	p_ternary_op->type_constraint = result;
 }
 
+// The dotted name written in a type test, or empty when it is not a plain name
+// (a built-in type, a nested subscript, and so on).
+static String _name_of_type_test(const GDScriptParser::TypeNode *p_type) {
+	String name;
+	for (const GDScriptParser::IdentifierNode *part : p_type->type_chain) {
+		if (part == nullptr || part->name.is_empty()) {
+			return String();
+		}
+		name = name.is_empty() ? String(part->name) : name + "." + String(part->name);
+	}
+	return name;
+}
+
 void GDScriptAnalyzer::reduce_type_test(GDScriptParser::TypeTestNode *p_type_test) {
 	GDScriptParser::DataType result;
 	result.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
@@ -5479,6 +5492,43 @@ void GDScriptAnalyzer::reduce_type_test(GDScriptParser::TypeTestNode *p_type_tes
 
 	if (!p_type_test->operand || !p_type_test->test_type) {
 		return;
+	}
+
+	// A trait is not a type, so `is SomeTrait` is not a checked cast. It is
+	// still a fair question, and it is answered here: whether the class of the
+	// operand took that trait.
+	const String trait_name = _name_of_type_test(p_type_test->test_type);
+	if (!trait_name.is_empty()) {
+		bool is_trait = GDScriptLanguage::has_global_trait(trait_name);
+		if (!is_trait) {
+			GDScriptParser::ClassNode *found = parser->find_class(trait_name.replace(".", "::"));
+			is_trait = found != nullptr && found->type == GDScriptParser::Node::TRAIT;
+		}
+
+		if (is_trait) {
+			reduce_expression(p_type_test->operand);
+
+			bool took_trait = false;
+			const GDScriptParser::ClassNode *cls = p_type_test->operand->type_constraint.class_type;
+			while (cls != nullptr && !took_trait) {
+				for (const String &trait_fqcn : cls->traits_fqtn) {
+					if (trait_name_from_fqcn(trait_fqcn) == trait_name) {
+						took_trait = true;
+						break;
+					}
+				}
+				cls = cls->base_type.class_type;
+			}
+
+			if (!took_trait) {
+				Ref<GDScript> script = p_type_test->operand->type_constraint.script_type;
+				took_trait = script.is_valid() && script->has_trait(trait_name);
+			}
+
+			p_type_test->is_constant = true;
+			p_type_test->reduced_value = took_trait;
+			return;
+		}
 	}
 
 	reduce_expression(p_type_test->operand);
@@ -6579,6 +6629,13 @@ GDScriptParser::DataType GDScriptAnalyzer::get_operation_type(Variant::Operator 
 	}
 
 	return result;
+}
+
+StringName GDScriptAnalyzer::trait_name_from_fqcn(const String &p_fqcn) {
+	if (p_fqcn.contains("/")) {
+		return p_fqcn.get_slice("::", p_fqcn.get_slice_count("::") - 1);
+	}
+	return p_fqcn.replace("::", ".");
 }
 
 bool GDScriptAnalyzer::is_type_compatible(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source, bool p_allow_implicit_conversion, const GDScriptParser::Node *p_source_node) {

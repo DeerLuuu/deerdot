@@ -170,6 +170,11 @@ class GDScriptAnalyzer {
 #endif // DEBUG_ENABLED
 
 public:
+	// The name a trait is written with, from its fully qualified form: a file
+	// level trait is stored as "res://path.gd::Name", one of an inner class as
+	// "Inner::Nested".
+	static StringName trait_name_from_fqcn(const String &p_fqcn);
+
 	Error resolve_inheritance();
 	Error resolve_interface();
 	Error resolve_body();
