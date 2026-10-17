@@ -1415,11 +1415,13 @@ void DocumentEditorContainer::_tab_menu_option(int p_option) {
 		case TAB_MENU_SPLIT_RIGHT:
 		case TAB_MENU_SPLIT_DOWN: {
 			const DropZone zone = (p_option == TAB_MENU_SPLIT_DOWN) ? DROP_ZONE_BOTTOM : DROP_ZONE_RIGHT;
-			TabContainer *from = pane;
 			const int index = tab_context_index;
-			_split_pane(from, zone);
-			if (panes.size() > 1) {
-				_move_tab_to_pane(from, index, panes[panes.size() - 1]);
+			// The menu was built when the split was possible, but the panes can
+			// have changed while it was open: only a pane the split really made
+			// takes the tab, never the last one around.
+			TabContainer *new_pane = _split_pane(pane, zone);
+			if (new_pane != nullptr) {
+				_move_tab_to_pane(pane, index, new_pane);
 			}
 		} break;
 		case TAB_MENU_OPEN_IN_WINDOW: {
@@ -1783,9 +1785,10 @@ void DocumentEditorContainer::_activate_document(Control *p_editor, bool p_focus
 
 // Splits the given pane, putting a new empty pane on the requested side of it.
 // The panes form a tree of split containers, so any pane can be split again
-// until the maximum number of panes is reached.
-void DocumentEditorContainer::_split_pane(TabContainer *p_target, DropZone p_zone) {
-	_split_control(p_target, p_zone);
+// until the maximum number of panes is reached. Returns the new pane, or null
+// when no split was made.
+TabContainer *DocumentEditorContainer::_split_pane(TabContainer *p_target, DropZone p_zone) {
+	return Object::cast_to<TabContainer>(_split_control(p_target, p_zone));
 }
 
 // Wraps a control of the pane tree in a new split holding it and a new empty
@@ -2512,12 +2515,13 @@ void DocumentEditorContainer::_drop_split_tab(const Vector2 &p_at_position, cons
 		return;
 	}
 
-	_split_pane(target, zone);
-	if (panes.size() < 2) {
+	// The drop may be refused (the pane limit was reached in the meantime): only
+	// a pane the split really made takes the tab.
+	TabContainer *new_pane = _split_pane(target, zone);
+	if (new_pane == nullptr) {
 		return;
 	}
 
-	TabContainer *new_pane = panes[panes.size() - 1];
 	new_pane->move_tab_from_tab_container(from, from_index, 0);
 	new_pane->set_current_tab(new_pane->get_tab_count() - 1);
 

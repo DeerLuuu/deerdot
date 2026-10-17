@@ -438,8 +438,9 @@ class DocumentEditorContainer : public MarginContainer {
 	// Configures a pane (tab bar visibility, tab dragging between panes,
 	// per-tab close buttons) and connects its tab signals.
 	void _setup_pane(TabContainer *p_pane);
-	// Splits a pane, adding an empty pane on the requested side of it.
-	void _split_pane(TabContainer *p_target, DropZone p_zone);
+	// Splits a pane, adding a new empty pane on the requested side of it. The
+	// new pane is returned, or null when the split could not be made.
+	TabContainer *_split_pane(TabContainer *p_target, DropZone p_zone);
 	// Splits any control in the pane tree, which is what building a layout
 	// out of saved panes needs (a saved pane may hold a whole subtree).
 	Control *_split_control(Control *p_target, DropZone p_zone);
