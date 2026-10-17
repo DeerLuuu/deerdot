@@ -49,6 +49,7 @@ class VSplitContainer;
 class ItemList;
 class TabContainer;
 class Tree;
+class TreeItem;
 class WindowWrapper;
 
 class ScriptEditorQuickOpen : public ConfirmationDialog {
@@ -147,6 +148,9 @@ class DocumentOutline : public VBoxContainer {
 	// The toggled signal brings the state first, the bound kind follows.
 	void _toggle_kind(bool p_pressed, const String &p_kind);
 	bool _is_kind_visible(const String &p_kind) const;
+	// Creates or reuses the group items a dotted member name belongs to, and
+	// returns the item the member itself hangs under.
+	TreeItem *_get_group_item(const Vector<String> &p_groups, HashMap<String, TreeItem *> &r_parents, const Color &p_disabled_color);
 	void _tree_selected();
 
 protected:

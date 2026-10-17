@@ -805,6 +805,31 @@ Ref<Texture2D> DocumentOutline::_get_member_icon(const String &p_kind) const {
 	return Ref<Texture2D>();
 }
 
+// Creates (or reuses) the group items a member name written as a dotted path
+// belongs to, and returns the item the member itself hangs under. The map is
+// keyed by the whole group path: two inner classes (or two traits) can each
+// hold a group with the same name, and a plain group name would merge them.
+TreeItem *DocumentOutline::_get_group_item(const Vector<String> &p_groups, HashMap<String, TreeItem *> &r_parents, const Color &p_disabled_color) {
+	TreeItem *parent = tree->get_root();
+	String path;
+	for (const String &group : p_groups) {
+		path = path.is_empty() ? group : path + "." + group;
+		TreeItem *group_item = nullptr;
+		if (r_parents.has(path)) {
+			group_item = r_parents[path];
+		}
+		if (group_item == nullptr) {
+			group_item = tree->create_item(parent);
+			group_item->set_text(0, group);
+			group_item->set_selectable(0, false);
+			group_item->set_custom_color(0, p_disabled_color);
+			r_parents[path] = group_item;
+		}
+		parent = group_item;
+	}
+	return parent;
+}
+
 void DocumentOutline::update_outline() {
 	String selected;
 	if (tree->is_anything_selected()) {
@@ -838,28 +863,14 @@ void DocumentOutline::update_outline() {
 					continue;
 				}
 
-				TreeItem *parent = tree->get_root();
+				// Organize functions inside subclasses and traits: the groups are
+				// every part of the name but the member itself.
 				String name = function_name.get_slicec(':', 0);
-
-				// Organize functions inside subclasses.
-				Vector<String> subclasses = name.split(".");
-				if (!subclasses.is_empty()) {
-					int last = subclasses.size() - 1;
-					name = subclasses[last];
-					subclasses.remove_at(last); // Remove the function itself.
-
-					for (const String &subclass : subclasses) {
-						if (parents.has(subclass)) {
-							parent = parents[subclass];
-						} else {
-							parent = tree->create_item(parent);
-							parent->set_text(0, subclass);
-							parent->set_selectable(0, false);
-							parent->set_custom_color(0, disabled_color);
-							parents[subclass] = parent;
-						}
-					}
-				}
+				Vector<String> groups = name.split(".");
+				const int last = groups.size() - 1;
+				name = groups[last];
+				groups.remove_at(last);
+				TreeItem *parent = _get_group_item(groups, parents, disabled_color);
 
 				TreeItem *ti = tree->create_item(parent);
 				ti->set_text(0, name);
@@ -887,29 +898,16 @@ void DocumentOutline::update_outline() {
 			Vector<Ref<FuzzySearchMatch>> results = fuzzy.search_all(filter_text, search_names);
 
 			for (const Ref<FuzzySearchMatch> &res : results) {
-				TreeItem *parent = tree->get_root();
 				String function_name = searched[res->get_original_index()];
+
+				// Organize functions inside subclasses and traits: the groups are
+				// every part of the name but the member itself.
 				String name = function_name.get_slicec(':', 0);
-
-				// Organize functions inside subclasses.
-				Vector<String> subclasses = name.split(".");
-				if (!subclasses.is_empty()) {
-					int last = subclasses.size() - 1;
-					name = subclasses[last];
-					subclasses.remove_at(last); // Remove the function itself.
-
-					for (const String &subclass : subclasses) {
-						if (parents.has(subclass)) {
-							parent = parents[subclass];
-						} else {
-							parent = tree->create_item(parent);
-							parent->set_text(0, subclass);
-							parent->set_selectable(0, false);
-							parent->set_custom_color(0, disabled_color);
-							parents[subclass] = parent;
-						}
-					}
-				}
+				Vector<String> groups = name.split(".");
+				const int last = groups.size() - 1;
+				name = groups[last];
+				groups.remove_at(last);
+				TreeItem *parent = _get_group_item(groups, parents, disabled_color);
 
 				TreeItem *ti = tree->create_item(parent);
 				ti->set_text(0, name);
