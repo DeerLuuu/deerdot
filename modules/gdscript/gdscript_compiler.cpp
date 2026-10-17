@@ -2872,12 +2872,12 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 	}
 
 	// Member indices inherited from the base class are kept, and members added
-	// here must not reuse them. A class can have a member with the same name as
-	// one of its base class (a trait's member may shadow an inherited one), and
-	// the instance's member array is sized by `member_indices.size()`. Reusing
-	// the inherited index would make `member_indices[name]` overwrite the base's
-	// entry, so the map would not grow while an initializer still writes at the
-	// dropped index, corrupting the instance (out-of-bounds write on `new()`).
+	// here must not reuse them: the instance's member array is sized by
+	// `member_indices.size()`, so a member written at an inherited index would
+	// leave a hole while its initializer still writes at that index. New members
+	// take the next free index instead. A member whose name is already in the
+	// map cannot be given a slot this way (the map would not grow), so it is
+	// rejected below; the analyzer reports such a member first in normal code.
 	int next_member_index = 0;
 	for (const KeyValue<StringName, GDScript::MemberInfo> &E : p_script->member_indices) {
 		next_member_index = MAX(next_member_index, E.value.index + 1);
@@ -2952,9 +2952,25 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 				minfo.property_info = prop_info;
 
 				if (variable->is_static) {
+					if (p_script->static_variables_indices.has(name)) {
+						// Two members with one name would share a map entry but
+						// get different indexes, and the initializer would write
+						// past the array sized from the map. The analyzer rejects
+						// this case; refuse to compile it if it ever reaches here.
+						_set_error(vformat(R"(Member "%s" is already defined in this class.)", name), variable);
+						return ERR_ALREADY_EXISTS;
+					}
 					minfo.index = p_script->static_variables_indices.size();
 					p_script->static_variables_indices[name] = minfo;
 				} else {
+					if (p_script->member_indices.has(name)) {
+						// The map was seeded with the base class's members: an
+						// entry with this name would be overwritten instead of
+						// added, so the instance array would keep the old size
+						// while the initializer writes at the new index.
+						_set_error(vformat(R"(Member "%s" is already defined in this class.)", name), variable);
+						return ERR_ALREADY_EXISTS;
+					}
 					minfo.index = next_member_index++;
 					p_script->member_indices[name] = minfo;
 					p_script->members.insert(name);
@@ -3013,6 +3029,12 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 				prop_info.hint_string = annotation->export_info.hint_string;
 				minfo.property_info = prop_info;
 
+				if (p_script->member_indices.has(name)) {
+					// Same reason as for variables: the map must grow with the
+					// instance array, so a name already in it cannot be reused.
+					_set_error(vformat(R"(Group "%s" is already defined in this class.)", annotation->export_info.name), annotation);
+					return ERR_ALREADY_EXISTS;
+				}
 				p_script->member_indices[name] = minfo;
 				p_script->members.insert(name);
 			} break;
