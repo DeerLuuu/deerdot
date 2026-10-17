@@ -549,6 +549,8 @@ class DocumentEditorContainer : public MarginContainer {
 	void _on_save_layout_confirmed();
 	void _on_delete_layout_confirmed();
 	Control *_restore_pane_layout(const Variant &p_node, TabContainer *p_container);
+	// Restores the sidebar split offsets, which live outside the pane tree.
+	void _restore_split_offsets(const Ref<ConfigFile> &p_layout);
 	void _apply_editor_settings();
 	void _update_filenames();
 	void _files_moved(const String &p_old_file, const String &p_new_file);

@@ -5143,6 +5143,19 @@ Control *DocumentEditorContainer::_restore_pane_layout(const Variant &p_node, Ta
 	return p_container;
 }
 
+// The sidebar splits are outside the pane tree, and every layout format saves
+// their offsets: both restoring paths have to read them back, or the split
+// positions do not survive a restart.
+void DocumentEditorContainer::_restore_split_offsets(const Ref<ConfigFile> &p_layout) {
+	if (p_layout->has_section_key(config_section, "script_split_offset")) {
+		script_split->set_split_offset(p_layout->get_value(config_section, "script_split_offset"));
+	}
+
+	if (p_layout->has_section_key(config_section, "list_split_offset")) {
+		list_split->set_split_offset(p_layout->get_value(config_section, "list_split_offset"));
+	}
+}
+
 void DocumentEditorContainer::set_window_layout(Ref<ConfigFile> p_layout) {
 	if (!p_layout->has_section_key(config_section, "open_scripts") && !p_layout->has_section_key(config_section, "open_help")) {
 		return;
@@ -5158,6 +5171,7 @@ void DocumentEditorContainer::set_window_layout(Ref<ConfigFile> p_layout) {
 			_restore_pane_layout(pane_layout, tab_container);
 			ScriptEditorNavigationMarker::get_singleton()->init_end();
 			restoring_layout = false;
+			_restore_split_offsets(p_layout);
 			_update_filenames();
 			document_list->update_list();
 			return;
@@ -5247,13 +5261,7 @@ void DocumentEditorContainer::set_window_layout(Ref<ConfigFile> p_layout) {
 		tab_container->get_tab_control(i)->set_meta("__editor_pass", Variant());
 	}
 
-	if (p_layout->has_section_key(config_section, "script_split_offset")) {
-		script_split->set_split_offset(p_layout->get_value(config_section, "script_split_offset"));
-	}
-
-	if (p_layout->has_section_key(config_section, "list_split_offset")) {
-		list_split->set_split_offset(p_layout->get_value(config_section, "list_split_offset"));
-	}
+	_restore_split_offsets(p_layout);
 
 	// Remove any deleted editors that have been removed between launches.
 	// and if a Script, register breakpoints with the debugger.
