@@ -1234,6 +1234,21 @@ static void _find_global_enums(HashMap<String, EditorLanguage::CompletionOption>
 	}
 }
 
+// Adds every trait declared in a class, with a dotted name for the ones inside
+// an inner class, the way they are written in a `uses` statement.
+static void _list_traits_in_class(const GDScriptParser::ClassNode *p_class, const String &p_prefix, HashMap<String, EditorLanguage::CompletionOption> &r_options) {
+	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+		if (member.type == GDScriptParser::ClassNode::Member::TRAIT) {
+			const String name = p_prefix.is_empty() ? String(member.get_name()) : p_prefix + "." + String(member.get_name());
+			EditorLanguage::CompletionOption option(name, EditorLanguage::CompletionKind::TRAIT);
+			r_options.insert(option.display, option);
+		} else if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
+			const String prefix = p_prefix.is_empty() ? String(member.get_name()) : p_prefix + "." + String(member.get_name());
+			_list_traits_in_class(member.m_class, prefix, r_options);
+		}
+	}
+}
+
 static void _list_available_types(bool p_inherit_only, GDScriptParser::CompletionContext &p_context, HashMap<String, EditorLanguage::CompletionOption> &r_result) {
 	// Built-in Variant Types
 	_find_built_in_variants(r_result);
@@ -3705,6 +3720,27 @@ static void _find_call_arguments(GDScriptParser::CompletionContext &p_context, c
 					}
 				}
 			}
+		} break;
+		case GDScriptParser::COMPLETION_USES_TYPE: {
+			// Traits declared in this file, including those of an inner class,
+			// plus the ones registered for the whole project.
+			if (completion_context.current_class != nullptr) {
+				const GDScriptParser::ClassNode *root = completion_context.current_class;
+				while (root->outer != nullptr) {
+					root = root->outer;
+				}
+				_list_traits_in_class(root, "", options);
+			}
+
+			if (GDScriptLanguage::get_singleton() != nullptr) {
+				List<StringName> trait_names;
+				GDScriptLanguage::get_singleton()->get_global_trait_names(&trait_names);
+				for (const StringName &trait_name : trait_names) {
+					EditorLanguage::CompletionOption option(trait_name, EditorLanguage::CompletionKind::TRAIT);
+					options.insert(option.display, option);
+				}
+			}
+			r_forced = true;
 		} break;
 		case GDScriptParser::COMPLETION_INHERIT_TYPE: {
 			_list_available_types(true, completion_context, options);

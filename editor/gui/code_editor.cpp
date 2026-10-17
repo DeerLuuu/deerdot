@@ -1104,6 +1104,9 @@ Ref<Texture2D> CodeTextEditor::_get_completion_icon(const EditorLanguage::Comple
 		case EditorLanguage::CompletionKind::FUNCTION:
 			tex = get_editor_theme_icon(SNAME("MemberMethod"));
 			break;
+		case EditorLanguage::CompletionKind::TRAIT:
+			tex = get_editor_theme_icon(SNAME("GDScript"));
+			break;
 		case EditorLanguage::CompletionKind::KEYWORD:
 			tex = get_editor_theme_icon(SNAME("Keyword"));
 			break;

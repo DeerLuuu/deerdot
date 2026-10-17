@@ -59,6 +59,7 @@ public:
 		FILE_PATH,
 		PLAIN_TEXT,
 		KEYWORD,
+		TRAIT,
 	};
 
 	// scene/gui/code_edit.h - CodeEdit::CodeCompletionLocation
