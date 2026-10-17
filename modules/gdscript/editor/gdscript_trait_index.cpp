@@ -31,37 +31,77 @@
 #include "gdscript_trait_index.h"
 
 #include "../gdscript.h"
+#include "../gdscript_tokenizer.h"
 
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/os/os.h"
+#include "core/templates/hash_set.h"
 
 static uint64_t trait_index_scan_usec = 0;
 
 // Reads one script and registers the traits it declares at its top level.
-static void _register_traits_in_file(const String &p_path) {
+static void _register_traits_in_file(const String &p_path, HashSet<StringName> *r_found) {
 	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::READ);
 	if (file.is_null()) {
 		return;
 	}
 
-	for (const String &line : file->get_as_text().split("\n")) {
-		// Only top level declarations are registered globally, and those start
-		// at the first column, after a possible byte order mark.
-		const String code = line.remove_char(0xFEFF);
-		if (!code.begins_with("trait ")) {
+	String source = file->get_as_text();
+	if (!source.contains("trait")) {
+		// Most scripts declare no trait, and tokenizing is not free.
+		return;
+	}
+	source = source.remove_char(0xFEFF);
+
+	// Read the declarations with the tokenizer rather than matching lines: a
+	// `trait Name` written inside a multi-line string is not a declaration, and
+	// a line-based scan would register it as a project trait.
+	GDScriptTokenizerText tokenizer;
+	tokenizer.set_source_code(source);
+
+	GDScriptTokenizer::Token token = tokenizer.scan();
+	while (token.type != GDScriptTokenizer::Token::TK_EOF) {
+		// Only declarations at the first column describe the whole file, which is
+		// what makes a trait global. A trait nested in an inner class is indented.
+		if (token.type == GDScriptTokenizer::Token::TRAIT && token.start_column == 1) {
+			const GDScriptTokenizer::Token name_token = tokenizer.scan();
+			if (name_token.type == GDScriptTokenizer::Token::IDENTIFIER) {
+				GDScriptLanguage::register_global_trait(name_token.get_identifier(), p_path);
+				if (r_found != nullptr) {
+					r_found->insert(name_token.get_identifier());
+				}
+			}
+			token = name_token;
 			continue;
 		}
-		const String name = code.substr(6).strip_edges().split(":")[0].split(" ")[0].strip_edges();
-		if (name.is_valid_identifier()) {
-			GDScriptLanguage::register_global_trait(name, p_path);
-		}
+		token = tokenizer.scan();
 	}
 }
 
 // Walks the project itself rather than the editor filesystem: scripts can be
 // analyzed (restored ones, for instance) before that filesystem is ready.
-static void _scan_traits_in_dir(const String &p_path) {
+static void _scan_traits_in_dir(const String &p_path, HashSet<String> &r_visited, int p_depth, HashSet<StringName> &r_found) {
+	// A directory can link back to one of its ancestors (a symlink or, on
+	// Windows, a junction), which would make this walk unbounded. Bound it on
+	// depth as well as on the directories already seen.
+	constexpr int MAX_DEPTH = 64;
+	if (p_depth > MAX_DEPTH) {
+		WARN_PRINT(vformat(R"(GDScript: Not scanning "%s" for traits: the directory tree is too deep, probably because of a link to an ancestor.)", p_path));
+		return;
+	}
+
+	if (r_visited.has(p_path.simplify_path())) {
+		return;
+	}
+	r_visited.insert(p_path.simplify_path());
+
+	if (FileAccess::exists(p_path.path_join(".gdignore"))) {
+		// The editor filesystem skips this directory, so its scripts are not part
+		// of the project and their traits must not be registered.
+		return;
+	}
+
 	Ref<DirAccess> dir = DirAccess::open(p_path);
 	if (dir.is_null()) {
 		return;
@@ -76,9 +116,14 @@ static void _scan_traits_in_dir(const String &p_path) {
 
 		const String full_path = p_path.path_join(name);
 		if (dir->current_is_dir()) {
-			_scan_traits_in_dir(full_path);
-		} else if (name.ends_with(".gd")) {
-			_register_traits_in_file(full_path);
+			if (dir->is_link(full_path)) {
+				// A link may point to an ancestor of this directory (or to itself),
+				// which no visited set can detect through the changing paths.
+				continue;
+			}
+			_scan_traits_in_dir(full_path, r_visited, p_depth + 1, r_found);
+		} else if (name.get_extension().to_lower() == "gd") {
+			_register_traits_in_file(full_path, &r_found);
 		}
 	}
 	dir->list_dir_end();
@@ -89,7 +134,24 @@ void gdscript_scan_project_traits() {
 		return;
 	}
 
-	_scan_traits_in_dir("res://");
+	HashSet<String> visited;
+	HashSet<StringName> found;
+	_scan_traits_in_dir("res://", visited, 0, found);
+
+	// The registry only ever grows while scripts are parsed, so a trait whose
+	// file was deleted or renamed would keep answering `is` and keep showing up
+	// in `uses` completion. This scan just read the whole project, so any trait
+	// of a project script that it did not find is gone.
+	List<StringName> registered;
+	GDScriptLanguage::get_singleton()->get_global_trait_names(&registered);
+	for (const StringName &name : registered) {
+		if (found.has(name)) {
+			continue;
+		}
+		if (GDScriptLanguage::get_global_trait_path(name).begins_with("res://")) {
+			GDScriptLanguage::unregister_global_trait(name);
+		}
+	}
 
 	trait_index_scan_usec = OS::get_singleton()->get_ticks_usec();
 
