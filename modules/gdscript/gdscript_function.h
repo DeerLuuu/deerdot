@@ -53,6 +53,7 @@ public:
 		NATIVE,
 		SCRIPT,
 		GDSCRIPT,
+		TRAIT, // A type test on a trait, answered by the VM using `trait_name`.
 	};
 
 	Kind kind = VARIANT;
@@ -61,6 +62,8 @@ public:
 	StringName native_type;
 	Script *script_type = nullptr;
 	Ref<Script> script_type_ref;
+	// Only used when `kind == TRAIT`: the trait a type test asks about.
+	StringName trait_name;
 
 	_FORCE_INLINE_ bool has_type() const { return kind != VARIANT; }
 
@@ -125,6 +128,7 @@ public:
 				builtin_type == p_other.builtin_type &&
 				native_type == p_other.native_type &&
 				(script_type == p_other.script_type || script_type_ref == p_other.script_type_ref) &&
+				trait_name == p_other.trait_name &&
 				container_element_types == p_other.container_element_types;
 	}
 
@@ -138,6 +142,7 @@ public:
 		native_type = p_other.native_type;
 		script_type = p_other.script_type;
 		script_type_ref = p_other.script_type_ref;
+		trait_name = p_other.trait_name;
 		container_element_types = p_other.container_element_types;
 	}
 
@@ -308,6 +313,7 @@ public:
 		OPCODE_ASSERT,
 		OPCODE_BREAKPOINT,
 		OPCODE_LINE,
+		OPCODE_TYPE_TEST_TRAIT,
 		OPCODE_END
 	};
 

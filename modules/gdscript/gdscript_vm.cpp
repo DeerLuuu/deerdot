@@ -411,6 +411,7 @@ void (*type_init_function_table[])(Variant *) = {
 		&&OPCODE_ASSERT, \
 		&&OPCODE_BREAKPOINT, \
 		&&OPCODE_LINE, \
+		&&OPCODE_TYPE_TEST_TRAIT, \
 		&&OPCODE_END \
 	}; \
 	static_assert(std_size(switch_table_ops) == (OPCODE_END + 1), "Opcodes in jump table aren't the same as opcodes in enum.");
@@ -3968,6 +3969,43 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 
 					EngineDebugger::get_singleton()->line_poll();
 				}
+			}
+			DISPATCH_OPCODE;
+
+			OPCODE(OPCODE_TYPE_TEST_TRAIT) {
+				CHECK_SPACE(4);
+
+				GET_VARIANT_PTR(dst, 0);
+				GET_VARIANT_PTR(value, 1);
+
+				GET_VARIANT_PTR(trait_name, 2);
+
+				bool was_freed = false;
+				Object *object = value->get_validated_object_with_check(was_freed);
+				if (was_freed) {
+#ifdef DEBUG_ENABLED
+					err_text = "Left operand of 'is' is a previously freed instance.";
+#endif // DEBUG_ENABLED
+					OPCODE_BREAK;
+				}
+
+				bool result = false;
+				if (object) {
+					ScriptInstance *script_instance = object->get_script_instance();
+					Script *script_ptr = script_instance != nullptr ? script_instance->get_script() : nullptr;
+					const StringName trait = *trait_name;
+					while (script_ptr) {
+						GDScript *gdscript = Object::cast_to<GDScript>(script_ptr);
+						if (gdscript != nullptr && gdscript->has_trait(trait)) {
+							result = true;
+							break;
+						}
+						script_ptr = script_ptr->get_base_script().ptr();
+					}
+				}
+
+				*dst = result;
+				ip += 4;
 			}
 			DISPATCH_OPCODE;
 

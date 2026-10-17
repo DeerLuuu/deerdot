@@ -685,6 +685,14 @@ void GDScriptByteCodeGenerator::write_type_test(const Address &p_target, const A
 			append(p_source);
 			append(get_constant_pos(script) | (GDScriptFunction::ADDR_TYPE_CONSTANT << GDScriptFunction::ADDR_BITS));
 		} break;
+		case GDScriptDataType::TRAIT: {
+			// A trait has no runtime type: the VM asks the value's script whether
+			// it took the trait, which is recorded by name.
+			append_opcode(GDScriptFunction::OPCODE_TYPE_TEST_TRAIT);
+			append(p_target);
+			append(p_source);
+			append(get_constant_pos(Variant(p_type.trait_name)) | (GDScriptFunction::ADDR_TYPE_CONSTANT << GDScriptFunction::ADDR_BITS));
+		} break;
 		default: {
 			ERR_PRINT("Compiler bug: unresolved type in type test.");
 			append_opcode(GDScriptFunction::OPCODE_ASSIGN_FALSE);

@@ -973,15 +973,24 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 			GDScriptCodeGenerator::Address result = codegen.add_temporary(_gdtype_from_datatype(type_test->type_constraint, codegen.script));
 
 			GDScriptCodeGenerator::Address operand = _parse_expression(codegen, r_error, type_test->operand);
-			GDScriptDataType test_type = _gdtype_from_datatype(type_test->test_datatype, codegen.script, false);
 			if (r_error) {
 				return GDScriptCodeGenerator::Address();
 			}
 
-			if (test_type.has_type()) {
-				gen->write_type_test(result, operand, test_type);
+			if (!type_test->runtime_trait_name.is_empty()) {
+				// The analyzer could not answer the type test statically: the VM
+				// asks the value's script whether it took the trait.
+				GDScriptDataType trait_type;
+				trait_type.kind = GDScriptDataType::TRAIT;
+				trait_type.trait_name = type_test->runtime_trait_name;
+				gen->write_type_test(result, operand, trait_type);
 			} else {
-				gen->write_assign_true(result);
+				GDScriptDataType test_type = _gdtype_from_datatype(type_test->test_datatype, codegen.script, false);
+				if (test_type.has_type()) {
+					gen->write_type_test(result, operand, test_type);
+				} else {
+					gen->write_assign_true(result);
+				}
 			}
 
 			if (operand.mode == GDScriptCodeGenerator::Address::TEMPORARY) {
@@ -2847,6 +2856,21 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 		p_script->rpc_config = p_script->base->rpc_config.duplicate();
 	}
 
+	// Keep the traits this class took, and the ones its base took, so a type
+	// test can answer for an instance at runtime: a trait has no runtime type of
+	// its own. Done for every class script (inner classes included), because an
+	// inner class can use a trait the file's root class does not.
+	{
+		HashSet<StringName> traits;
+		if (p_script->base.is_valid()) {
+			traits = p_script->base->traits;
+		}
+		for (const String &trait_fqcn : p_class->traits_fqtn) {
+			traits.insert(GDScriptAnalyzer::trait_name_from_fqcn(trait_fqcn));
+		}
+		p_script->traits = traits;
+	}
+
 	// Member indices inherited from the base class are kept, and members added
 	// here must not reuse them. A class can have a member with the same name as
 	// one of its base class (a trait's member may shadow an inherited one), and
@@ -3316,19 +3340,6 @@ Error GDScriptCompiler::compile(const GDScriptParser *p_parser, GDScript *p_scri
 
 	main_script->_owner = nullptr;
 	RETURN_IF_ERROR(_prepare_compilation(main_script, parser->get_tree(), p_keep_state));
-
-	// Keep the traits the script took, and the ones its base took, so `is` can
-	// answer for a script that is already compiled.
-	{
-		HashSet<StringName> traits;
-		if (main_script->base.is_valid()) {
-			traits = main_script->base->traits;
-		}
-		for (const String &trait_fqcn : root->traits_fqtn) {
-			traits.insert(GDScriptAnalyzer::trait_name_from_fqcn(trait_fqcn));
-		}
-		main_script->traits = traits;
-	}
 
 	RETURN_IF_ERROR(_compile_class(main_script, root, p_keep_state));
 

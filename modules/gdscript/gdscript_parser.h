@@ -1324,6 +1324,10 @@ public:
 		ExpressionNode *operand = nullptr;
 		TypeNode *test_type = nullptr;
 		DataType test_datatype;
+		// Set when the test asks about a trait that could not be answered while
+		// analyzing (the operand's static type may be a base class or Variant):
+		// the test is then done at runtime against this trait's name.
+		StringName runtime_trait_name;
 
 		TypeTestNode() {
 			type = TYPE_TEST;

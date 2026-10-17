@@ -5537,33 +5537,44 @@ void GDScriptAnalyzer::reduce_type_test(GDScriptParser::TypeTestNode *p_type_tes
 	// operand took that trait.
 	// `is Inner.Trait` names the trait the way `uses` does, while a trait is
 	// identified by its own name in `traits_fqtn` and in the compiled script,
-	// so normalize the name before comparing.
-	const String trait_name = trait_name_from_fqcn(_name_of_type_test(p_type_test->test_type));
-	if (!trait_name.is_empty() && may_name_trait(trait_name)) {
-		{
-			reduce_expression(p_type_test->operand);
+	// so keep both forms: the written one for the visibility check (it may point
+	// into an inner class) and the normalized one for comparisons.
+	const String written_trait_name = _name_of_type_test(p_type_test->test_type);
+	const String trait_name = trait_name_from_fqcn(written_trait_name);
+	if (!trait_name.is_empty() && may_name_trait(written_trait_name)) {
+		reduce_expression(p_type_test->operand);
 
-			bool took_trait = false;
-			const GDScriptParser::ClassNode *cls = p_type_test->operand->type_constraint.class_type;
-			while (cls != nullptr && !took_trait) {
-				for (const String &trait_fqcn : cls->traits_fqtn) {
-					if (trait_name_from_fqcn(trait_fqcn) == trait_name) {
-						took_trait = true;
-						break;
-					}
+		// When the operand's own class is known to take the trait, the answer is
+		// already settled: `true` costs nothing at runtime.
+		bool took_trait = false;
+		const GDScriptParser::ClassNode *cls = p_type_test->operand->type_constraint.class_type;
+		while (cls != nullptr && !took_trait) {
+			for (const String &trait_fqcn : cls->traits_fqtn) {
+				if (trait_name_from_fqcn(trait_fqcn) == trait_name) {
+					took_trait = true;
+					break;
 				}
-				cls = cls->base_type.class_type;
 			}
+			cls = cls->base_type.class_type;
+		}
 
-			if (!took_trait) {
-				Ref<GDScript> script = p_type_test->operand->type_constraint.script_type;
-				took_trait = script.is_valid() && script->has_trait(trait_name);
-			}
+		if (!took_trait) {
+			Ref<GDScript> script = p_type_test->operand->type_constraint.script_type;
+			took_trait = script.is_valid() && script->has_trait(trait_name);
+		}
 
+		if (took_trait) {
 			p_type_test->is_constant = true;
-			p_type_test->reduced_value = took_trait;
+			p_type_test->reduced_value = true;
 			return;
 		}
+
+		// Otherwise the answer depends on the runtime object, not on the static
+		// type: `var n: Node = Uses.new()` must be `true`, and a base class or
+		// `Variant` static type says nothing about the traits of the actual
+		// instance. Ask the VM instead of folding to `false`.
+		p_type_test->runtime_trait_name = trait_name;
+		return;
 	}
 
 	reduce_expression(p_type_test->operand);

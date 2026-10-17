@@ -238,6 +238,16 @@ void GDScriptFunction::disassemble(const Vector<String> &p_code_lines) const {
 
 				incr += 4;
 			} break;
+			case OPCODE_TYPE_TEST_TRAIT: {
+				text += "type test ";
+				text += DADDR(1);
+				text += " = ";
+				text += DADDR(2);
+				text += " is trait ";
+				text += DADDR(3);
+
+				incr += 4;
+			} break;
 			case OPCODE_SET_KEYED: {
 				text += "set keyed ";
 				text += DADDR(1);
