@@ -750,7 +750,15 @@ Error GDScriptAnalyzer::resolve_class_uses(GDScriptParser::ClassNode *p_class, c
 			resolved_globally = found != nullptr;
 		}
 		if (found == nullptr || found->type != GDScriptParser::Node::TRAIT) {
-			push_error(vformat(R"(Could not find trait "%s".)", uses->fqtn), uses);
+			// A registered trait whose declaration file does not analyze is not
+			// missing: name the file that has to be fixed instead, so the error
+			// does not read as a spelling mistake in this script.
+			const String trait_path = uses->fqtn.contains(".") ? String() : GDScriptLanguage::get_global_trait_path(uses->fqtn);
+			if (!trait_path.is_empty()) {
+				push_error(vformat(R"(Could not resolve trait "%s": its declaration in "%s" has errors.)", uses->fqtn, trait_path), uses);
+			} else {
+				push_error(vformat(R"(Could not find trait "%s".)", uses->fqtn), uses);
+			}
 			continue;
 		}
 		GDScriptParser::TraitNode *trait = static_cast<GDScriptParser::TraitNode *>(found);
@@ -1801,7 +1809,11 @@ void GDScriptAnalyzer::resolve_class_body(GDScriptParser::ClassNode *p_class, bo
 
 	if (p_recursive) {
 		for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
-			if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
+			if (member.type == GDScriptParser::ClassNode::Member::CLASS ||
+					member.type == GDScriptParser::ClassNode::Member::TRAIT) {
+				// A trait's function bodies are analyzed where they are declared,
+				// like an inner class's: otherwise a broken trait is only reported
+				// when some other script uses it, and with that script's path.
 				resolve_class_body(member.m_class, true);
 			}
 		}
