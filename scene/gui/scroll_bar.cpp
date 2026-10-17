@@ -351,11 +351,13 @@ void ScrollBar::_notification(int p_what) {
 				area.height -= incr_size.height + decr_size.height;
 			}
 
+			StyleBox::begin_animation_group("scroll_bg");
 			if (has_focus(true)) {
 				theme_cache.scroll_focus_style->draw(ci, Rect2(ofs, area));
 			} else {
 				theme_cache.scroll_style->draw(ci, Rect2(ofs, area));
 			}
+			StyleBox::end_animation_group();
 
 			if (orientation == HORIZONTAL) {
 				ofs.width += area.width;
@@ -382,7 +384,9 @@ void ScrollBar::_notification(int p_what) {
 				grabber_rect.position.x = padding_left;
 			}
 
+			StyleBox::begin_animation_group(SNAME("grabber"));
 			grabber->draw(ci, grabber_rect);
+			StyleBox::end_animation_group();
 		} break;
 
 		case NOTIFICATION_ENTER_TREE: {
