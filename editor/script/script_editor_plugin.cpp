@@ -1432,8 +1432,7 @@ void DocumentEditorContainer::_tab_menu_option(int p_option) {
 			_popout_editor(pane, tab_context_index);
 		} break;
 		case TAB_MENU_MOVE_TO_OTHER_PANE: {
-			if (panes.size() == 2) {
-				TabContainer *to = (pane == panes[0]) ? panes[1] : panes[0];
+			if (TabContainer *to = _other_pane(pane)) {
 				_move_tab_to_pane(pane, tab_context_index, to);
 			}
 		} break;
@@ -1459,6 +1458,13 @@ void DocumentEditorContainer::_update_tab_menu_highlight() {
 	_tab_menu_option_focused(id);
 }
 
+// The menu closed: the entry the pointer was on is not hovered anymore, and the
+// highlight it drew has to go with it.
+void DocumentEditorContainer::_tab_context_menu_hidden() {
+	tab_menu_hovered_id = -1;
+	_hide_drop_overlay();
+}
+
 void DocumentEditorContainer::_tab_menu_option_focused(int p_option) {
 	TabContainer *pane = _tab_context_pane();
 	switch (p_option) {
@@ -1469,9 +1475,12 @@ void DocumentEditorContainer::_tab_menu_option_focused(int p_option) {
 			_show_highlight_overlay(_get_drop_overlay_rect(DROP_ZONE_BOTTOM), TTRC("New pane"));
 		} break;
 		case TAB_MENU_MOVE_TO_OTHER_PANE: {
-			if (pane != nullptr && panes.size() == 2) {
-				TabContainer *to = (pane == panes[0]) ? panes[1] : panes[0];
+			TabContainer *to = _other_pane(pane);
+			if (to != nullptr) {
 				_show_highlight_overlay(to->get_global_rect(), TTRC("Other pane"));
+			} else {
+				// The other pane is not there (any more): nothing to point at.
+				_hide_drop_overlay();
 			}
 		} break;
 		default: {
@@ -1669,6 +1678,23 @@ TabContainer *DocumentEditorContainer::_active_pane_container() const {
 
 TabContainer *DocumentEditorContainer::_tab_context_pane() const {
 	return Object::cast_to<TabContainer>(ObjectDB::get_instance(tab_context_pane_id));
+}
+
+// The pane a "move to the other pane" action targets: the other pane when there
+// are exactly two and the given pane is one of them. The number of panes alone
+// does not say which pane is the other one, nor that the given pane still is
+// one of them.
+TabContainer *DocumentEditorContainer::_other_pane(TabContainer *p_pane) const {
+	if (p_pane == nullptr || panes.size() != 2) {
+		return nullptr;
+	}
+	if (p_pane == panes[0]) {
+		return panes[1];
+	}
+	if (p_pane == panes[1]) {
+		return panes[0];
+	}
+	return nullptr;
 }
 
 int DocumentEditorContainer::_pane_index(const TabContainer *p_pane) const {
@@ -5923,7 +5949,7 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	tab_context_menu->connect(SceneStringName(id_pressed), callable_mp(this, &DocumentEditorContainer::_tab_menu_option));
 	// Hovering an entry that moves the document highlights where it will go.
 	tab_context_menu->connect("id_focused", callable_mp(this, &DocumentEditorContainer::_tab_menu_option_focused));
-	tab_context_menu->connect("popup_hide", callable_mp(this, &DocumentEditorContainer::_hide_drop_overlay));
+	tab_context_menu->connect("popup_hide", callable_mp(this, &DocumentEditorContainer::_tab_context_menu_hidden));
 
 	tab_container = memnew(TabContainer);
 	tab_container->set_custom_minimum_size(Size2(200, 0) * EDSCALE);

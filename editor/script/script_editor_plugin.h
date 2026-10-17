@@ -478,6 +478,10 @@ class DocumentEditorContainer : public MarginContainer {
 	void _tab_menu_option_focused(int p_option);
 	// The pane the tab menu acts on, or null when it was dropped meanwhile.
 	TabContainer *_tab_context_pane() const;
+	// The pane "move to the other pane" targets, when there is exactly one.
+	TabContainer *_other_pane(TabContainer *p_pane) const;
+	// Clears what the menu left behind when it closes.
+	void _tab_context_menu_hidden();
 	void _update_drop_preview();
 	void _hide_code_preview();
 	void _hide_drop_overlay();
