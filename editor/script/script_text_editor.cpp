@@ -249,18 +249,26 @@ void ScriptTextEditor::_load_theme_settings() {
 	Color updated_safe_line_number_color = EDITOR_GET("text_editor/theme/highlighting/safe_line_number_color");
 	Color updated_folded_code_region_color = EDITOR_GET("text_editor/theme/highlighting/folded_code_region_color");
 
-	bool warning_line_color_updated = updated_warning_line_color != warning_line_color;
-	bool marked_line_color_updated = updated_marked_line_color != marked_line_color;
+	// The lines were painted with the applied colors; the colors above follow
+	// the settings and cannot name them. Nothing is retinted before the first
+	// paint, since every line would match the unset color.
+	const Color previous_warning_line_color = applied_warning_line_color;
+	const Color previous_marked_line_color = applied_marked_line_color;
+	const Color previous_folded_code_region_color = applied_folded_code_region_color;
+	const bool line_colors_were_applied = line_colors_applied;
+
+	bool warning_line_color_updated = updated_warning_line_color != previous_warning_line_color;
+	bool marked_line_color_updated = updated_marked_line_color != previous_marked_line_color;
 	bool safe_line_number_color_updated = updated_safe_line_number_color != safe_line_number_color;
-	bool folded_code_region_color_updated = updated_folded_code_region_color != folded_code_region_color;
+	bool folded_code_region_color_updated = updated_folded_code_region_color != previous_folded_code_region_color;
 	if (safe_line_number_color_updated || warning_line_color_updated || marked_line_color_updated || folded_code_region_color_updated) {
 		safe_line_number_color = updated_safe_line_number_color;
 		for (int i = 0; i < text_edit->get_line_count(); i++) {
-			if (warning_line_color_updated && text_edit->get_line_background_color(i) == warning_line_color) {
+			if (line_colors_were_applied && warning_line_color_updated && text_edit->get_line_background_color(i) == previous_warning_line_color) {
 				text_edit->set_line_background_color(i, updated_warning_line_color);
 			}
 
-			if (marked_line_color_updated && text_edit->get_line_background_color(i) == marked_line_color) {
+			if (line_colors_were_applied && marked_line_color_updated && text_edit->get_line_background_color(i) == previous_marked_line_color) {
 				text_edit->set_line_background_color(i, updated_marked_line_color);
 			}
 
@@ -268,13 +276,17 @@ void ScriptTextEditor::_load_theme_settings() {
 				text_edit->set_line_gutter_item_color(i, line_number_gutter, safe_line_number_color);
 			}
 
-			if (folded_code_region_color_updated && text_edit->get_line_background_color(i) == folded_code_region_color) {
+			if (line_colors_were_applied && folded_code_region_color_updated && text_edit->get_line_background_color(i) == previous_folded_code_region_color) {
 				text_edit->set_line_background_color(i, updated_folded_code_region_color);
 			}
 		}
 		warning_line_color = updated_warning_line_color;
 		marked_line_color = updated_marked_line_color;
 		folded_code_region_color = updated_folded_code_region_color;
+		applied_warning_line_color = updated_warning_line_color;
+		applied_marked_line_color = updated_marked_line_color;
+		applied_folded_code_region_color = updated_folded_code_region_color;
+		line_colors_applied = true;
 	}
 
 	Color updated_warning_underline_color = EDITOR_GET("text_editor/theme/highlighting/warning_underline_color");
@@ -738,7 +750,22 @@ void ScriptTextEditor::_update_color_constructor_options() {
 	}
 }
 
+// Lines are painted with colors taken from the editor settings. Reading them
+// again before every paint keeps the result right when a validation runs
+// before the theme settings were loaded once, and when they change while the
+// editor is open. The members used to start as opaque white, which painted
+// whole error and warning lines white in that first case.
+void ScriptTextEditor::_load_line_colors() {
+	marked_line_color = EDITOR_GET("text_editor/theme/highlighting/mark_color");
+	warning_line_color = EDITOR_GET("text_editor/theme/highlighting/warning_color");
+	folded_code_region_color = EDITOR_GET("text_editor/theme/highlighting/folded_code_region_color");
+	error_underline_color = EDITOR_GET("text_editor/theme/highlighting/error_underline_color");
+	warning_underline_color = EDITOR_GET("text_editor/theme/highlighting/warning_underline_color");
+}
+
 void ScriptTextEditor::_update_background_color() {
+	_load_line_colors();
+
 	// Clear background lines.
 	CodeEdit *te = code_editor->get_text_editor();
 	for (int i = 0; i < te->get_line_count(); i++) {
@@ -793,6 +820,12 @@ void ScriptTextEditor::_update_background_color() {
 			}
 		}
 	}
+
+	// The lines now carry these colors; a theme change retints them in place.
+	applied_marked_line_color = marked_line_color;
+	applied_warning_line_color = warning_line_color;
+	applied_folded_code_region_color = folded_code_region_color;
+	line_colors_applied = true;
 }
 
 void ScriptTextEditor::_update_color_text() {
@@ -903,6 +936,13 @@ struct ScriptErrorLineComparator {
 };
 
 void ScriptTextEditor::_validate_script() {
+	// The theme is not loaded yet, so the colors lines are painted with are not
+	// known: validating now would paint with defaults (which used to be opaque
+	// white). enable_editor() loads the theme and validates again.
+	if (!editor_enabled) {
+		return;
+	}
+
 	CodeEdit *te = code_editor->get_text_editor();
 
 	String text = te->get_text();

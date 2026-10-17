@@ -90,12 +90,21 @@ class ScriptTextEditor : public CodeEditorBase {
 	Color default_line_number_color = Color(1, 1, 1);
 	Color safe_line_number_color = Color(1, 1, 1);
 
-	Color marked_line_color = Color(1, 1, 1);
-	Color warning_line_color = Color(1, 1, 1);
-	Color folded_code_region_color = Color(1, 1, 1);
+	Color marked_line_color = Color(0, 0, 0, 0);
+	Color warning_line_color = Color(0, 0, 0, 0);
+	Color folded_code_region_color = Color(0, 0, 0, 0);
 
-	Color warning_underline_color = Color(1, 1, 1);
-	Color error_underline_color = Color(1, 1, 1);
+	Color warning_underline_color = Color(0, 0, 0, 0);
+	Color error_underline_color = Color(0, 0, 0, 0);
+
+	// Colors the lines were last painted with, and whether they were painted at
+	// all. Kept apart from the colors above: those are refreshed from the
+	// editor settings before every paint, so they cannot tell which color an
+	// already painted line has when the theme changes.
+	Color applied_marked_line_color = Color(0, 0, 0, 0);
+	Color applied_warning_line_color = Color(0, 0, 0, 0);
+	Color applied_folded_code_region_color = Color(0, 0, 0, 0);
+	bool line_colors_applied = false;
 
 	bool theme_loaded = false;
 
@@ -175,6 +184,8 @@ protected:
 	void _open_picker();
 	void _picker_color_changed(const Color &p_color);
 	void _update_color_constructor_options();
+	// Reads the colors lines are painted with from the editor settings.
+	void _load_line_colors();
 	void _update_background_color();
 	void _update_color_text();
 
