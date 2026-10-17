@@ -810,7 +810,7 @@ Error GDScriptAnalyzer::resolve_class_uses(GDScriptParser::ClassNode *p_class, c
 				const GDScriptParser::ClassNode::Member existing = p_class->get_member(member_name);
 				// Members declared in the trait itself always win over inherited ones.
 				if (existing.type == member.type && existing.get_source_node() != nullptr &&
-						existing.get_source_node()->trait_origin.is_empty()) {
+						existing.trait_origin.is_empty()) {
 					continue;
 				}
 				push_error(vformat(R"(The member "%s" from trait "%s" conflicts with an existing member in "%s".)", member_name, uses->fqtn, p_class->fqcn), member.get_source_node());
@@ -840,10 +840,10 @@ Error GDScriptAnalyzer::resolve_class_uses(GDScriptParser::ClassNode *p_class, c
 			}
 
 			GDScriptParser::ClassNode::Member copied = member;
-			GDScriptParser::Node *source = copied.get_source_node();
-			if (source != nullptr) {
-				source->trait_origin.push_back(trait->fqcn);
-			}
+			// Tag the copy, not the shared source node: the trait's own members
+			// live in the file that declares the trait, and must not be changed by
+			// the classes that use it.
+			copied.trait_origin.push_back(trait->fqcn);
 			// Copied members arrive as full Member records; store them directly.
 			p_class->members_indices[member_name] = p_class->members.size();
 			p_class->members.push_back(copied);

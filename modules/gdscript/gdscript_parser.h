@@ -364,9 +364,6 @@ public:
 		int end_column = -1;
 		Node *next = nullptr;
 		List<AnnotationNode *> annotations;
-		// If this node was copied over from a trait, holds the trait's fully-qualified
-		// class name. Empty for nodes declared directly in a class or trait.
-		Vector<String> trait_origin;
 
 		virtual bool is_expression() const { return false; }
 
@@ -608,6 +605,13 @@ public:
 				AnnotationNode *annotation;
 			};
 			EnumNode::Value enum_value;
+
+			// If this member was copied over from a trait, the fully-qualified
+			// names of the traits that brought it in, innermost first. Empty for
+			// members declared directly in a class or trait. Stored on the copy,
+			// so a trait's own members are never modified by the classes that use
+			// it.
+			Vector<String> trait_origin;
 
 			String get_name() const {
 				switch (type) {

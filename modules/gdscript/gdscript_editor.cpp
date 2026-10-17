@@ -198,10 +198,10 @@ static void get_member_names_recursively(const GDScriptParser::ClassNode *p_clas
 		}
 
 		String prefix = p_prefix;
-		if (!node->trait_origin.is_empty()) {
+		if (!member.trait_origin.is_empty()) {
 			// The first trait that brought this member in names the group it is
 			// listed under, like the class of a member of an inner class.
-			const String &origin = node->trait_origin[0];
+			const String &origin = member.trait_origin[0];
 			const String trait_name = origin.get_slice("::", origin.get_slice_count("::") - 1);
 			prefix = prefix.is_empty() ? trait_name : prefix + "." + trait_name;
 		}
