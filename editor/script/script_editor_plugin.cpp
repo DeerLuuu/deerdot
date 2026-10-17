@@ -3606,6 +3606,16 @@ void DocumentEditorContainer::_notification(int p_what) {
 		} break;
 
 		case NOTIFICATION_DRAG_END: {
+			// The drag is over: a tab dragged outside the panes becomes a window
+			// now, from the pending ids, rather than on a later process tick
+			// where an unrelated action could consume them. The viewport has
+			// already cleared its dragging state when this arrives, so
+			// _update_drag_feedback() takes its "drag ended" path.
+			if (pending_popout_pane.is_valid()) {
+				_update_drag_feedback();
+			}
+			pending_popout_pane = ObjectID();
+			pending_popout_editor = ObjectID();
 			_hide_drop_overlay();
 		} break;
 
