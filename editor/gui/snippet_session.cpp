@@ -125,15 +125,42 @@ Vector<SnippetTabStop> SnippetSession::decode_stops(const Variant &p_value) {
 }
 
 bool SnippetSession::_try_begin_inserted(const PendingSnippet &p_candidate) {
+	if (_try_begin_inserted_at(p_candidate, p_candidate.text.length())) {
+		return true;
+	}
+
+	// A completion can merge the text it inserts with the text already in the
+	// line, and folding the merged brace pair removes up to two characters of
+	// what was inserted before the caret (all within one deferred text change).
+	// The text then left before the caret is a prefix of the armed text, so try
+	// those prefixes too before giving the session up. Only a prefix long
+	// enough to be unambiguous is accepted, so an unrelated insertion cannot
+	// start a session by matching a couple of characters.
+	static constexpr int MAX_MERGED_TAIL_LOST = 2;
+	static constexpr int MIN_MATCHED_PREFIX = 4;
+	for (int lost = 1; lost <= MAX_MERGED_TAIL_LOST; lost++) {
+		const int length = (int)p_candidate.text.length() - lost;
+		if (length < MIN_MATCHED_PREFIX) {
+			break;
+		}
+		if (_try_begin_inserted_at(p_candidate, length)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool SnippetSession::_try_begin_inserted_at(const PendingSnippet &p_candidate, int p_length) {
 	const int caret_line = code_edit->get_caret_line();
 	const int caret_col = code_edit->get_caret_column();
 
-	const PackedStringArray lines = p_candidate.text.split("\n");
+	const String expected = p_candidate.text.left(p_length);
+	const PackedStringArray lines = expected.split("\n");
 	int origin_line = 0;
 	int origin_col = 0;
 	if (lines.size() == 1) {
 		origin_line = caret_line;
-		origin_col = caret_col - (int)p_candidate.text.length();
+		origin_col = caret_col - (int)expected.length();
 	} else {
 		origin_line = caret_line - (lines.size() - 1);
 		if (origin_line < 0) {
@@ -156,7 +183,7 @@ bool SnippetSession::_try_begin_inserted(const PendingSnippet &p_candidate) {
 		}
 		inserted += "\n" + code_edit->get_line(caret_line).substr(0, caret_col);
 	}
-	if (inserted != p_candidate.text) {
+	if (inserted != expected) {
 		return false;
 	}
 
@@ -169,6 +196,27 @@ bool SnippetSession::_try_begin_inserted(const PendingSnippet &p_candidate) {
 		}
 		if (stop.end_line == origin_line) {
 			stop.end_col += origin_col;
+		}
+	}
+
+	if (p_length < (int)p_candidate.text.length()) {
+		// The characters after the matched prefix were merged away, so a stop
+		// that pointed into them has no place in the document anymore. Put it
+		// at the caret instead of leaving it past the text, where Tab would
+		// jump to a line that has nothing to do with the snippet.
+		for (SnippetTabStop &stop : shifted) {
+			if (stop.start_line > caret_line || (stop.start_line == caret_line && stop.start_col > caret_col)) {
+				stop.start_line = caret_line;
+				stop.start_col = caret_col;
+			}
+			if (stop.end_line > caret_line || (stop.end_line == caret_line && stop.end_col > caret_col)) {
+				stop.end_line = caret_line;
+				stop.end_col = caret_col;
+			}
+			if (stop.start_line > stop.end_line || (stop.start_line == stop.end_line && stop.start_col > stop.end_col)) {
+				stop.end_line = stop.start_line;
+				stop.end_col = stop.start_col;
+			}
 		}
 	}
 

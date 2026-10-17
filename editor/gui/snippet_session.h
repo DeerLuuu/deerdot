@@ -80,6 +80,9 @@ class SnippetSession : public RefCounted {
 	void _apply_stop(int p_index);
 	void _take_snapshot();
 	bool _try_begin_inserted(const PendingSnippet &p_candidate);
+	// Matches the inserted text seen as the first p_length characters of the
+	// candidate, and starts the session when it is exactly there.
+	bool _try_begin_inserted_at(const PendingSnippet &p_candidate, int p_length);
 
 public:
 	static Ref<SnippetSession> get_for(CodeEdit *p_edit);
