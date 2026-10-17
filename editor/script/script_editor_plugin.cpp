@@ -713,6 +713,15 @@ void DocumentOutline::_tree_selected() {
 		return;
 	}
 	if (TextEditorBase *teb = Object::cast_to<TextEditorBase>(active_editor)) {
+		// An entry's line belongs to the document it is listed for: a member
+		// copied from a trait points at the `uses` statement that brought it in,
+		// not at the line it is declared on in the trait's own file. An entry
+		// whose line this document does not have is not worth jumping to: the
+		// caret would be clamped to the last line and land somewhere unrelated.
+		CodeTextEditor *code_editor = teb->get_code_editor();
+		if (code_editor == nullptr || line >= code_editor->get_text_editor()->get_line_count()) {
+			return;
+		}
 		teb->goto_line_centered(line);
 	} else if (EditorHelp *eh = Object::cast_to<EditorHelp>(active_editor)) {
 		eh->scroll_to_section(line);
