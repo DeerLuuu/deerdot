@@ -202,6 +202,9 @@ protected:
 	void _edit_option_toggle_inline_comment();
 
 	void _lookup_symbol(const String &p_symbol, int p_row, int p_column);
+	// Restores the full dot-separated chain around the caret for `uses Outer.Inner` (the editor's lookup word
+	// stops at the dot). Returns an empty string when the caret is not in a dotted uses entry.
+	String _get_dotted_symbol(int p_row, int p_column) const;
 	void _validate_symbol(const String &p_symbol);
 
 	void _show_symbol_tooltip(const String &p_symbol, int p_row, int p_column, bool p_shortcut = false);
@@ -262,6 +265,10 @@ public:
 	virtual void update_settings() override;
 
 	static void register_editor();
+
+	// Restores a dot-separated symbol from a `uses` line and a column (shared with tests; the editor's normal
+	// lookup word stops at the dot).
+	static String get_dotted_symbol_from_line(const String &p_line, int p_column);
 
 	Variant get_previous_state();
 	void store_previous_state();

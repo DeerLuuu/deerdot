@@ -40,6 +40,7 @@
 #include "core/object/class_db.h"
 #include "core/object/editor_language.h"
 #include "core/os/keyboard.h"
+#include "core/string/char_utils.h"
 #include "editor/debugger/editor_debugger_node.h"
 #include "editor/doc/editor_help.h"
 #include "editor/docks/filesystem_dock.h"
@@ -1302,6 +1303,45 @@ void ScriptTextEditor::_on_caret_moved() {
 	}
 }
 
+String ScriptTextEditor::_get_dotted_symbol(int p_row, int p_column) const {
+	if (code_editor == nullptr || code_editor->get_text_editor() == nullptr) {
+		return String();
+	}
+	CodeEdit *tx = code_editor->get_text_editor();
+	if (p_row < 0 || p_row >= tx->get_line_count()) {
+		return String();
+	}
+	return get_dotted_symbol_from_line(tx->get_line(p_row), p_column);
+}
+
+String ScriptTextEditor::get_dotted_symbol_from_line(const String &p_line, int p_column) {
+	const String stripped = p_line.strip_edges();
+	// The editor's lookup word stops at '.', so only a `uses A.B` entry needs the chain restored.
+	if (!stripped.begins_with("uses ") && !stripped.begins_with("uses\t")) {
+		return String();
+	}
+	const int length = p_line.length();
+	int start = CLAMP(p_column, 0, length);
+	int end = start;
+	auto is_chain_char = [](char32_t p_char) {
+		return p_char == '.' || is_unicode_identifier_continue(p_char);
+	};
+	while (start > 0 && is_chain_char(p_line[start - 1])) {
+		start--;
+	}
+	while (end < length && is_chain_char(p_line[end])) {
+		end++;
+	}
+	String chain = p_line.substr(start, end - start);
+	while (chain.begins_with(".")) {
+		chain = chain.substr(1);
+	}
+	while (chain.ends_with(".")) {
+		chain = chain.left(chain.length() - 1);
+	}
+	return chain.contains(".") ? chain : String();
+}
+
 void ScriptTextEditor::_lookup_symbol(const String &p_symbol, int p_row, int p_column) {
 	ScriptEditorNavigationMarker::get_singleton()->locate_begin();
 	Ref<Script> script = edited_res;
@@ -1311,15 +1351,17 @@ void ScriptTextEditor::_lookup_symbol(const String &p_symbol, int p_row, int p_c
 	}
 
 	EditorLanguage::LookupResult result;
+	const String dotted_symbol = _get_dotted_symbol(p_row, p_column);
+	const String lookup_symbol = dotted_symbol.is_empty() ? p_symbol : dotted_symbol;
 	String code_text = code_editor->get_text_editor()->get_text_with_cursor_char(p_row, p_column);
-	Error lc_error = script->get_language()->get_editor_language()->lookup_code(code_text, p_symbol, script->get_path(), base, result);
-	if (ScriptServer::is_global_class(p_symbol)) {
-		EditorNode::get_singleton()->load_resource(ScriptServer::get_global_class_path(p_symbol));
-	} else if (p_symbol.is_resource_file() || p_symbol.begins_with("uid://")) {
-		if (DirAccess::dir_exists_absolute(p_symbol)) {
-			FileSystemDock::get_singleton()->navigate_to_path(p_symbol);
+	Error lc_error = script->get_language()->get_editor_language()->lookup_code(code_text, lookup_symbol, script->get_path(), base, result);
+	if (ScriptServer::is_global_class(lookup_symbol)) {
+		EditorNode::get_singleton()->load_resource(ScriptServer::get_global_class_path(lookup_symbol));
+	} else if (lookup_symbol.is_resource_file() || lookup_symbol.begins_with("uid://")) {
+		if (DirAccess::dir_exists_absolute(lookup_symbol)) {
+			FileSystemDock::get_singleton()->navigate_to_path(lookup_symbol);
 		} else {
-			EditorNode::get_singleton()->load_scene_or_resource(p_symbol);
+			EditorNode::get_singleton()->load_scene_or_resource(lookup_symbol);
 		}
 	} else if (lc_error == OK) {
 		goto_line_without_history(p_row, p_column);
@@ -1433,9 +1475,11 @@ void ScriptTextEditor::_validate_symbol(const String &p_symbol) {
 
 	EditorLanguage::LookupResult result;
 	String lc_text = code_editor->get_text_editor()->get_text_for_symbol_lookup();
-	Error lc_error = script->get_language()->get_editor_language()->lookup_code(lc_text, p_symbol, script->get_path(), base, result);
-	bool is_singleton = ProjectSettings::get_singleton()->has_autoload(p_symbol) && ProjectSettings::get_singleton()->get_autoload(p_symbol).is_singleton;
-	if (lc_error == OK || is_singleton || ScriptServer::is_global_class(p_symbol) || p_symbol.is_resource_file() || p_symbol.begins_with("uid://")) {
+	const String dotted_symbol = _get_dotted_symbol(text_edit->get_caret_line(), text_edit->get_caret_column());
+	const String lookup_symbol = dotted_symbol.is_empty() ? p_symbol : dotted_symbol;
+	Error lc_error = script->get_language()->get_editor_language()->lookup_code(lc_text, lookup_symbol, script->get_path(), base, result);
+	bool is_singleton = ProjectSettings::get_singleton()->has_autoload(lookup_symbol) && ProjectSettings::get_singleton()->get_autoload(lookup_symbol).is_singleton;
+	if (lc_error == OK || is_singleton || ScriptServer::is_global_class(lookup_symbol) || lookup_symbol.is_resource_file() || lookup_symbol.begins_with("uid://")) {
 		text_edit->set_symbol_lookup_word_as_valid(true);
 	} else if (p_symbol.is_relative_path()) {
 		String path = _get_absolute_path(p_symbol);
@@ -1513,7 +1557,9 @@ void ScriptTextEditor::_show_symbol_tooltip(const String &p_symbol, int p_row, i
 	EditorLanguage::LookupResult result;
 	String doc_symbol;
 	const String code_text = code_editor->get_text_editor()->get_text_with_cursor_char(p_row, p_column);
-	const Error lc_error = script->get_language()->get_editor_language()->lookup_code(code_text, p_symbol, script->get_path(), base, result);
+	const String dotted_symbol = _get_dotted_symbol(p_row, p_column);
+	const String lookup_symbol = dotted_symbol.is_empty() ? p_symbol : dotted_symbol;
+	const Error lc_error = script->get_language()->get_editor_language()->lookup_code(code_text, lookup_symbol, script->get_path(), base, result);
 	if (lc_error == OK) {
 		switch (result.type) {
 			case EditorLanguage::LookupResult::Type::CLASS: {
@@ -2757,6 +2803,10 @@ void ScriptTextEditor::_text_edit_gui_input(const Ref<InputEvent> &p_ev) {
 		}
 
 		String word_at_pos = tx->get_lookup_word(mouse_line, mouse_column);
+		const String dotted_at_pos = _get_dotted_symbol(mouse_line, mouse_column);
+		if (!dotted_at_pos.is_empty()) {
+			word_at_pos = dotted_at_pos;
+		}
 		if (word_at_pos.is_empty()) {
 			word_at_pos = tx->get_word_under_caret(selection_clicked);
 		}
