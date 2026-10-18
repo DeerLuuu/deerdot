@@ -31,6 +31,7 @@
 #include "editor_theme_manager.h"
 
 #include "core/error/error_macros.h"
+#include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/object/callable_mp.h"
 #include "core/os/os.h"
@@ -282,6 +283,37 @@ static double _clamp_speed(double p_speed) {
 	return CLAMP(p_speed, 0.5, 2.0);
 }
 
+// A Custom file that only carries some keys (hand-edited or written by an old build) must fall back to the
+// Expressive preset for the missing ones instead of the Subtle registration defaults. EditorSettings registers
+// every key, so get_setting() cannot tell "missing from the file" from "equal to the default"; the file text is
+// the only place that information survives a restart. Cached by path + mtime.
+static bool _animation_param_present_in_settings_file(const String &p_key) {
+	static String cached_path;
+	static uint64_t cached_mtime = 0;
+	static Vector<String> cached_keys;
+	const String path = EditorSettings::get_existing_settings_path();
+	if (path.is_empty() || !FileAccess::exists(path)) {
+		return false;
+	}
+	const uint64_t mtime = FileAccess::get_modified_time(path);
+	if (path != cached_path || mtime != cached_mtime) {
+		cached_path = path;
+		cached_mtime = mtime;
+		cached_keys.clear();
+		const String text = FileAccess::get_file_as_string(path);
+		for (const String &line : text.split("\n")) {
+			const String trimmed = line.strip_edges();
+			if (trimmed.begins_with("interface/theme/ui_animations/")) {
+				const int separator = trimmed.find(" = ");
+				if (separator > 0) {
+					cached_keys.push_back(trimmed.substr(0, separator));
+				}
+			}
+		}
+	}
+	return cached_keys.has(p_key);
+}
+
 EditorThemeManager::AnimationParams EditorThemeManager::get_user_animation_params() {
 	const String stored = _stored_animation_style_name();
 	// A missing parameter falls back to the preset of the stored style. In particular an old Expressive
@@ -295,15 +327,26 @@ EditorThemeManager::AnimationParams EditorThemeManager::get_user_animation_param
 	// differs from the registered default); otherwise use the stored-style preset. The changed list is
 	// session-only and is cleared by save(), so the default comparison is what keeps user values after a
 	// restart or after the dialog's save debounce.
+	auto should_use_file = [&](const String &p_key, bool p_changed, double p_value, double p_registered_default) -> bool {
+		if (!should_read_animation_param_from_file(stored, p_changed, p_value, p_registered_default)) {
+			return false;
+		}
+		// A Custom file without this key (partial/hand-edited) falls back to the Expressive preset for it,
+		// rather than silently reading the Subtle registration default.
+		if (stored == "Custom" && !p_changed && !_animation_param_present_in_settings_file(p_key)) {
+			return false;
+		}
+		return true;
+	};
 	auto read_double = [&](const char *p_name, double p_default, double p_registered_default) -> double {
 		const String key = String("interface/theme/ui_animations/") + p_name;
 		const double value = (double)settings->get_setting(key);
-		return should_read_animation_param_from_file(stored, changed.has(key), value, p_registered_default) ? value : p_default;
+		return should_use_file(key, changed.has(key), value, p_registered_default) ? value : p_default;
 	};
 	auto read_int = [&](const char *p_name, int p_default, int p_registered_default) -> int {
 		const String key = String("interface/theme/ui_animations/") + p_name;
 		const int value = (int)settings->get_setting(key);
-		return should_read_animation_param_from_file(stored, changed.has(key), value, p_registered_default) ? value : p_default;
+		return should_use_file(key, changed.has(key), value, p_registered_default) ? value : p_default;
 	};
 
 	const AnimationParams &registration_defaults = PRESET_PARAMS[0];
@@ -1038,7 +1081,8 @@ Ref<EditorTheme> EditorThemeManager::generate_theme(const Ref<EditorTheme> &p_ol
 
 	// Keep the engine-level popup opening animation in sync with the editor settings. The theme is rebuilt
 	// whenever interface/theme/ui_animations* changes, so this also covers switching style at runtime.
-	Popup::set_ui_open_animation(EDITOR_GET("interface/theme/ui_animations"), get_animation_style() == ANIMATION_STYLE_EXPRESSIVE);
+	// "Expressive" means the Expressive base table, which Custom uses too: its tooltips should also scale.
+	Popup::set_ui_open_animation(EDITOR_GET("interface/theme/ui_animations"), uses_expressive_base_table());
 
 	Ref<EditorTheme> theme = _create_base_theme(p_old_theme);
 
@@ -1110,8 +1154,9 @@ void EditorThemeManager::initialize() {
 	EditorColorMap::create();
 	EditorTheme::initialize();
 	// Popups are engine-level Windows, so the editor turns their opening animation on here (and refreshes it
-	// whenever the theme is rebuilt, which happens on animation setting changes).
-	Popup::set_ui_open_animation(EDITOR_GET("interface/theme/ui_animations"), get_animation_style() == ANIMATION_STYLE_EXPRESSIVE);
+	// whenever the theme is rebuilt, which happens on animation setting changes). Custom uses the Expressive
+	// base table, so its tooltips get the same 0.96 -> 1 scale as Expressive.
+	Popup::set_ui_open_animation(EDITOR_GET("interface/theme/ui_animations"), uses_expressive_base_table());
 }
 
 void EditorThemeManager::finalize() {
