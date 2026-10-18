@@ -700,7 +700,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 
 			Ref<StyleBoxFlat> style_tree_hover = p_config.flat_button_hover->duplicate();
 			style_tree_hover->set_content_margin_all(0);
-			EditorThemeManager::animate_stylebox(style_tree_hover, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.10);
+			EditorThemeManager::animate_stylebox(style_tree_hover, EditorThemeManager::ANIM_TREE_HOVER);
 
 			p_theme->set_stylebox("button_hover", "Tree", style_tree_hover);
 			p_theme->set_stylebox("hovered", "Tree", style_tree_hover);
@@ -709,14 +709,19 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 
 			Ref<StyleBoxFlat> style_tree_selected = p_config.flat_button_pressed->duplicate();
 			style_tree_selected->set_content_margin_all(0);
-			EditorThemeManager::animate_stylebox(style_tree_selected, 0.12, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.14);
+			EditorThemeManager::animate_stylebox(style_tree_selected, EditorThemeManager::ANIM_TREE_SELECTED);
+			if (EditorThemeManager::is_expressive_animation_style()) {
+				// Expressive shrinks the flat pressed stylebox by 1px. A selected row is not a press,
+				// so keep it at full size instead of inheriting the shrink.
+				style_tree_selected->set_expand_margin_all(0);
+			}
 
 			p_theme->set_stylebox("selected", "Tree", style_tree_selected);
 			p_theme->set_stylebox("selected_focus", "Tree", p_config.focus_style);
 
 			Ref<StyleBoxFlat> style_tree_hovered_selected = p_config.flat_button_hover_pressed->duplicate();
 			style_tree_hovered_selected->set_content_margin_all(0);
-			EditorThemeManager::animate_stylebox(style_tree_hovered_selected, 0.10);
+			EditorThemeManager::animate_stylebox(style_tree_hovered_selected, EditorThemeManager::ANIM_TREE_HOVERED_SELECTED);
 
 			p_theme->set_stylebox("hovered_selected", "Tree", style_tree_hovered_selected);
 			p_theme->set_stylebox("hovered_selected_focus", "Tree", p_config.focus_style);
@@ -724,7 +729,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			// Cursor is drawn on top of the item so it needs to be transparent.
 			Ref<StyleBoxFlat> style_tree_cursor = p_config.base_style->duplicate();
 			style_tree_cursor->set_bg_color(p_config.mono_color * Color(1, 1, 1, 0.04));
-			EditorThemeManager::animate_stylebox(style_tree_cursor, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.08);
+			EditorThemeManager::animate_stylebox(style_tree_cursor, EditorThemeManager::ANIM_TREE_CURSOR);
 
 			Ref<StyleBoxFlat> style_tree_title = p_config.base_style->duplicate();
 			style_tree_title->set_bg_color(p_config.surface_lower_color);
@@ -767,14 +772,22 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			style_itemlist_bg->set_content_margin_all(EDSCALE_RND(p_config.base_margin * 2));
 			Ref<StyleBoxFlat> style_itemlist_cursor = p_config.base_style->duplicate();
 			style_itemlist_cursor->set_bg_color(p_config.mono_color * Color(1, 1, 1, 0.04));
-			EditorThemeManager::animate_stylebox(style_itemlist_cursor, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.08);
+			EditorThemeManager::animate_stylebox(style_itemlist_cursor, EditorThemeManager::ANIM_ITEMLIST_CURSOR);
 
 			p_theme->set_stylebox(SceneStringName(panel), "ItemList", style_itemlist_bg);
 			p_theme->set_stylebox("focus", "ItemList", p_config.focus_style);
 			p_theme->set_stylebox("cursor", "ItemList", style_itemlist_cursor);
 			p_theme->set_stylebox("cursor_unfocused", "ItemList", style_itemlist_cursor);
 			p_theme->set_stylebox("selected_focus", "ItemList", p_config.focus_style);
-			p_theme->set_stylebox("selected", "ItemList", p_config.flat_button_pressed);
+			if (EditorThemeManager::is_expressive_animation_style()) {
+				// Expressive shrinks the flat pressed stylebox by 1px. A selected item is not a press,
+				// so use a copy that keeps the full size (the animation values are inherited).
+				Ref<StyleBoxFlat> style_itemlist_selected = p_config.flat_button_pressed->duplicate();
+				style_itemlist_selected->set_expand_margin_all(0);
+				p_theme->set_stylebox("selected", "ItemList", style_itemlist_selected);
+			} else {
+				p_theme->set_stylebox("selected", "ItemList", p_config.flat_button_pressed);
+			}
 			p_theme->set_stylebox("hovered", "ItemList", p_config.flat_button_hover);
 			p_theme->set_stylebox("hovered_selected", "ItemList", p_config.flat_button_hover_pressed);
 			p_theme->set_stylebox("hovered_selected_focus", "ItemList", p_config.focus_style);
@@ -816,9 +829,15 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		style_tab_hovered->set_bg_color(p_config.surface_base_color * Color(1, 1, 1, 0.6));
 
 		// Tabs animate their rect along with the text position, so closing a tab slides the remaining ones smoothly.
-		EditorThemeManager::animate_stylebox(style_tab_selected, 0.12, Tween::TRANS_SINE, Tween::EASE_OUT, true);
-		EditorThemeManager::animate_stylebox(style_tab_hovered, 0.12, Tween::TRANS_SINE, Tween::EASE_OUT, true);
-		EditorThemeManager::animate_stylebox(style_tab_unselected, 0.12, Tween::TRANS_SINE, Tween::EASE_OUT, true);
+		EditorThemeManager::animate_stylebox(style_tab_selected, EditorThemeManager::ANIM_TAB_STATE);
+		EditorThemeManager::animate_stylebox(style_tab_hovered, EditorThemeManager::ANIM_TAB_STATE);
+		EditorThemeManager::animate_stylebox(style_tab_unselected, EditorThemeManager::ANIM_TAB_STATE);
+
+		if (EditorThemeManager::is_expressive_animation_style()) {
+			// Expressive only: shrink the selected tab's background by 2px at the top (the spec's -2px expand
+			// margin). Only drawing changes; layout and the hit area are unaffected.
+			style_tab_selected->set_expand_margin(SIDE_TOP, -2 * EDSCALE);
+		}
 
 		Color drop_mark_color = p_config.dark_color_2.lerp(p_config.accent_color, 0.75);
 
@@ -831,7 +850,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		// Small buttons on the right side of tabs (close button, tab list button).
 		Ref<StyleBoxFlat> style_tab_button = p_config.panel_container_style->duplicate();
 
-		EditorThemeManager::animate_stylebox(style_tab_button, 0.08, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.08);
+		EditorThemeManager::animate_stylebox(style_tab_button, EditorThemeManager::ANIM_TAB_SMALL_BUTTON);
 
 		p_theme->set_stylebox("tabbar_background", "TabContainer", style_tabbar_background);
 		p_theme->set_stylebox(SceneStringName(panel), "TabContainer", p_config.tab_container_style);
@@ -1109,7 +1128,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 
 			Ref<StyleBoxFlat> style_popup_hover = p_config.flat_button_hover->duplicate();
 			style_popup_hover->set_bg_color(_get_base_color(p_config, -0.5, 0.75));
-			EditorThemeManager::animate_stylebox(style_popup_hover, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.08);
+			EditorThemeManager::animate_stylebox(style_popup_hover, EditorThemeManager::ANIM_MENU_HOVER);
 
 			p_theme->set_stylebox(SceneStringName(hover), "PopupMenu", style_popup_hover);
 
@@ -1157,11 +1176,11 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		Ref<StyleBoxFlat> grabber_style = p_config.base_style->duplicate();
 		grabber_style->set_bg_color(p_config.mono_color * Color(1, 1, 1, 0.225));
 		// Scrolling must stay 1:1 with the pointer, so only the color is animated.
-		EditorThemeManager::animate_stylebox(grabber_style, 0.10);
+		EditorThemeManager::animate_stylebox(grabber_style, EditorThemeManager::ANIM_GRABBER);
 
 		Ref<StyleBoxFlat> grabber_hl_style = p_config.base_style->duplicate();
 		grabber_hl_style->set_bg_color(p_config.mono_color * Color(1, 1, 1, 0.5));
-		EditorThemeManager::animate_stylebox(grabber_hl_style, 0.10);
+		EditorThemeManager::animate_stylebox(grabber_hl_style, EditorThemeManager::ANIM_GRABBER);
 
 		int scroll_margin = EDSCALE_RND(p_config.enable_touch_optimizations ? 13 : 3);
 
@@ -1221,8 +1240,8 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		Ref<StyleBoxFlat> style_h_slider_grabber_area = EditorThemeManager::make_flat_stylebox(p_config.contrast_color_1, 0, background_margin, 0, background_margin, p_config.corner_radius);
 		Ref<StyleBoxFlat> style_h_slider_grabber_area_highlight = EditorThemeManager::make_flat_stylebox(p_config.contrast_color_1, 0, background_margin, 0, background_margin);
 		// Dragging must stay 1:1 with the pointer, so only the color is animated.
-		EditorThemeManager::animate_stylebox(style_h_slider_grabber_area, 0.10);
-		EditorThemeManager::animate_stylebox(style_h_slider_grabber_area_highlight, 0.10);
+		EditorThemeManager::animate_stylebox(style_h_slider_grabber_area, EditorThemeManager::ANIM_SLIDER_FILL);
+		EditorThemeManager::animate_stylebox(style_h_slider_grabber_area_highlight, EditorThemeManager::ANIM_SLIDER_FILL);
 		p_theme->set_stylebox("grabber_area", "HSlider", style_h_slider_grabber_area);
 		p_theme->set_stylebox("grabber_area_highlight", "HSlider", style_h_slider_grabber_area_highlight);
 		p_theme->set_constant("center_grabber", "HSlider", 0);
@@ -1237,8 +1256,8 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		p_theme->set_stylebox("slider", "VSlider", style_v_slider);
 		Ref<StyleBoxFlat> style_v_slider_grabber_area = EditorThemeManager::make_flat_stylebox(p_config.contrast_color_1, background_margin, 0, background_margin, 0, p_config.corner_radius);
 		Ref<StyleBoxFlat> style_v_slider_grabber_area_highlight = EditorThemeManager::make_flat_stylebox(p_config.contrast_color_1, background_margin, 0, background_margin, 0);
-		EditorThemeManager::animate_stylebox(style_v_slider_grabber_area, 0.10);
-		EditorThemeManager::animate_stylebox(style_v_slider_grabber_area_highlight, 0.10);
+		EditorThemeManager::animate_stylebox(style_v_slider_grabber_area, EditorThemeManager::ANIM_SLIDER_FILL);
+		EditorThemeManager::animate_stylebox(style_v_slider_grabber_area_highlight, EditorThemeManager::ANIM_SLIDER_FILL);
 		p_theme->set_stylebox("grabber_area", "VSlider", style_v_slider_grabber_area);
 		p_theme->set_stylebox("grabber_area_highlight", "VSlider", style_v_slider_grabber_area_highlight);
 		p_theme->set_constant("center_grabber", "VSlider", 0);
@@ -1311,9 +1330,9 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 
 		// SpinBox arrows are only drawn while hovered or pressed, so they need their own copies with a fade-out.
 		Ref<StyleBoxFlat> style_spinbox_hover = p_config.button_style_hover->duplicate();
-		EditorThemeManager::animate_stylebox(style_spinbox_hover, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.10);
+		EditorThemeManager::animate_stylebox(style_spinbox_hover, EditorThemeManager::ANIM_SPINBOX_HOVER);
 		Ref<StyleBoxFlat> style_spinbox_pressed = p_config.button_style_pressed->duplicate();
-		EditorThemeManager::animate_stylebox(style_spinbox_pressed, 0.08, Tween::TRANS_QUAD);
+		EditorThemeManager::animate_stylebox(style_spinbox_pressed, EditorThemeManager::ANIM_SPINBOX_PRESSED);
 
 		p_theme->set_stylebox("up_background", "SpinBox", EditorThemeManager::make_empty_stylebox());
 		p_theme->set_stylebox("up_background_hovered", "SpinBox", style_spinbox_hover);
@@ -1960,6 +1979,12 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 		// Recovery mode button is implicitly styled from the panel's background.
 		// So, remove any existing borders. (e.g. from draw_extra_borders config)
 		style_recovery_mode_button->set_border_width_all(0);
+		if (EditorThemeManager::is_expressive_animation_style()) {
+			// This style is used as a normal button in recovery mode, so do not inherit the pressed shrink.
+			style_recovery_mode_button->set_expand_margin(SIDE_LEFT, 0);
+			style_recovery_mode_button->set_expand_margin(SIDE_TOP, 0);
+			style_recovery_mode_button->set_expand_margin(SIDE_BOTTOM, 0);
+		}
 		style_recovery_mode_button->set_expand_margin(SIDE_RIGHT, EDSCALE_RND(2));
 		p_theme->set_stylebox("RecoveryModeButton", EditorStringName(EditorStyles), style_recovery_mode_button);
 	}

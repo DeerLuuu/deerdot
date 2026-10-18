@@ -164,8 +164,93 @@ Ref<StyleBoxLine> EditorThemeManager::make_line_stylebox(Color p_color, int p_th
 	return style;
 }
 
-void EditorThemeManager::animate_stylebox(const Ref<StyleBox> &p_style, double p_duration,
-		Tween::TransitionType p_transition, Tween::EaseType p_ease, bool p_animate_rect, double p_exit_duration) {
+namespace {
+// Animation values of a single semantic target (see EditorThemeManager::AnimationKind).
+struct StyleBoxAnimation {
+	// Normal phase (enter) values.
+	double duration = 0.0;
+	Tween::TransitionType transition = Tween::TRANS_SINE;
+	bool animate_rect = false;
+	// Exit phase values. The exit curve must never oscillate, otherwise the color interpolation flickers.
+	double exit_duration = 0.0;
+	Tween::TransitionType exit_transition = Tween::TRANS_SINE;
+	// Exit transform keyframes, shared by the enter and exit phases. `fade` makes the alpha go to 0.
+	bool fade = false;
+	Point2 offset;
+	Size2 scale = Size2(1, 1);
+};
+
+// Subtle style: the defaults that were shipped before the Expressive style existed. These values must not
+// change, otherwise the default editor experience would silently change for existing users.
+const StyleBoxAnimation subtle_animations[] = {
+	/* ANIM_BUTTON_NORMAL */ { 0.10, Tween::TRANS_SINE, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_BUTTON_HOVER */ { 0.12, Tween::TRANS_SINE, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_BUTTON_PRESSED */ { 0.08, Tween::TRANS_QUAD, false, 0.0, Tween::TRANS_QUAD },
+	/* ANIM_BUTTON_DISABLED */ { 0.12, Tween::TRANS_SINE, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_FOCUS_RING */ { 0.10, Tween::TRANS_SINE, false, 0.10, Tween::TRANS_SINE },
+	/* ANIM_FLAT_HOVER */ { 0.12, Tween::TRANS_SINE, false, 0.10, Tween::TRANS_SINE },
+	/* ANIM_FLAT_PRESSED */ { 0.08, Tween::TRANS_QUAD, false, 0.10, Tween::TRANS_QUAD },
+	/* ANIM_FLAT_HOVER_PRESSED */ { 0.10, Tween::TRANS_SINE, false, 0.10, Tween::TRANS_SINE },
+	/* ANIM_TREE_HOVER */ { 0.10, Tween::TRANS_SINE, false, 0.10, Tween::TRANS_SINE },
+	/* ANIM_TREE_SELECTED */ { 0.12, Tween::TRANS_SINE, false, 0.14, Tween::TRANS_SINE },
+	/* ANIM_TREE_HOVERED_SELECTED */ { 0.10, Tween::TRANS_SINE, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_TREE_CURSOR */ { 0.10, Tween::TRANS_SINE, false, 0.08, Tween::TRANS_SINE },
+	/* ANIM_TREE_FOCUS */ { 0.12, Tween::TRANS_SINE, false, 0.14, Tween::TRANS_SINE },
+	/* ANIM_ITEMLIST_HOVER */ { 0.10, Tween::TRANS_SINE, false, 0.10, Tween::TRANS_SINE },
+	/* ANIM_ITEMLIST_HOVER_SELECTED */ { 0.10, Tween::TRANS_SINE, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_ITEMLIST_CURSOR */ { 0.10, Tween::TRANS_SINE, false, 0.08, Tween::TRANS_SINE },
+	/* ANIM_TAB_STATE */ { 0.12, Tween::TRANS_SINE, true, 0.0, Tween::TRANS_SINE },
+	/* ANIM_TAB_SMALL_BUTTON */ { 0.08, Tween::TRANS_SINE, false, 0.08, Tween::TRANS_SINE },
+	/* ANIM_MENU_HOVER */ { 0.10, Tween::TRANS_SINE, false, 0.08, Tween::TRANS_SINE },
+	/* ANIM_GRABBER */ { 0.10, Tween::TRANS_SINE, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_SLIDER_FILL */ { 0.10, Tween::TRANS_SINE, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_SPINBOX_HOVER */ { 0.10, Tween::TRANS_SINE, false, 0.10, Tween::TRANS_SINE },
+	/* ANIM_SPINBOX_PRESSED */ { 0.08, Tween::TRANS_QUAD, false, 0.0, Tween::TRANS_QUAD },
+};
+
+// Expressive style: bouncy entrances, brisk and non-oscillating exits. Transform keyframes are only used by
+// styleboxes that are drawn conditionally (they are unreachable for always-drawn state boxes), and the only
+// oscillating curve (ELASTIC) is reserved for the flat button hover, which only animates a transform.
+const StyleBoxAnimation expressive_animations[] = {
+	/* ANIM_BUTTON_NORMAL */ { 0.12, Tween::TRANS_SINE, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_BUTTON_HOVER */ { 0.16, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_BUTTON_PRESSED */ { 0.11, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_BUTTON_DISABLED */ { 0.14, Tween::TRANS_SINE, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_FOCUS_RING */ { 0.18, Tween::TRANS_BACK, false, 0.12, Tween::TRANS_SINE, true, Point2(), Size2(0.96, 0.96) },
+	/* ANIM_FLAT_HOVER */ { 0.20, Tween::TRANS_ELASTIC, false, 0.13, Tween::TRANS_SINE, true, Point2(), Size2(0.94, 0.94) },
+	/* ANIM_FLAT_PRESSED */ { 0.11, Tween::TRANS_BACK, false, 0.12, Tween::TRANS_SINE, true },
+	/* ANIM_FLAT_HOVER_PRESSED */ { 0.14, Tween::TRANS_BACK, false, 0.12, Tween::TRANS_SINE, true },
+	/* ANIM_TREE_HOVER */ { 0.14, Tween::TRANS_BACK, false, 0.11, Tween::TRANS_SINE, true, Point2(-2, 0) },
+	/* ANIM_TREE_SELECTED */ { 0.18, Tween::TRANS_BACK, false, 0.14, Tween::TRANS_SINE, true, Point2(), Size2(1.0, 0.88) },
+	/* ANIM_TREE_HOVERED_SELECTED */ { 0.14, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_TREE_CURSOR */ { 0.12, Tween::TRANS_SINE, false, 0.10, Tween::TRANS_SINE, true, Point2(), Size2(0.96, 0.96) },
+	/* ANIM_TREE_FOCUS */ { 0.18, Tween::TRANS_BACK, false, 0.14, Tween::TRANS_SINE, true, Point2(), Size2(1.0, 0.88) },
+	/* ANIM_ITEMLIST_HOVER */ { 0.14, Tween::TRANS_BACK, false, 0.11, Tween::TRANS_SINE, true, Point2(-2, 0) },
+	/* ANIM_ITEMLIST_HOVER_SELECTED */ { 0.14, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_ITEMLIST_CURSOR */ { 0.12, Tween::TRANS_SINE, false, 0.10, Tween::TRANS_SINE, true, Point2(), Size2(0.96, 0.96) },
+	/* ANIM_TAB_STATE */ { 0.16, Tween::TRANS_SPRING, true, 0.0, Tween::TRANS_SINE },
+	/* ANIM_TAB_SMALL_BUTTON */ { 0.15, Tween::TRANS_BACK, false, 0.10, Tween::TRANS_SINE, true, Point2(), Size2(0.88, 0.88) },
+	/* ANIM_MENU_HOVER */ { 0.14, Tween::TRANS_BACK, false, 0.10, Tween::TRANS_SINE, true, Point2(-3, 0) },
+	/* ANIM_GRABBER */ { 0.14, Tween::TRANS_QUAD, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_SLIDER_FILL */ { 0.14, Tween::TRANS_QUAD, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_SPINBOX_HOVER */ { 0.16, Tween::TRANS_BACK, false, 0.11, Tween::TRANS_SINE, true, Point2(), Size2(0.90, 0.90) },
+	/* ANIM_SPINBOX_PRESSED */ { 0.10, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
+};
+
+static_assert(sizeof(subtle_animations) / sizeof(subtle_animations[0]) == EditorThemeManager::ANIM_KIND_MAX, "Subtle animation table must cover every animation kind.");
+static_assert(sizeof(expressive_animations) / sizeof(expressive_animations[0]) == EditorThemeManager::ANIM_KIND_MAX, "Expressive animation table must cover every animation kind.");
+} // namespace
+
+EditorThemeManager::AnimationStyle EditorThemeManager::get_animation_style() {
+	return String(EDITOR_GET("interface/theme/ui_animations_style")) == "Expressive" ? ANIMATION_STYLE_EXPRESSIVE : ANIMATION_STYLE_SUBTLE;
+}
+
+bool EditorThemeManager::is_expressive_animation_style() {
+	return EDITOR_GET("interface/theme/ui_animations") && get_animation_style() == ANIMATION_STYLE_EXPRESSIVE;
+}
+
+void EditorThemeManager::animate_stylebox(const Ref<StyleBox> &p_style, AnimationKind p_kind) {
+	ERR_FAIL_INDEX(p_kind, ANIM_KIND_MAX);
 	if (p_style.is_null()) {
 		return;
 	}
@@ -173,19 +258,32 @@ void EditorThemeManager::animate_stylebox(const Ref<StyleBox> &p_style, double p
 	if (!EDITOR_GET("interface/theme/ui_animations")) {
 		return;
 	}
-	if (p_duration > 0.0) {
-		p_style->set_animation_duration(StyleBox::PHASE_NORMAL, p_duration);
-		p_style->set_animation_transition(StyleBox::PHASE_NORMAL, p_transition);
-		p_style->set_animation_ease(StyleBox::PHASE_NORMAL, p_ease);
-		p_style->set_animating_rect(p_animate_rect);
+
+	const bool expressive = get_animation_style() == ANIMATION_STYLE_EXPRESSIVE;
+	const StyleBoxAnimation &animation = expressive ? expressive_animations[p_kind] : subtle_animations[p_kind];
+
+	if (animation.duration > 0.0) {
+		p_style->set_animation_duration(StyleBox::PHASE_NORMAL, animation.duration);
+		p_style->set_animation_transition(StyleBox::PHASE_NORMAL, animation.transition);
+		p_style->set_animation_ease(StyleBox::PHASE_NORMAL, Tween::EASE_OUT);
+		p_style->set_animating_rect(animation.animate_rect);
 	}
 	// Always write the exit duration, otherwise styleboxes duplicated from an animated one would inherit
 	// a fade-out they were not meant to have.
-	p_style->set_animation_duration(StyleBox::PHASE_EXIT, p_exit_duration);
-	if (p_exit_duration > 0.0) {
-		p_style->set_animation_transition(StyleBox::PHASE_EXIT, p_transition);
-		p_style->set_animation_ease(StyleBox::PHASE_EXIT, p_ease);
-		// Only fade the background out, transforms would desync it from text and icons.
+	p_style->set_animation_duration(StyleBox::PHASE_EXIT, animation.exit_duration);
+	if (animation.exit_duration > 0.0) {
+		p_style->set_animation_transition(StyleBox::PHASE_EXIT, animation.exit_transition);
+		p_style->set_animation_ease(StyleBox::PHASE_EXIT, Tween::EASE_OUT);
+	}
+
+	if (expressive) {
+		// Write all transform keyframes: duplicated styleboxes would otherwise inherit a scale or an offset
+		// from the stylebox they were copied from.
+		p_style->set_transform_offset(animation.offset * EDSCALE);
+		p_style->set_transform_scale(animation.scale);
+		p_style->set_transform_modulate(animation.fade ? Color(1, 1, 1, 0) : Color(1, 1, 1, 1));
+	} else if (animation.exit_duration > 0.0) {
+		// Subtle only fades the background out, transforms would desync it from text and icons.
 		p_style->set_transform_modulate(Color(1, 1, 1, 0));
 	}
 }
@@ -214,15 +312,27 @@ Ref<EditorTheme> EditorThemeManager::_create_base_theme(const Ref<EditorTheme> &
 	// Hover-in speed comes from the hovered stylebox, hover-out speed from the normal one: the stylebox
 	// that is currently drawn determines the duration. Exit durations are only used by styleboxes that are
 	// drawn conditionally (hover highlights, focus rings), and fade out via modulate to avoid desyncing text.
-	animate_stylebox(config.button_style, 0.10);
-	animate_stylebox(config.button_style_hover, 0.12);
-	animate_stylebox(config.button_style_pressed, 0.08, Tween::TRANS_QUAD);
-	animate_stylebox(config.button_style_disabled, 0.12);
-	animate_stylebox(config.focus_style, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.10);
-	animate_stylebox(config.button_style_focus, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.10);
-	animate_stylebox(config.flat_button_hover, 0.12, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.10);
-	animate_stylebox(config.flat_button_pressed, 0.08, Tween::TRANS_QUAD, Tween::EASE_OUT, false, 0.10);
-	animate_stylebox(config.flat_button_hover_pressed, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.10);
+	animate_stylebox(config.button_style, ANIM_BUTTON_NORMAL);
+	animate_stylebox(config.button_style_hover, ANIM_BUTTON_HOVER);
+	animate_stylebox(config.button_style_pressed, ANIM_BUTTON_PRESSED);
+	animate_stylebox(config.button_style_disabled, ANIM_BUTTON_DISABLED);
+	animate_stylebox(config.focus_style, ANIM_FOCUS_RING);
+	animate_stylebox(config.button_style_focus, ANIM_FOCUS_RING);
+	animate_stylebox(config.flat_button_hover, ANIM_FLAT_HOVER);
+	animate_stylebox(config.flat_button_pressed, ANIM_FLAT_PRESSED);
+	animate_stylebox(config.flat_button_hover_pressed, ANIM_FLAT_HOVER_PRESSED);
+
+	// Expressive only: pressed styleboxes shrink by one pixel, which reads as the button being pushed in.
+	// The styleboxes are duplicated by the theme files afterwards, so the whole pressed family inherits it.
+	// Gated by the style (and by the master switch) so Subtle and disabled animations keep the v1 look.
+	if (is_expressive_animation_style()) {
+		if (config.button_style_pressed.is_valid()) {
+			config.button_style_pressed->set_expand_margin_all(-EDSCALE);
+		}
+		if (config.flat_button_pressed.is_valid()) {
+			config.flat_button_pressed->set_expand_margin_all(-EDSCALE);
+		}
+	}
 
 	// Register icons.
 	{

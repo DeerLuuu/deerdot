@@ -220,16 +220,54 @@ private:
 	static void _reset_dirty_flag();
 
 public:
+	// Style of the editor UI animations, controlled by `interface/theme/ui_animations_style`.
+	enum AnimationStyle {
+		ANIMATION_STYLE_SUBTLE,
+		ANIMATION_STYLE_EXPRESSIVE,
+	};
+
+	// Semantic animation targets. Every animated StyleBox picks a kind, and the manager resolves the
+	// actual animation values from the table of the active style (see editor_theme_manager.cpp).
+	enum AnimationKind {
+		ANIM_BUTTON_NORMAL,
+		ANIM_BUTTON_HOVER,
+		ANIM_BUTTON_PRESSED,
+		ANIM_BUTTON_DISABLED,
+		ANIM_FOCUS_RING,
+		ANIM_FLAT_HOVER,
+		ANIM_FLAT_PRESSED,
+		ANIM_FLAT_HOVER_PRESSED,
+		ANIM_TREE_HOVER,
+		ANIM_TREE_SELECTED,
+		ANIM_TREE_HOVERED_SELECTED,
+		ANIM_TREE_CURSOR,
+		ANIM_TREE_FOCUS,
+		ANIM_ITEMLIST_HOVER,
+		ANIM_ITEMLIST_HOVER_SELECTED,
+		ANIM_ITEMLIST_CURSOR,
+		ANIM_TAB_STATE,
+		ANIM_TAB_SMALL_BUTTON,
+		ANIM_MENU_HOVER,
+		ANIM_GRABBER,
+		ANIM_SLIDER_FILL,
+		ANIM_SPINBOX_HOVER,
+		ANIM_SPINBOX_PRESSED,
+		ANIM_KIND_MAX,
+	};
+
 	static Ref<StyleBoxFlat> make_flat_stylebox(Color p_color, float p_margin_left = -1, float p_margin_top = -1, float p_margin_right = -1, float p_margin_bottom = -1, int p_corner_width = 0);
 	static Ref<StyleBoxEmpty> make_empty_stylebox(float p_margin_left = -1, float p_margin_top = -1, float p_margin_right = -1, float p_margin_bottom = -1);
 	static Ref<StyleBoxTexture> make_stylebox(Ref<Texture2D> p_texture, float p_left, float p_top, float p_right, float p_bottom, float p_margin_left = -1, float p_margin_top = -1, float p_margin_right = -1, float p_margin_bottom = -1, bool p_draw_center = true);
 	static Ref<StyleBoxLine> make_line_stylebox(Color p_color, int p_thickness = 1, float p_grow_begin = 1, float p_grow_end = 1, bool p_vertical = false);
-	// Sets up animation parameters for an editor StyleBox. Does nothing if the `interface/theme/ui_animations`
-	// setting is disabled, so the editor stays fully static in that case. `p_exit_duration` > 0 also sets up
-	// a fade-out for styleboxes that are only drawn conditionally (hover highlights, selection, focus, etc.).
-	static void animate_stylebox(const Ref<StyleBox> &p_style, double p_duration,
-			Tween::TransitionType p_transition = Tween::TRANS_SINE, Tween::EaseType p_ease = Tween::EASE_OUT,
-			bool p_animate_rect = false, double p_exit_duration = 0.0);
+	// Sets up animation parameters for an editor StyleBox based on the active animation style. Does nothing if
+	// the `interface/theme/ui_animations` setting is disabled, so the editor stays fully static in that case.
+	// The exit animation also fades the box out, for styleboxes that are only drawn conditionally.
+	static void animate_stylebox(const Ref<StyleBox> &p_style, AnimationKind p_kind);
+	// Returns the animation style. This is not the same as whether animations are enabled: use
+	// is_expressive_animation_style() for geometry that should only apply to the Expressive style.
+	static AnimationStyle get_animation_style();
+	// True only when animations are enabled and the Expressive style is selected.
+	static bool is_expressive_animation_style();
 
 	static Ref<EditorTheme> generate_theme(const Ref<EditorTheme> &p_old_theme = nullptr);
 	static bool is_generated_theme_outdated();
