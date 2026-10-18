@@ -757,6 +757,15 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			Ref<StyleBoxFlat> style_project_list_hover_pressed = style_project_list_selected->duplicate();
 			style_project_list_hover_pressed->set_bg_color(_get_base_color(p_config, -1.2, 0.75));
 
+			if (EditorThemeManager::is_expressive_animation_style()) {
+				// ProjectList inherits the flat button styles, which would give list rows the toolbar bounce
+				// and no animation at all for the selected row. Use the Tree row animations instead, so list
+				// rows share the same sliding hover and popping selection as every other list in the editor.
+				EditorThemeManager::animate_stylebox(style_project_list_hover, EditorThemeManager::ANIM_TREE_HOVER);
+				EditorThemeManager::animate_stylebox(style_project_list_hover_pressed, EditorThemeManager::ANIM_TREE_HOVER);
+				EditorThemeManager::animate_stylebox(style_project_list_selected, EditorThemeManager::ANIM_TREE_SELECTED);
+			}
+
 			p_theme->set_stylebox("hovered", "ProjectList", style_project_list_hover);
 			p_theme->set_stylebox("selected", "ProjectList", style_project_list_selected);
 			p_theme->set_stylebox("hover_pressed", "ProjectList", style_project_list_hover_pressed);
@@ -784,6 +793,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 				// so use a copy that keeps the full size (the animation values are inherited).
 				Ref<StyleBoxFlat> style_itemlist_selected = p_config.flat_button_pressed->duplicate();
 				style_itemlist_selected->set_expand_margin_all(0);
+				EditorThemeManager::animate_stylebox(style_itemlist_selected, EditorThemeManager::ANIM_TREE_SELECTED);
 				p_theme->set_stylebox("selected", "ItemList", style_itemlist_selected);
 			} else {
 				p_theme->set_stylebox("selected", "ItemList", p_config.flat_button_pressed);
@@ -1871,6 +1881,14 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 
 		Ref<StyleBoxFlat> bottom_panel_button_hover = p_config.flat_button_hover->duplicate();
 		bottom_panel_button_hover->set_content_margin_individual(EDSCALE_RND(p_config.base_margin * 2), EDSCALE_RND(p_config.base_margin * 1.2), EDSCALE_RND(p_config.base_margin * 2), EDSCALE_RND(p_config.base_margin * 1.2));
+
+		if (EditorThemeManager::is_expressive_animation_style()) {
+			// Bottom panel tabs follow the main tab rhythm: a springy reorder with no inherited pressed shrink,
+			// toolbar bounce or fade-out seed. The tab state also enables rect animation, like the main tabs.
+			bottom_panel_button_pressed->set_expand_margin_all(0);
+			EditorThemeManager::animate_stylebox(bottom_panel_button_pressed, EditorThemeManager::ANIM_TAB_STATE);
+			EditorThemeManager::animate_stylebox(bottom_panel_button_hover, EditorThemeManager::ANIM_TAB_STATE);
+		}
 
 		p_theme->set_stylebox("BottomPanel", EditorStringName(EditorStyles), style_bottom_panel);
 		p_theme->set_type_variation("BottomPanel", "TabContainer");
