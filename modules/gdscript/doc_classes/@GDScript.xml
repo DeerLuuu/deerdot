@@ -296,6 +296,12 @@
 		</constant>
 	</constants>
 	<annotations>
+		<annotation name="@observable">
+			<return type="void" />
+			<description>
+				Marks a variable as observable. Assigning a different value emits the generated [code]&lt;property&gt;_changed(new_value)[/code] signal after the assignment, comparing with [code]==[/code] (containers are compared by content). The initializer does not emit because member initialization writes the member directly; an explicit assignment in [code]_init()[/code] does emit. In-place container changes such as [code]self.arr.append(x)[/code] are not observed; reassign the container to trigger the signal.
+			</description>
+		</annotation>
 		<annotation name="@abstract">
 			<return type="void" />
 			<description>

@@ -1,0 +1,2 @@
+GDTEST_ANALYZER_ERROR
+>> ERROR at line 3: Variable "hp" already has a setter; "@observable" needs to own it. Write the emit yourself, or drop the setter (v1.1 will add a wrap mode).

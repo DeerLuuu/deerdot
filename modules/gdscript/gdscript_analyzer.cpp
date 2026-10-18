@@ -1530,6 +1530,261 @@ void GDScriptAnalyzer::resolve_class_member(GDScriptParser::ClassNode *p_class, 
 	parser->current_class = previous_class;
 }
 
+void GDScriptAnalyzer::inject_observable_members(GDScriptParser::ClassNode *p_class) {
+	using Node = GDScriptParser::Node;
+	using ExpressionNode = GDScriptParser::ExpressionNode;
+	using AnnotationNode = GDScriptParser::AnnotationNode;
+	using AssignmentNode = GDScriptParser::AssignmentNode;
+	using BinaryOpNode = GDScriptParser::BinaryOpNode;
+	using CallNode = GDScriptParser::CallNode;
+	using ClassNode = GDScriptParser::ClassNode;
+	using FunctionNode = GDScriptParser::FunctionNode;
+	using IdentifierNode = GDScriptParser::IdentifierNode;
+	using IfNode = GDScriptParser::IfNode;
+	using LiteralNode = GDScriptParser::LiteralNode;
+	using ParameterNode = GDScriptParser::ParameterNode;
+	using SignalNode = GDScriptParser::SignalNode;
+	using SuiteNode = GDScriptParser::SuiteNode;
+	using VariableNode = GDScriptParser::VariableNode;
+
+	auto set_extents = [](Node *p_node, const Node *p_source) {
+		p_node->start_line = p_source->start_line;
+		p_node->start_column = p_source->start_column;
+		p_node->end_line = p_source->end_line;
+		p_node->end_column = p_source->end_column;
+	};
+	auto make_identifier = [&](const StringName &p_name, SuiteNode *p_suite, const Node *p_source) {
+		IdentifierNode *identifier = parser->alloc_node<IdentifierNode>();
+		identifier->name = p_name;
+		identifier->suite = p_suite;
+		set_extents(identifier, p_source);
+		return identifier;
+	};
+	auto make_literal = [&](const Variant &p_value, const Node *p_source) {
+		LiteralNode *literal = parser->alloc_node<LiteralNode>();
+		literal->value = p_value;
+		set_extents(literal, p_source);
+		return literal;
+	};
+
+	for (uint32_t i = 0; i < p_class->members.size(); i++) {
+		ClassNode::Member member = p_class->members[i];
+		const Node *annotated_node = nullptr;
+		switch (member.type) {
+			case ClassNode::Member::VARIABLE:
+				annotated_node = member.variable;
+				break;
+			case ClassNode::Member::CONSTANT:
+				annotated_node = member.constant;
+				break;
+			case ClassNode::Member::FUNCTION:
+				annotated_node = member.function;
+				break;
+			case ClassNode::Member::SIGNAL:
+				annotated_node = member.signal;
+				break;
+			case ClassNode::Member::CLASS:
+			case ClassNode::Member::TRAIT:
+				annotated_node = member.m_class;
+				break;
+			default:
+				break;
+		}
+		if (annotated_node == nullptr) {
+			continue;
+		}
+
+		AnnotationNode *observable = nullptr;
+		for (AnnotationNode *annotation : annotated_node->annotations) {
+			if (annotation->name == "@observable") {
+				observable = annotation;
+				break;
+			}
+		}
+		if (observable == nullptr) {
+			continue;
+		}
+
+		if (member.type == ClassNode::Member::CONSTANT) {
+			parser->push_error(R"("@observable" cannot be applied to constants.)", observable);
+			continue;
+		}
+		if (member.type != ClassNode::Member::VARIABLE) {
+			parser->push_error(R"(The "@observable" annotation can only be used on variable declarations.)", observable);
+			continue;
+		}
+
+		VariableNode *variable = member.variable;
+		const StringName property_name = variable->identifier->name;
+		if (variable->is_static) {
+			parser->push_error(R"("@observable" is not supported on static variables (signals are per-instance).)", observable);
+			continue;
+		}
+
+		bool has_user_setter = false;
+		if (variable->property == VariableNode::PROP_INLINE && variable->setter != nullptr) {
+			has_user_setter = true;
+		} else if (variable->property == VariableNode::PROP_SETGET && variable->setter_pointer != nullptr) {
+			has_user_setter = true;
+		}
+		if (has_user_setter) {
+			parser->push_error(vformat(R"(Variable "%s" already has a setter; "@observable" needs to own it. Write the emit yourself, or drop the setter (v1.1 will add a wrap mode).)", property_name), observable);
+			continue;
+		}
+
+		StringName signal_name;
+		if (!observable->named_arguments.is_empty() || observable->arguments.size() > 1) {
+			parser->push_error(R"("@observable" takes no arguments or a single signal name string.)", observable);
+			continue;
+		}
+		if (observable->arguments.size() == 1) {
+			const ExpressionNode *argument = observable->arguments[0];
+			if (argument->type != Node::LITERAL || static_cast<const LiteralNode *>(argument)->value.get_type() != Variant::STRING) {
+				parser->push_error(R"("@observable" takes no arguments or a single signal name string.)", observable);
+				continue;
+			}
+			signal_name = static_cast<const LiteralNode *>(argument)->value;
+		}
+
+		int signal_arity = 1;
+		if (!signal_name.is_empty()) {
+			const SignalNode *found = nullptr;
+			for (const ClassNode::Member &other : p_class->members) {
+				if (other.type == ClassNode::Member::SIGNAL && other.signal->identifier->name == signal_name) {
+					found = other.signal;
+					break;
+				}
+			}
+			if (found == nullptr) {
+				parser->push_error(vformat(R"("@observable" references signal "%s", which is not declared in this class.)", signal_name), observable);
+				continue;
+			}
+			signal_arity = found->parameters.size();
+			if (signal_arity > 2) {
+				parser->push_error(vformat(R"(Signal "%s" has %d parameters; "@observable" supports signals with 0 (no args), 1 (new value), or 2 (old and new value) parameters.)", signal_name, signal_arity), observable);
+				continue;
+			}
+		} else {
+			signal_name = String(property_name) + "_changed";
+			if (p_class->has_member(signal_name)) {
+				parser->push_error(vformat(R"(Cannot generate signal "%s" for "@observable": a member with that name already exists.)", signal_name), observable);
+				continue;
+			}
+		}
+
+		if (observable->arguments.is_empty()) {
+			SignalNode *signal = parser->alloc_node<SignalNode>();
+			signal->identifier = make_identifier(signal_name, nullptr, variable);
+			ParameterNode *value_parameter = parser->alloc_node<ParameterNode>();
+			value_parameter->identifier = make_identifier("value", nullptr, variable);
+			set_extents(value_parameter, variable);
+			signal->parameters_indices[SNAME("value")] = 0;
+			signal->parameters.push_back(value_parameter);
+			set_extents(signal, variable);
+			p_class->add_member(signal);
+		}
+
+		FunctionNode *setter = parser->alloc_node<FunctionNode>();
+		setter->identifier = make_identifier(StringName("@" + String(property_name) + "_setter"), nullptr, variable);
+		setter->identifier->start_line = setter->identifier->end_line = setter->identifier->start_column = setter->identifier->end_column = -1;
+		SuiteNode *body = parser->alloc_node<SuiteNode>();
+		body->parent_function = setter;
+		set_extents(body, variable);
+		setter->body = body;
+
+		ParameterNode *value_parameter = parser->alloc_node<ParameterNode>();
+		value_parameter->identifier = make_identifier("__observable_new", body, variable);
+		set_extents(value_parameter, variable);
+		setter->parameters_indices[SNAME("__observable_new")] = 0;
+		setter->parameters.push_back(value_parameter);
+		body->add_local(value_parameter, setter);
+
+		VariableNode *old_value = parser->alloc_node<VariableNode>();
+		old_value->identifier = make_identifier("__observable_old", body, variable);
+		old_value->initializer = make_identifier(property_name, body, variable);
+		old_value->assignments = 1;
+		set_extents(old_value, variable);
+		body->add_local(old_value, setter);
+
+		BinaryOpNode *condition = parser->alloc_node<BinaryOpNode>();
+		condition->operation = BinaryOpNode::OP_COMP_NOT_EQUAL;
+		condition->variant_op = Variant::OP_NOT_EQUAL;
+		IdentifierNode *condition_old = make_identifier("__observable_old", body, variable);
+		condition_old->source = IdentifierNode::LOCAL_VARIABLE;
+		condition_old->variable_source = old_value;
+		condition_old->source_function = setter;
+		IdentifierNode *condition_new = make_identifier("__observable_new", body, variable);
+		condition_new->source = IdentifierNode::FUNCTION_PARAMETER;
+		condition_new->parameter_source = value_parameter;
+		condition_new->source_function = setter;
+		condition->left_operand = condition_old;
+		condition->right_operand = condition_new;
+		set_extents(condition, variable);
+
+		SuiteNode *true_block = parser->alloc_node<SuiteNode>();
+		true_block->parent_function = setter;
+		true_block->parent_block = body;
+		set_extents(true_block, variable);
+
+		AssignmentNode *assignment = parser->alloc_node<AssignmentNode>();
+		assignment->operation = AssignmentNode::OP_NONE;
+		assignment->variant_op = Variant::OP_MAX;
+		assignment->assignee = make_identifier(property_name, true_block, variable);
+		IdentifierNode *assigned_value = make_identifier("__observable_new", true_block, variable);
+		assigned_value->source = IdentifierNode::FUNCTION_PARAMETER;
+		assigned_value->parameter_source = value_parameter;
+		assigned_value->source_function = setter;
+		assignment->assigned_value = assigned_value;
+		set_extents(assignment, variable);
+		true_block->statements.push_back(assignment);
+
+		CallNode *emit = parser->alloc_node<CallNode>();
+		emit->callee = make_identifier("emit_signal", true_block, variable);
+		emit->function_name = SNAME("emit_signal");
+		emit->type_constraint.kind = GDScriptParser::DataType::BUILTIN;
+		emit->type_constraint.builtin_type = Variant::NIL;
+		emit->type_constraint.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
+		emit->arguments.push_back(make_literal(signal_name, variable));
+		if (signal_arity == 1) {
+			IdentifierNode *emit_new = make_identifier("__observable_new", true_block, variable);
+			emit_new->source = IdentifierNode::FUNCTION_PARAMETER;
+			emit_new->parameter_source = value_parameter;
+			emit_new->source_function = setter;
+			emit->arguments.push_back(emit_new);
+		} else if (signal_arity == 2) {
+			IdentifierNode *emit_old = make_identifier("__observable_old", true_block, variable);
+			emit_old->source = IdentifierNode::LOCAL_VARIABLE;
+			emit_old->variable_source = old_value;
+			emit_old->source_function = setter;
+			emit->arguments.push_back(emit_old);
+			IdentifierNode *emit_new = make_identifier("__observable_new", true_block, variable);
+			emit_new->source = IdentifierNode::FUNCTION_PARAMETER;
+			emit_new->parameter_source = value_parameter;
+			emit_new->source_function = setter;
+			emit->arguments.push_back(emit_new);
+		}
+		set_extents(emit, variable);
+		VariableNode *emit_result = parser->alloc_node<VariableNode>();
+		emit_result->identifier = make_identifier("_observable_emit", true_block, variable);
+		emit_result->initializer = emit;
+		set_extents(emit_result, variable);
+		true_block->add_local(emit_result, setter);
+		true_block->statements.push_back(emit_result);
+
+		IfNode *if_node = parser->alloc_node<IfNode>();
+		if_node->condition = condition;
+		if_node->true_block = true_block;
+		set_extents(if_node, variable);
+
+		body->statements.push_back(old_value);
+		body->statements.push_back(if_node);
+		set_extents(setter, variable);
+
+		variable->property = VariableNode::PROP_INLINE;
+		variable->setter = setter;
+	}
+}
+
 void GDScriptAnalyzer::resolve_class_interface(GDScriptParser::ClassNode *p_class, const GDScriptParser::Node *p_source) {
 	if (p_source == nullptr && parser->has_class(p_class)) {
 		p_source = p_class;
@@ -1586,6 +1841,8 @@ void GDScriptAnalyzer::resolve_class_interface(GDScriptParser::ClassNode *p_clas
 		if (resolve_class_uses(p_class) != OK) {
 			return;
 		}
+
+		inject_observable_members(p_class);
 
 		for (uint32_t i = 0; i < p_class->members.size(); i++) {
 			resolve_class_member(p_class, i);
@@ -1697,7 +1954,6 @@ void GDScriptAnalyzer::resolve_class_body(GDScriptParser::ClassNode *p_class, co
 					ERR_CONTINUE(member.variable->setter->parameters.is_empty());
 					member.variable->setter->parameters[0]->datatype_specifier = member.variable->datatype_specifier;
 					member.variable->setter->parameters[0]->type_constraint = member.get_datatype();
-
 					resolve_function_body(member.variable->setter);
 				}
 			}
@@ -7246,7 +7502,6 @@ Error GDScriptAnalyzer::analyze() {
 
 	resolve_interface();
 	RETURN_IF_ERROR(resolve_body());
-
 	return resolve_dependencies();
 }
 
