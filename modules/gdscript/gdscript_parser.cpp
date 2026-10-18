@@ -1399,12 +1399,31 @@ void GDScriptParser::parse_class_member(T *(GDScriptParser::*p_parse_function)(b
 void GDScriptParser::parse_class_body(bool p_is_multiline) {
 	bool class_end = false;
 	bool next_is_static = false;
+	// Comments before a `static` modifier are kept until the actual member is parsed.
+	Vector<String> pending_comment_headers;
+	Vector<int> pending_comment_lines;
+	Vector<int> pending_comment_indents;
 	while (!class_end && !is_at_end()) {
 		Vector<String> member_comment_headers;
+		Vector<int> member_comment_lines;
+		Vector<int> member_comment_indents;
+		if (!pending_comment_headers.is_empty()) {
+			member_comment_headers = pending_comment_headers;
+			member_comment_lines = pending_comment_lines;
+			member_comment_indents = pending_comment_indents;
+			pending_comment_headers.clear();
+			pending_comment_lines.clear();
+			pending_comment_indents.clear();
+		}
 		if (last_comment_block.is_empty()) {
-			member_comment_headers = check_for_comment_block();
+			Vector<int> block_lines;
+			Vector<int> block_indents;
+			Vector<String> block_comments = check_for_comment_block(&block_lines, &block_indents);
+			member_comment_headers.append_array(block_comments);
+			member_comment_lines.append_array(block_lines);
+			member_comment_indents.append_array(block_indents);
 		} else {
-			member_comment_headers = last_comment_block;
+			member_comment_headers.append_array(last_comment_block);
 			last_comment_block.clear();
 		}
 
@@ -1476,6 +1495,15 @@ void GDScriptParser::parse_class_body(bool p_is_multiline) {
 			case GDScriptTokenizer::Token::STATIC: {
 				advance();
 				next_is_static = true;
+				// Keep the comments that preceded `static` for the member that follows it.
+				if (!member_comment_headers.is_empty()) {
+					pending_comment_headers.append_array(member_comment_headers);
+					pending_comment_lines.append_array(member_comment_lines);
+					pending_comment_indents.append_array(member_comment_indents);
+					member_comment_headers.clear();
+					member_comment_lines.clear();
+					member_comment_indents.clear();
+				}
 				if (!check(GDScriptTokenizer::Token::FUNC) && !check(GDScriptTokenizer::Token::VAR)) {
 					push_error(R"(Expected "func" or "var" after "static".)");
 				}
@@ -1512,7 +1540,11 @@ void GDScriptParser::parse_class_body(bool p_is_multiline) {
 			case GDScriptTokenizer::Token::TK_EOF:
 			case GDScriptTokenizer::Token::DEDENT:
 				current_class->footer_comment = member_comment_headers;
+				current_class->footer_comment_lines = member_comment_lines;
+				current_class->footer_comment_indents = member_comment_indents;
 				member_comment_headers.clear();
+				member_comment_lines.clear();
+				member_comment_indents.clear();
 
 				class_end = true;
 				break;
@@ -2396,6 +2428,8 @@ GDScriptParser::SuiteNode *GDScriptParser::parse_suite(const String &p_context, 
 	}
 
 	Vector<String> comment_header;
+	Vector<int> comment_header_lines;
+	Vector<int> comment_header_indents;
 
 	bool dedented = false;
 	GDScriptTokenizer::Token dedented_token;
@@ -2406,7 +2440,7 @@ GDScriptParser::SuiteNode *GDScriptParser::parse_suite(const String &p_context, 
 			dedented = true;
 		}
 		if (check(GDScriptTokenizer::Token::COMMENT)) {
-			comment_header = check_for_comment_block();
+			comment_header = check_for_comment_block(&comment_header_lines, &comment_header_indents);
 		} else if (dedented) {
 			current = dedented_token;
 		}
@@ -2425,10 +2459,19 @@ GDScriptParser::SuiteNode *GDScriptParser::parse_suite(const String &p_context, 
 			break;
 		}
 
-		comment_header.append_array(check_for_comment_block());
+		Vector<int> block_lines;
+		Vector<int> block_indents;
+		Vector<String> block_comments = check_for_comment_block(&block_lines, &block_indents);
+		comment_header.append_array(block_comments);
+		comment_header_lines.append_array(block_lines);
+		comment_header_indents.append_array(block_indents);
 		if (current.type == GDScriptTokenizer::Token::DEDENT) {
 			suite->footer_comment = comment_header;
+			suite->footer_comment_lines = comment_header_lines;
+			suite->footer_comment_indents = comment_header_indents;
 			comment_header.clear();
+			comment_header_lines.clear();
+			comment_header_indents.clear();
 			break;
 		}
 
@@ -2442,6 +2485,8 @@ GDScriptParser::SuiteNode *GDScriptParser::parse_suite(const String &p_context, 
 		}
 		statement->header_comment = comment_header;
 		comment_header.clear();
+		comment_header_lines.clear();
+		comment_header_indents.clear();
 		suite->statements.push_back(statement);
 
 		// Register locals.
@@ -2512,9 +2557,15 @@ GDScriptParser::SuiteNode *GDScriptParser::parse_suite(const String &p_context, 
 	return suite;
 }
 
-Vector<String> GDScriptParser::check_for_comment_block() {
+Vector<String> GDScriptParser::check_for_comment_block(Vector<int> *r_lines, Vector<int> *r_indents) {
 	Vector<String> comments;
 	while (check(GDScriptTokenizer::Token::COMMENT)) {
+		if (r_lines != nullptr) {
+			r_lines->push_back(current.start_line);
+		}
+		if (r_indents != nullptr) {
+			r_indents->push_back(current.start_column);
+		}
 		match(GDScriptTokenizer::Token::COMMENT);
 		comments.push_back(previous.comment);
 		match(GDScriptTokenizer::Token::NEWLINE);

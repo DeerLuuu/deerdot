@@ -48,6 +48,9 @@ private:
 	typedef String (GDScriptFormat::*ParserFunc)(GDP::Node *, int, BreakType);
 	HashSet<int> new_lines;
 	List<GDScriptParser::ParserError> parser_errors;
+	// When set, the next `parse_expression()` call won't re-add parentheses around a grouped
+	// simple expression (used for assignment values, where explicit parentheses are redundant).
+	bool skip_grouping = false;
 
 private:
 	static bool node_has_comments(const GDP::Node *p_node);

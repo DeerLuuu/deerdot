@@ -486,6 +486,15 @@ String GDScriptFormat::parse_class(const GDP::ClassNode *p_node, const int p_ind
 						while (!output.as_string().ends_with(String("\n").repeat(lines_between_functions))) {
 							output += "\n";
 						}
+						// A trailing inline comment should stay close to the code it annotates, so avoid
+						// adding the extra separator blank line after it.
+						const GDP::SuiteNode *body = p_node->members[i].function->body;
+						if (body != nullptr && !body->statements.is_empty()) {
+							const GDP::Node *last_statement = body->statements[body->statements.size() - 1];
+							if (!last_statement->inline_comment.is_empty() || children_have_comments(last_statement)) {
+								skip_newline = true;
+							}
+						}
 					}
 					break;
 				case GDP::ClassNode::Member::Type::SIGNAL: {
@@ -538,15 +547,20 @@ String GDScriptFormat::parse_class(const GDP::ClassNode *p_node, const int p_ind
 
 	const int indent_mod = p_node->outer == nullptr ? 0 : 1;
 	for (int i = 0; i < p_node->footer_comment.size(); ++i) {
-		if (i == p_node->footer_comment.size() - 1 && indent_mod == 0 && !output.as_string().ends_with("\n")) {
+		int comment_indent = p_indent_level + indent_mod;
+		if (i < p_node->footer_comment_indents.size()) {
+			const int raw_column = p_node->footer_comment_indents[i];
+			comment_indent = tab_type == 0 ? raw_column - 1 : (raw_column - 1) / tab_size;
+		}
+		if (i < p_node->footer_comment_lines.size() && new_lines.has(p_node->footer_comment_lines[i] - 2) && !output.as_string().ends_with("\n")) {
 			output += "\n";
 		}
-		output += indent(p_indent_level + indent_mod);
+		output += indent(comment_indent);
 		output += "# ";
 		output += p_node->footer_comment[i];
-		if (i == p_node->footer_comment.size() - 1 && indent_mod == 0) {
-			output += "\n";
-		}
+	}
+	if (p_node->outer == nullptr) {
+		output += "\n";
 	}
 
 	return output;
@@ -742,7 +756,19 @@ String GDScriptFormat::parse_constant(const GDP::ConstantNode *p_node, const int
 }
 
 String GDScriptFormat::parse_property(const GDP::VariableNode *p_node, const int p_indent_level) {
+	if (p_node->setter != nullptr) {
+	}
+	if (p_node->getter != nullptr) {
+	}
 	StringBuilder output;
+
+	// The formatter always emits the setter before the getter. When the original source had the
+	// getter first, the comments that preceded the setter were collected as the getter body's
+	// footer comments; move them to the setter's header so they stay with the setter.
+	if (p_node->getter != nullptr && p_node->setter != nullptr && p_node->getter->start_line < p_node->setter->start_line && !p_node->getter->body->footer_comment.is_empty()) {
+		p_node->setter->header_comment.append_array(p_node->getter->body->footer_comment);
+		p_node->getter->body->footer_comment.clear();
+	}
 
 	switch (p_node->property) {
 		case GDP::VariableNode::PropertyStyle::PROP_INLINE:
@@ -892,6 +918,8 @@ String GDScriptFormat::parse_cast(const GDP::CastNode *p_node, const int p_inden
 }
 
 String GDScriptFormat::parse_expression(const GDP::ExpressionNode *p_node, const int p_indent_level, const BreakType p_break_type) {
+	const bool skip_grouping_now = skip_grouping;
+	skip_grouping = false;
 	String expression = "";
 	switch (p_node->type) {
 		case GDP::Node::Type::ASSIGNMENT:
@@ -949,7 +977,11 @@ String GDScriptFormat::parse_expression(const GDP::ExpressionNode *p_node, const
 			break;
 	}
 
-	if (p_node->is_grouped && p_node->type != GDP::Node::Type::LITERAL && p_node->type != GDP::Node::Type::LAMBDA && p_node->type != GDP::Node::Type::CAST && !(expression.begins_with("(") || expression.ends_with(")"))) {
+	const bool was_grouped = p_node->is_grouped && !(expression.begins_with("(") || expression.ends_with(")")) &&
+			p_node->type != GDP::Node::Type::LITERAL && p_node->type != GDP::Node::Type::LAMBDA &&
+			p_node->type != GDP::Node::Type::CAST &&
+			!(skip_grouping_now && (p_node->type == GDP::Node::Type::IDENTIFIER || p_node->type == GDP::Node::Type::SELF));
+	if (was_grouped) {
 		StringBuilder output;
 		if (p_break_type != NONE && get_length_without_comments(expression) > line_length_maximum) {
 			output += "(";
@@ -1117,6 +1149,10 @@ String GDScriptFormat::parse_return(const GDP::ReturnNode *p_node, const int p_i
 		output += parse_expression(p_node->return_value, p_indent_level, p_break_type);
 	}
 	output += print_comment(p_node, false);
+	if (p_node->inline_comment.is_empty() && p_node->return_value != nullptr) {
+		// The parser may attach the trailing comment to the returned value instead of the statement.
+		output += print_comment(p_node->return_value, false);
+	}
 
 	return output;
 }
@@ -1332,7 +1368,9 @@ String GDScriptFormat::parse_while(const GDP::WhileNode *p_node, const int p_ind
 
 String GDScriptFormat::parse_suite(const GDP::SuiteNode *p_node, const int p_indent_level) {
 	StringBuilder output;
-	for (GDScriptParser::Node *statement : p_node->statements) {
+	for (int statement_index = 0; statement_index < p_node->statements.size(); ++statement_index) {
+		GDScriptParser::Node *statement = p_node->statements[statement_index];
+		const bool is_last_statement = statement_index == p_node->statements.size() - 1;
 		output += indent(p_indent_level);
 
 		ParserFunc parser = nullptr;
@@ -1403,7 +1441,7 @@ String GDScriptFormat::parse_suite(const GDP::SuiteNode *p_node, const int p_ind
 				output += print_comment(statement, true, p_indent_level);
 				output += raw_statement;
 				output += print_comment(statement, false);
-				if (new_lines.has(statement->end_line)) {
+				if (new_lines.has(statement->end_line) && !is_last_statement) {
 					output += "\n";
 				}
 			}
@@ -1411,21 +1449,32 @@ String GDScriptFormat::parse_suite(const GDP::SuiteNode *p_node, const int p_ind
 		}
 
 		String statement_string = (this->*parser)(statement, p_indent_level, NONE);
-		if (get_length_without_comments(statement_string) > line_length_maximum) {
+		// Only the first line matters: compound statements always contain their (multi-line) body,
+		// which must not make the header get re-wrapped.
+		const int first_newline = statement_string.find_char('\n');
+		const int first_line_length = first_newline == -1 ? statement_string.length() : first_newline;
+		if (first_line_length > line_length_maximum) {
 			statement_string = (this->*parser)(statement, p_indent_level, WRAP);
 		}
 		output += statement_string;
 
-		if (new_lines.has(statement->end_line)) {
+		if (new_lines.has(statement->end_line) && !is_last_statement) {
 			output += "\n";
 		}
 	}
 
+	// Footer comments keep their original indentation and blank line separation.
+	const int footer_indent = p_indent_level > 0 ? p_indent_level - 1 : 0;
 	for (int i = 0; i < p_node->footer_comment.size(); ++i) {
-		if (i == 0 && !output.as_string().ends_with("\n")) {
+		int comment_indent = footer_indent;
+		if (i < p_node->footer_comment_indents.size()) {
+			const int raw_column = p_node->footer_comment_indents[i];
+			comment_indent = tab_type == 0 ? raw_column - 1 : (raw_column - 1) / tab_size;
+		}
+		if (i < p_node->footer_comment_lines.size() && new_lines.has(p_node->footer_comment_lines[i] - 2) && !output.as_string().ends_with("\n")) {
 			output += "\n";
 		}
-		output += indent(p_indent_level);
+		output += indent(comment_indent);
 		output += "# ";
 		output += p_node->footer_comment[i];
 	}
@@ -1464,8 +1513,14 @@ String GDScriptFormat::parse_unary_op(const GDP::UnaryOpNode *p_node, const int 
 }
 
 String GDScriptFormat::parse_ternary_op(const GDP::TernaryOpNode *p_node, const int p_indent_level, const BreakType p_break_type) {
+	// A comment anywhere in the ternary forces the multi-line layout, so the comment can stay
+	// attached to the part it belongs to.
+	BreakType break_type = p_break_type;
+	if (!p_node->inline_comment.is_empty() || node_has_comments(p_node->condition) || node_has_comments(p_node->true_expr) || node_has_comments(p_node->false_expr)) {
+		break_type = WRAP;
+	}
 	StringBuilder output;
-	if (p_break_type != NONE) {
+	if (break_type != NONE) {
 		output += "(";
 	}
 
@@ -1473,16 +1528,16 @@ String GDScriptFormat::parse_ternary_op(const GDP::TernaryOpNode *p_node, const 
 	true_condition += parse_expression(p_node->true_expr, p_indent_level + 1);
 	true_condition += " if ";
 	true_condition += parse_expression(p_node->condition, p_indent_level + 1);
-	if (p_break_type != NONE) {
+	if (break_type != NONE) {
 		String true_condition_string = true_condition.as_string();
 		true_condition = StringBuilder();
 		true_condition += indent(p_indent_level + 1) + true_condition_string;
 		if (get_length_without_comments(true_condition) > line_length_maximum) {
 			true_condition = StringBuilder();
 			true_condition += indent(p_indent_level + 1);
-			true_condition += parse_expression(p_node->true_expr, p_indent_level + 1, p_break_type);
+			true_condition += parse_expression(p_node->true_expr, p_indent_level + 1, break_type);
 			true_condition += " if ";
-			true_condition += parse_expression(p_node->condition, p_indent_level + 1, p_break_type);
+			true_condition += parse_expression(p_node->condition, p_indent_level + 1, break_type);
 		}
 	}
 	output += true_condition;
@@ -1491,7 +1546,7 @@ String GDScriptFormat::parse_ternary_op(const GDP::TernaryOpNode *p_node, const 
 	StringBuilder false_condition;
 	false_condition += "else ";
 	false_condition += parse_expression(p_node->false_expr, p_indent_level + 1);
-	if (p_break_type != NONE) {
+	if (break_type != NONE) {
 		String false_condition_sting = false_condition.as_string();
 		false_condition = StringBuilder();
 		false_condition += indent(p_indent_level + 1);
@@ -1500,7 +1555,7 @@ String GDScriptFormat::parse_ternary_op(const GDP::TernaryOpNode *p_node, const 
 			false_condition = StringBuilder();
 			false_condition += indent(p_indent_level + 1);
 			false_condition += "else ";
-			false_condition += parse_expression(p_node->false_expr, p_indent_level + 1, p_break_type);
+			false_condition += parse_expression(p_node->false_expr, p_indent_level + 1, break_type);
 		}
 
 	} else {
@@ -1512,7 +1567,7 @@ String GDScriptFormat::parse_ternary_op(const GDP::TernaryOpNode *p_node, const 
 	output += false_condition;
 	output += print_comment(p_node->false_expr, false);
 
-	if (p_break_type != NONE) {
+	if (break_type != NONE) {
 		output += indent(p_indent_level) + ")";
 	}
 
@@ -1542,14 +1597,19 @@ String GDScriptFormat::parse_await(const GDP::AwaitNode *p_node, const int p_ind
 }
 
 String GDScriptFormat::parse_subscript(const GDP::SubscriptNode *p_node, const int p_indent_level, const BreakType p_break_type) {
+	// A commented index always forces the multi-line subscript layout.
+	BreakType break_type = p_break_type;
+	if (!p_node->is_attribute && (!p_node->index->inline_comment.is_empty() || !p_node->index->header_comment.is_empty() || children_have_comments(p_node->index))) {
+		break_type = WRAP;
+	}
 	String base = parse_expression(p_node->base, p_indent_level);
 
 	StringBuilder output;
 	if ((p_node->base->type == GDP::Node::Type::CAST || p_node->base->type == GDP::Node::Type::BINARY_OPERATOR) && !(base.begins_with("(") || base.ends_with(")"))) {
 		output += "(";
 	}
-	if (p_break_type != NONE && get_length_without_comments(base) > line_length_maximum) {
-		base = parse_expression(p_node->base, p_indent_level, p_break_type);
+	if (break_type != NONE && get_length_without_comments(base) > line_length_maximum) {
+		base = parse_expression(p_node->base, p_indent_level, break_type);
 	}
 	output += base;
 	if ((p_node->base->type == GDP::Node::Type::CAST || p_node->base->type == GDP::Node::Type::BINARY_OPERATOR) && !(base.begins_with("(") || base.ends_with(")"))) {
@@ -1564,17 +1624,17 @@ String GDScriptFormat::parse_subscript(const GDP::SubscriptNode *p_node, const i
 		output += attribute;
 	} else {
 		output += "[";
-		if (p_break_type != NONE) {
+		if (break_type != NONE) {
 			output += indent(p_indent_level + 1);
 		}
 		String subscript_string = print_comment(p_node->index, true) + parse_expression(p_node->index, p_indent_level);
 		if (get_length_without_comments(subscript_string) > line_length_maximum) {
-			subscript_string = parse_expression(p_node->index, p_indent_level, p_break_type);
+			subscript_string = parse_expression(p_node->index, p_indent_level, break_type);
 		}
 		output += subscript_string;
 		output += print_comment(p_node->index, false);
 
-		if (p_break_type != NONE) {
+		if (break_type != NONE) {
 			output += indent(p_indent_level);
 		}
 		output += "]";
@@ -1618,9 +1678,22 @@ String GDScriptFormat::parse_get_node(const GDP::GetNodeNode *p_node, const int 
 	return output;
 }
 
+static bool binary_rightmost_has_inline_comment(const GDP::ExpressionNode *p_node) {
+	if (p_node == nullptr) {
+		return false;
+	}
+	if (!p_node->inline_comment.is_empty()) {
+		return true;
+	}
+	if (p_node->type == GDP::Node::Type::BINARY_OPERATOR) {
+		return binary_rightmost_has_inline_comment(static_cast<const GDP::BinaryOpNode *>(p_node)->right_operand);
+	}
+	return false;
+}
+
 String GDScriptFormat::parse_binary_operator_element(const GDP::ExpressionNode *p_node, int p_indent_level, const BreakType p_break_type) {
 	String element;
-	if (p_break_type == SPLIT) {
+	if (p_break_type == SPLIT || p_break_type == FORCE_SPLIT) {
 		element = parse_expression(p_node, p_indent_level, p_break_type);
 	} else {
 		element = parse_expression(p_node, p_indent_level);
@@ -1718,6 +1791,13 @@ String GDScriptFormat::parse_binary_operator(const GDP::BinaryOpNode *p_node, co
 			}
 			right_node = dynamic_cast<const GDP::BinaryOpNode *>(right_node->right_operand);
 		}
+	}
+
+	// A comment on the rightmost operand must be kept on its own continuation line when the
+	// expression is being split across lines (otherwise the comment would push the line over
+	// the limit after it has already been wrapped).
+	if (!split && p_break_type != NONE && binary_rightmost_has_inline_comment(p_node->right_operand)) {
+		split = true;
 	}
 
 	if (split) {
@@ -1899,7 +1979,7 @@ String GDScriptFormat::parse_array_elements(const GDP::ArrayNode *p_node, const 
 		}
 
 		String element;
-		if (children_have_comments(p_node)) {
+		if (p_break_type != NONE && children_have_comments(p_node)) {
 			String array_element = parse_array_element(p_node->elements[i], p_indent_level, WRAP);
 			element = print_comment(p_node->elements[i], true, p_indent_level) + array_element;
 		} else {
@@ -1923,39 +2003,50 @@ String GDScriptFormat::parse_array_elements(const GDP::ArrayNode *p_node, const 
 }
 
 String GDScriptFormat::parse_array(const GDP::ArrayNode *p_node, const int p_indent_level, const BreakType p_break_type) {
-	StringBuilder array_string;
-	array_string += "[";
-	int indent_mod = 0;
-	if (p_break_type != NONE) {
-		indent_mod = 1;
-		array_string += indent(p_indent_level + 1);
-	}
+	const bool direct_comments = children_have_comments(p_node, false);
+	const bool nested_comments = children_have_comments(p_node);
+	const bool has_footer = !p_node->footer_comments.is_empty();
+	const int content_indent = p_indent_level + 1;
+	const int indent_size = content_indent * tab_size;
 
-	int indent_size = (p_indent_level + indent_mod) * tab_size;
+	bool wrap_elements = false;
+	bool wrap_layout = false;
+	if (direct_comments || has_footer) {
+		// Elements with their own comments must stay on separate lines.
+		wrap_elements = true;
+	} else if (p_break_type != NONE && nested_comments) {
+		// Explicitly wrapped arrays expand fully when a nested element has comments.
+		wrap_elements = true;
+	} else if (p_break_type == NONE && nested_comments) {
+		// Otherwise keep the elements inline, but put the brackets on their own lines so the
+		// nested multi-line element doesn't stick to the surrounding code.
+		wrap_layout = true;
+	}
 
 	String elements;
-	if (!children_have_comments(p_node, false)) {
-		elements = parse_array_elements(p_node, 0);
-		if (indent_size + elements.length() > line_length_maximum) {
-			elements = parse_array_elements(p_node, p_indent_level + 1, WRAP);
-		}
-	} else if (children_have_comments(p_node) || !p_node->footer_comments.is_empty()) {
-		elements = parse_array_elements(p_node, p_indent_level + 1, WRAP);
+	if (wrap_elements) {
+		elements = parse_array_elements(p_node, content_indent, WRAP);
 	} else {
-		elements = parse_array_elements(p_node, 0);
+		elements = parse_array_elements(p_node, wrap_layout ? content_indent : 0);
 		if (p_break_type != NONE && indent_size + elements.length() > line_length_maximum) {
-			elements = parse_array_elements(p_node, p_indent_level + indent_mod, p_break_type);
+			elements = parse_array_elements(p_node, content_indent, WRAP);
+			wrap_elements = true;
 		}
 	}
 
+	StringBuilder array_string;
+	array_string += "[";
+	if (!elements.is_empty() && (p_break_type != NONE || wrap_layout || wrap_elements || has_footer)) {
+		array_string += indent(content_indent);
+	}
 	array_string += elements;
 
 	for (int i = 0; i < p_node->footer_comments.size(); ++i) {
-		array_string += indent(p_indent_level + 1);
+		array_string += indent(content_indent);
 		array_string += "# ";
 		array_string += p_node->footer_comments[i];
 	}
-	if (p_break_type == WRAP || !p_node->footer_comments.is_empty()) {
+	if (p_break_type == WRAP || has_footer || wrap_layout || wrap_elements) {
 		array_string += indent(p_indent_level);
 	}
 	array_string += "]";
@@ -2109,7 +2200,9 @@ String GDScriptFormat::parse_assignment(const GDP::AssignmentNode *p_node, const
 			output += " **= ";
 			break;
 	}
+	skip_grouping = true;
 	output += parse_expression(p_node->assigned_value, p_indent_level, p_break_type);
+	skip_grouping = false;
 	output += print_comment(p_node, false);
 	if (p_node->assigned_value->type == GDP::Node::Type::LITERAL || p_node->assigned_value->type == GDP::Node::Type::IDENTIFIER || p_node->assigned_value->type == GDP::Node::Type::SELF) {
 		output += print_comment(p_node->assigned_value, false);

@@ -810,6 +810,9 @@ public:
 		String icon_inline_comment;
 		Vector<String> icon_header_comment;
 		Vector<String> footer_comment;
+		// Source line/column of each footer comment, so the formatter can keep its indentation.
+		Vector<int> footer_comment_lines;
+		Vector<int> footer_comment_indents;
 		DataType base_type;
 		// Metatype that represents this class. Always contains a hard-type.
 		DataType self_type;
@@ -1294,6 +1297,9 @@ public:
 		LocalVector<Local> locals;
 		HashMap<StringName, uint32_t> locals_indices;
 		Vector<String> footer_comment;
+		// Source line/column of each footer comment, so the formatter can keep its indentation.
+		Vector<int> footer_comment_lines;
+		Vector<int> footer_comment_indents;
 
 		FunctionNode *parent_function = nullptr;
 		IfNode *parent_if = nullptr;
@@ -1724,7 +1730,7 @@ private:
 	bool warning_ignore_region_annotations(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool rpc_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	// Statements.
-	Vector<String> check_for_comment_block();
+	Vector<String> check_for_comment_block(Vector<int> *r_lines = nullptr, Vector<int> *r_indents = nullptr);
 	String check_for_comment();
 	Node *parse_statement();
 	VariableNode *parse_variable(bool p_is_static);
