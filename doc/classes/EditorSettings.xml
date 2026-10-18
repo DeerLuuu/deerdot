@@ -1293,6 +1293,9 @@
 		<member name="interface/theme/style" type="String" setter="" getter="">
 			The editor theme style to use.
 		</member>
+		<member name="interface/theme/ui_animations" type="bool" setter="" getter="">
+			If [code]true[/code], subtle transition animations are enabled on editor UI controls (buttons, tabs, trees, menus, lists, scrollbars, sliders, spin boxes). When disabled, all state changes are drawn instantly. Consider disabling it if you are sensitive to motion or on low-end hardware.
+		</member>
 		<member name="interface/theme/use_monospace_font_for_editor_symbols" type="bool" setter="" getter="">
 			If [code]true[/code], use the monospace font for some labels in the editor that display code symbols, such as signals, properties, and methods.
 		</member>
