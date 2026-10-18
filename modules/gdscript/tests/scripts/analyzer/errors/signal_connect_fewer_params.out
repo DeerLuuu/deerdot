@@ -1,0 +1,2 @@
+GDTEST_ANALYZER_ERROR
+>> ERROR at line 7: Callable connected to signal "hit" accepts at most 1 argument(s), but the signal provides 2. Add default parameters to accept all signal arguments.

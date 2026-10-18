@@ -1,0 +1,3 @@
+GDTEST_OK
+~~ WARNING at line 11: (UNSAFE_CALL_ARGUMENT) The argument 2 of the signal "hit()" requires the subtype "Vector2" but the supertype "Variant" was provided.
+[3, (1.0, 1.0)]

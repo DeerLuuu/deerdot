@@ -3993,16 +3993,26 @@ void GDScriptAnalyzer::validate_signal_connect(GDScriptParser::SignalNode *p_sig
 	if (lambda->function == nullptr) {
 		return;
 	}
-	const int callback_count = lambda->function->parameters.size() - bound_arguments;
 	const int signal_count = p_signal->parameters.size();
-	if (callback_count > signal_count) {
-		push_error(vformat(R"(Callable connected to signal "%s" takes %d argument(s), but the signal only provides %d (callbacks may take fewer, not more).)", p_signal->identifier->name, callback_count, signal_count), p_call);
+	const int max_count = lambda->function->parameters.size() - bound_arguments;
+	int required_count = 0;
+	for (int i = 0; i < max_count; i++) {
+		if (lambda->function->parameters[i]->initializer == nullptr) {
+			required_count++;
+		}
+	}
+	if (required_count > signal_count) {
+		push_error(vformat(R"(Callable connected to signal "%s" requires at least %d argument(s), but the signal only provides %d.)", p_signal->identifier->name, required_count, signal_count), p_call);
+		return;
+	}
+	if (signal_count > max_count) {
+		push_error(vformat(R"(Callable connected to signal "%s" accepts at most %d argument(s), but the signal provides %d. Add default parameters to accept all signal arguments.)", p_signal->identifier->name, max_count, signal_count), p_call);
 		return;
 	}
 	if (bound_arguments > 0) {
 		return; // Bound prefix types are not statically known.
 	}
-	for (int i = 0; i < callback_count; i++) {
+	for (int i = 0; i < signal_count; i++) {
 		const GDScriptParser::ParameterNode *callback_parameter = lambda->function->parameters[i];
 		const GDScriptParser::ParameterNode *signal_parameter = p_signal->parameters[i];
 		if (signal_parameter->datatype_specifier == nullptr || callback_parameter->datatype_specifier == nullptr) {
