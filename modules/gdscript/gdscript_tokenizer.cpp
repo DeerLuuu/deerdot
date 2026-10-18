@@ -1256,6 +1256,12 @@ GDScriptTokenizer::Token GDScriptTokenizerText::fstring() {
 				}
 				const char32_t ec = _peek();
 				if (ec == '\n' || ec == '\r') {
+					// A newline that ends the source is an unterminated interpolation (the loader/appended
+					// newline makes the missing `}` look like a line break); only a real line break is E6.
+					const bool at_source_end = (ec == '\r' && _peek(1) == '\n') ? (position + 2 >= length) : (position + 1 >= length);
+					if (at_source_end) {
+						return make_error("Unterminated interpolation in f-string: missing \"}\".");
+					}
 					return make_error("Line breaks are not allowed inside an f-string expression.");
 				}
 				if (ec == '"' || ec == '\'') {
@@ -1264,6 +1270,10 @@ GDScriptTokenizer::Token GDScriptTokenizerText::fstring() {
 					expression += String::chr(_advance());
 					while (!_is_at_end() && _peek() != quote) {
 						if (_peek() == '\n' || _peek() == '\r') {
+							const bool at_source_end = (_peek() == '\r' && _peek(1) == '\n') ? (position + 2 >= length) : (position + 1 >= length);
+							if (at_source_end) {
+								return make_error("Unterminated interpolation in f-string: missing \"}\".");
+							}
 							return make_error("Line breaks are not allowed inside an f-string expression.");
 						}
 						if (_peek() == '\\') {
