@@ -1651,13 +1651,7 @@ void GDScriptAnalyzer::inject_observable_members(GDScriptParser::ClassNode *p_cl
 
 		int signal_arity = 1;
 		if (!signal_name.is_empty()) {
-			const SignalNode *found = nullptr;
-			for (const ClassNode::Member &other : p_class->members) {
-				if (other.type == ClassNode::Member::SIGNAL && other.signal->identifier->name == signal_name) {
-					found = other.signal;
-					break;
-				}
-			}
+			const SignalNode *found = find_signal_in_class(p_class, signal_name);
 			if (found == nullptr) {
 				parser->push_error(vformat(R"("@observable" references signal "%s", which is not declared in this class.)", signal_name), observable);
 				continue;

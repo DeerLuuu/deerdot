@@ -4368,4 +4368,25 @@ signal old(x)
 )"));
 }
 
+TEST_CASE("[Modules][GDScript][GDScriptFormatter] Observable annotation forms round-trip") {
+	CHECK_FORMAT(GDSCRIPT(R"(
+extends Node
+
+
+signal custom_changed(value)
+
+@observable var automatic := 1
+@observable("custom_changed") var custom := 2
+)"),
+			GDSCRIPT(R"(
+extends Node
+
+
+signal custom_changed(value)
+
+@observable var automatic := 1
+@observable("custom_changed") var custom := 2
+)"));
+}
+
 } //namespace GDScriptTests
