@@ -4673,6 +4673,67 @@ static const GDScriptParser::TraitNode *_find_trait_in_tree(const GDScriptParser
 	return nullptr;
 }
 
+// Finds the trait named by a dotted chain (`Outer.Inner`, `A.B.C`) inside a parsed file. Intermediate
+// parts must be inner classes; only the last part can be the trait. Returns nullptr if any part is
+// missing, so a typo keeps the existing "no lookup" behavior.
+static const GDScriptParser::TraitNode *_find_trait_in_tree_path(const GDScriptParser::ClassNode *p_class, const Vector<String> &p_parts, int p_index) {
+	if (p_class == nullptr || p_index < 0 || p_index >= p_parts.size()) {
+		return nullptr;
+	}
+	const bool last = p_index == p_parts.size() - 1;
+	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+		if (member.m_class == nullptr || member.m_class->identifier == nullptr || member.m_class->identifier->name != StringName(p_parts[p_index])) {
+			continue;
+		}
+		if (last) {
+			return member.type == GDScriptParser::ClassNode::Member::TRAIT ? static_cast<const GDScriptParser::TraitNode *>(member.m_class) : nullptr;
+		}
+		if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
+			if (const GDScriptParser::TraitNode *trait = _find_trait_in_tree_path(member.m_class, p_parts, p_index + 1)) {
+				return trait;
+			}
+		}
+	}
+	return nullptr;
+}
+
+// Whether a symbol can name a trait in a `uses` list: either a plain identifier or a dot-separated
+// chain of identifiers (the editor reports the whole `Outer.Inner` when it is copied as a symbol).
+static bool _is_trait_symbol(const String &p_symbol) {
+	if (p_symbol.is_empty()) {
+		return false;
+	}
+	for (const String &part : p_symbol.split(".")) {
+		if (!part.is_valid_identifier()) {
+			return false;
+		}
+	}
+	return true;
+}
+
+// Documentation comments (`##`) directly above a declaration line (1-based). Works for indented
+// declarations such as a trait inside an inner class.
+static String _declaration_description(const String &p_path, int p_line) {
+	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::READ);
+	if (file.is_null() || p_line <= 1) {
+		return String();
+	}
+	const Vector<String> lines = file->get_as_text().split("\n");
+	String documentation;
+	for (int i = p_line - 2; i >= 0; i--) {
+		if (i >= lines.size()) {
+			continue;
+		}
+		const String comment = lines[i].remove_char(0xFEFF).strip_edges();
+		if (!comment.begins_with("##")) {
+			break;
+		}
+		const String text = comment.substr(2).strip_edges();
+		documentation = documentation.is_empty() ? text : text + "\n" + documentation;
+	}
+	return documentation;
+}
+
 // Line (1-based) where a script declares a trait, or -1 if it does not. The
 // documentation comments above the declaration are reported as well.
 static int _find_trait_declaration_line(const String &p_path, const StringName &p_name, String *r_description = nullptr) {
@@ -4740,18 +4801,29 @@ static int _find_trait_declaration_line(const String &p_path, const StringName &
 
 	// A trait name in a `uses` statement points at the script declaring it, so
 	// ctrl+clicking it opens that script and the tooltip describes the trait.
-	if (GDScriptLanguage::get_singleton() != nullptr && p_symbol.is_valid_identifier() && _code_uses_trait(p_code, p_symbol)) {
+	if (GDScriptLanguage::get_singleton() != nullptr && _is_trait_symbol(p_symbol) && _code_uses_trait(p_code, p_symbol)) {
 		// A trait declared in this file, including one inside an inner class
-		// (`uses Outer.Inner`), is found in the tree the parser just built.
-		if (const GDScriptParser::TraitNode *trait = _find_trait_in_tree(parser.get_tree(), p_symbol)) {
+		// (`uses Outer.Inner`), is found in the tree the parser just built. A dotted
+		// symbol is matched along its class chain so `Outer.Inner` cannot resolve to
+		// an unrelated trait that happens to share the last part.
+		const bool dotted = p_symbol.contains(".");
+		const GDScriptParser::TraitNode *trait = dotted ? _find_trait_in_tree_path(parser.get_tree(), p_symbol.split("."), 0)
+														: _find_trait_in_tree(parser.get_tree(), p_symbol);
+		if (trait != nullptr) {
 			r_result.type = LookupResult::Type::TRAIT;
 			r_result.class_name = p_symbol;
 			r_result.script_path = p_path;
 			r_result.location = trait->start_line;
+			if (dotted) {
+				// Hovering the dotted name shows the `##` comments above `trait Inner:`.
+				r_result.description = _declaration_description(p_path, trait->start_line);
+			}
 			return OK;
 		}
 
-		const String trait_path = GDScriptLanguage::get_singleton()->get_global_trait_path(p_symbol);
+		// Only bare names can be global traits; `Outer.Inner` describes an inner class trait and
+		// must not fall through to an unrelated global trait with the same last part.
+		const String trait_path = dotted ? String() : GDScriptLanguage::get_singleton()->get_global_trait_path(p_symbol);
 		if (!trait_path.is_empty()) {
 			String documentation;
 			const int trait_line = _find_trait_declaration_line(trait_path, p_symbol, &documentation);
