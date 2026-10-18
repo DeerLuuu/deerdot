@@ -834,9 +834,9 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		EditorThemeManager::animate_stylebox(style_tab_unselected, EditorThemeManager::ANIM_TAB_STATE);
 
 		if (EditorThemeManager::is_expressive_animation_style()) {
-			// Expressive only: shrink the selected tab's background by 2px at the top (the spec's -2px expand
-			// margin). Only drawing changes; layout and the hit area are unaffected.
-			style_tab_selected->set_expand_margin(SIDE_TOP, -2 * EDSCALE);
+			// Expressive only: extend the selected tab's background 2px upwards, so switching tabs reads as
+			// a lift. Only drawing changes; layout and the hit area are unaffected.
+			style_tab_selected->set_expand_margin(SIDE_TOP, 2 * EDSCALE);
 		}
 
 		Color drop_mark_color = p_config.dark_color_2.lerp(p_config.accent_color, 0.75);

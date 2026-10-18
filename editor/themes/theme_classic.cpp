@@ -848,9 +848,9 @@ void ThemeClassic::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edi
 		EditorThemeManager::animate_stylebox(style_tab_disabled, EditorThemeManager::ANIM_TAB_STATE);
 
 		if (EditorThemeManager::is_expressive_animation_style()) {
-			// Expressive only: shrink the selected tab's background by 2px at the top (the spec's -2px expand
-			// margin). Only drawing changes; layout and the hit area are unaffected.
-			style_tab_selected->set_expand_margin(SIDE_TOP, -2 * EDSCALE);
+			// Expressive only: extend the selected tab's background 2px upwards, so switching tabs reads as
+			// a lift. Only drawing changes; layout and the hit area are unaffected.
+			style_tab_selected->set_expand_margin(SIDE_TOP, 2 * EDSCALE);
 		}
 
 		// Small buttons on the right side of tabs (close button, tab list button).
