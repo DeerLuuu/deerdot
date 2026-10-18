@@ -1,0 +1,11 @@
+GDTEST_OK
+~~ WARNING at line 35: (UNNECESSARY_NULL_COALESCING) Left operand of "??" can never be null; the right side is dead code.
+~~ WARNING at line 44: (UNNECESSARY_NULL_COALESCING) Left operand of "??" can never be null; the right side is dead code.
+true
+5
+false
+false
+2
+5
+710
+921
