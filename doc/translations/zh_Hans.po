@@ -203801,3 +203801,13 @@ msgid ""
 msgstr ""
 "将加载的 zip 存档中文件的全部内容加载到内存中并返回它。\n"
 "必须在 [method open] 之后调用。"
+
+#: doc/classes/EditorSettings.xml
+msgid ""
+"If [code]true[/code], subtle transition animations are enabled on editor UI "
+"controls (buttons, tabs, trees, menus, lists, scrollbars, sliders, spin "
+"boxes). When disabled, all state changes are drawn instantly. Consider "
+"disabling it if you are sensitive to motion or on low-end hardware."
+msgstr ""
+"启用时，编辑器界面控件（按钮、标签页、树、菜单、列表、滚动条、滑块、微调框）带"
+"有轻微的过渡动画；禁用后所有状态变化立即呈现。对动效敏感或使用低配硬件时可关闭。"
