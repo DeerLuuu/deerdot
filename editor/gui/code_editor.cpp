@@ -1191,6 +1191,18 @@ void CodeTextEditor::play_intro_reveal() {
 	reveal_material->set_shader_parameter("wipe_soft", 0.08);
 
 	intro_material = reveal_material;
+	// Remember the editor's own material (if any) so the reveal can put it back instead of clearing it.
+	text_editor->set_meta(SNAME("_intro_prev_material"), text_editor->get_material());
+	// The internal scrollbars inherit the parent material, so the wipe would also cover them. Let them draw
+	// with their own material while the ghost code plays, then restore the flag when it finishes.
+	if (VScrollBar *v_scroll = text_editor->get_v_scroll_bar()) {
+		v_scroll->set_meta(SNAME("_intro_prev_use_parent_material"), v_scroll->get_use_parent_material());
+		v_scroll->set_use_parent_material(false);
+	}
+	if (HScrollBar *h_scroll = text_editor->get_h_scroll_bar()) {
+		h_scroll->set_meta(SNAME("_intro_prev_use_parent_material"), h_scroll->get_use_parent_material());
+		h_scroll->set_use_parent_material(false);
+	}
 	text_editor->set_material(reveal_material);
 
 	const int revealed_lines = MIN(text_editor->get_line_count(), INTRO_MAX_LINES);
@@ -1201,7 +1213,26 @@ void CodeTextEditor::play_intro_reveal() {
 
 void CodeTextEditor::_finish_intro_reveal() {
 	if (text_editor != nullptr && intro_material.is_valid() && text_editor->get_material().ptr() == intro_material.ptr()) {
-		text_editor->set_material(Ref<Material>());
+		Ref<Material> previous;
+		if (text_editor->has_meta(SNAME("_intro_prev_material"))) {
+			previous = text_editor->get_meta(SNAME("_intro_prev_material"));
+		}
+		text_editor->set_material(previous);
+	}
+	if (text_editor != nullptr) {
+		text_editor->remove_meta(SNAME("_intro_prev_material"));
+		if (VScrollBar *v_scroll = text_editor->get_v_scroll_bar()) {
+			if (v_scroll->has_meta(SNAME("_intro_prev_use_parent_material"))) {
+				v_scroll->set_use_parent_material((bool)v_scroll->get_meta(SNAME("_intro_prev_use_parent_material")));
+				v_scroll->remove_meta(SNAME("_intro_prev_use_parent_material"));
+			}
+		}
+		if (HScrollBar *h_scroll = text_editor->get_h_scroll_bar()) {
+			if (h_scroll->has_meta(SNAME("_intro_prev_use_parent_material"))) {
+				h_scroll->set_use_parent_material((bool)h_scroll->get_meta(SNAME("_intro_prev_use_parent_material")));
+				h_scroll->remove_meta(SNAME("_intro_prev_use_parent_material"));
+			}
+		}
 	}
 	intro_material = Ref<ShaderMaterial>();
 }

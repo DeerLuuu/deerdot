@@ -106,9 +106,19 @@ void Popup::_restore_open_values() {
 	if (!open_values_saved) {
 		return;
 	}
-	if (Control *content = _get_popup_content()) {
-		content->set_scale(open_base_scale);
-		content->set_modulate(open_base_modulate);
+	// The animation covers every direct Control child (internal background panel + user content), and each
+	// one saved its own scale/modulate/pivot right before the tween started.
+	for (int i = 0; i < get_child_count(true); i++) {
+		Control *control = Object::cast_to<Control>(get_child(i, true));
+		if (control == nullptr || !control->has_meta(SNAME("_popup_open_scale"))) {
+			continue;
+		}
+		control->set_scale((Vector2)control->get_meta(SNAME("_popup_open_scale")));
+		control->set_modulate((Color)control->get_meta(SNAME("_popup_open_modulate")));
+		control->set_pivot_offset((Vector2)control->get_meta(SNAME("_popup_open_pivot")));
+		control->remove_meta(SNAME("_popup_open_scale"));
+		control->remove_meta(SNAME("_popup_open_modulate"));
+		control->remove_meta(SNAME("_popup_open_pivot"));
 	}
 	open_values_saved = false;
 }
@@ -151,8 +161,17 @@ void Popup::_play_open_animation() {
 	if (!ui_open_animation_enabled) {
 		return;
 	}
-	Control *content = _get_popup_content();
-	if (content == nullptr) {
+	// PopupPanel/TooltipPanel keep the user content as a sibling of the internal background panel, so the
+	// animation has to cover every direct Control child. All of them share one window-space anchor so the
+	// whole popup appears to grow from the interaction point.
+	Vector<Control *> targets;
+	for (int i = 0; i < get_child_count(true); i++) {
+		Control *control = Object::cast_to<Control>(get_child(i, true));
+		if (control != nullptr) {
+			targets.push_back(control);
+		}
+	}
+	if (targets.is_empty()) {
 		return;
 	}
 	const bool tooltip = _is_tooltip_popup();
@@ -171,19 +190,29 @@ void Popup::_play_open_animation() {
 	}
 
 	_stop_open_animation();
-	open_base_scale = content->get_scale();
-	open_base_modulate = content->get_modulate();
-	open_values_saved = true;
-
-	// Grow from the interaction point, clamped inside the popup so it never appears to fly in from outside.
-	const Vector2 content_size = content->get_size();
-	Vector2 pivot = content_size * 0.5f;
+	const Vector2 window_size = get_size();
+	Vector2 anchor = window_size * 0.5f;
 	if (is_inside_tree()) {
-		pivot = content->get_global_transform().affine_inverse().xform(get_mouse_position());
+		anchor = get_mouse_position();
 	}
-	pivot.x = CLAMP(pivot.x, content_size.x * 0.15f, content_size.x * 0.85f);
-	pivot.y = CLAMP(pivot.y, content_size.y * 0.15f, content_size.y * 0.85f);
-	content->set_pivot_offset(pivot);
+	anchor.x = CLAMP(anchor.x, window_size.x * 0.15f, window_size.x * 0.85f);
+	anchor.y = CLAMP(anchor.y, window_size.y * 0.15f, window_size.y * 0.85f);
+
+	for (Control *control : targets) {
+		control->set_meta(SNAME("_popup_open_scale"), control->get_scale());
+		control->set_meta(SNAME("_popup_open_modulate"), control->get_modulate());
+		control->set_meta(SNAME("_popup_open_pivot"), control->get_pivot_offset());
+
+		// Same window-space anchor, expressed in this child's local coordinates.
+		const Vector2 size = control->get_size();
+		Vector2 pivot = is_inside_tree() ? control->get_global_transform().affine_inverse().xform(anchor) : size * 0.5f;
+		pivot.x = CLAMP(pivot.x, size.x * 0.15f, size.x * 0.85f);
+		pivot.y = CLAMP(pivot.y, size.y * 0.15f, size.y * 0.85f);
+		control->set_pivot_offset(pivot);
+	}
+	open_base_scale = targets[0]->get_scale();
+	open_base_modulate = targets[0]->get_modulate();
+	open_values_saved = true;
 
 	const float start_scale = tooltip ? TOOLTIP_ANIMATION_SCALE_EXPRESSIVE : OPEN_ANIMATION_SCALE_EXPRESSIVE;
 	double animation_duration = tooltip ? (ui_open_animation_expressive ? TOOLTIP_ANIMATION_DURATION_EXPRESSIVE : TOOLTIP_ANIMATION_DURATION_SUBTLE)
@@ -199,10 +228,14 @@ void Popup::_play_open_animation() {
 	}
 #endif
 	const bool use_scale = tooltip ? ui_open_animation_expressive : popup_start_scale < 0.9999;
-	if (use_scale) {
-		content->set_scale(open_base_scale * (float)popup_start_scale);
+	for (Control *control : targets) {
+		const Vector2 base_scale = (Vector2)control->get_meta(SNAME("_popup_open_scale"));
+		const Color base_modulate = (Color)control->get_meta(SNAME("_popup_open_modulate"));
+		if (use_scale) {
+			control->set_scale(base_scale * (float)popup_start_scale);
+		}
+		control->set_modulate(Color(base_modulate.r, base_modulate.g, base_modulate.b, 0.0f));
 	}
-	content->set_modulate(Color(open_base_modulate.r, open_base_modulate.g, open_base_modulate.b, 0.0f));
 
 	open_tween = Ref<Tween>(create_tween());
 	if (open_tween.is_null()) {
@@ -215,10 +248,16 @@ void Popup::_play_open_animation() {
 	open_tween->set_parallel(true);
 	open_tween->set_trans(use_scale ? Tween::TRANS_BACK : Tween::TRANS_SINE);
 	open_tween->set_ease(Tween::EASE_OUT);
-	if (use_scale) {
-		open_tween->tween_property(content, NodePath("scale"), open_base_scale, animation_duration);
+	for (Control *control : targets) {
+		const Vector2 base_scale = (Vector2)control->get_meta(SNAME("_popup_open_scale"));
+		const Color base_modulate = (Color)control->get_meta(SNAME("_popup_open_modulate"));
+		if (use_scale) {
+			open_tween->tween_property(control, NodePath("scale"), base_scale, animation_duration);
+		}
+		open_tween->tween_property(control, NodePath("modulate:a"), base_modulate.a, animation_duration);
 	}
-	open_tween->tween_property(content, NodePath("modulate:a"), open_base_modulate.a, animation_duration);
+	// The pivot was only needed while scaling; put it back without waiting for the next hide.
+	open_tween->chain()->tween_callback(callable_mp(this, &Popup::_restore_open_values));
 }
 
 void Popup::_notification(int p_what) {
