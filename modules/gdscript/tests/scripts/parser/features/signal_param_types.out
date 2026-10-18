@@ -1,0 +1,2 @@
+GDTEST_OK
+[{ "name": "hit", "hash": 163021252, "args": [{ "name": "dmg", "class_name": &"", "type": 2, "hint": 0, "hint_string": "", "usage": 0 }, { "name": "pos", "class_name": &"", "type": 5, "hint": 0, "hint_string": "", "usage": 0 }], "default_args": [], "flags": 1, "id": 0, "return": { "name": "", "class_name": &"", "type": 0, "hint": 0, "hint_string": "", "usage": 6 } }]

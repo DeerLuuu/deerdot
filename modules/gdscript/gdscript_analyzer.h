@@ -106,6 +106,9 @@ class GDScriptAnalyzer {
 	void reduce_await(GDScriptParser::AwaitNode *p_await);
 	void reduce_binary_op(GDScriptParser::BinaryOpNode *p_binary_op);
 	void reduce_call(GDScriptParser::CallNode *p_call, bool p_is_await = false, bool p_is_root = false);
+	GDScriptParser::SignalNode *find_signal_in_class(GDScriptParser::ClassNode *p_class, const StringName &p_name);
+	void validate_signal_emit(GDScriptParser::SignalNode *p_signal, GDScriptParser::CallNode *p_call, int p_argument_offset);
+	void validate_signal_connect(GDScriptParser::SignalNode *p_signal, GDScriptParser::CallNode *p_call);
 	void reduce_cast(GDScriptParser::CastNode *p_cast);
 	void reduce_dictionary(GDScriptParser::DictionaryNode *p_dictionary);
 	void reduce_get_node(GDScriptParser::GetNodeNode *p_get_node);

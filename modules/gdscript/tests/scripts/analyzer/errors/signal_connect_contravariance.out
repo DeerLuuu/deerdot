@@ -1,0 +1,2 @@
+GDTEST_ANALYZER_ERROR
+>> ERROR at line 7: Signal "hit" argument 1 has type "int", but the connected callable declares "String".

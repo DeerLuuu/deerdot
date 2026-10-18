@@ -1,0 +1,4 @@
+GDTEST_OK
+[3, (1.0, 1.0)]
+["old"]
+[{ "name": "dmg", "class_name": &"", "type": 2, "hint": 0, "hint_string": "", "usage": 0 }, { "name": "pos", "class_name": &"", "type": 5, "hint": 0, "hint_string": "", "usage": 0 }]

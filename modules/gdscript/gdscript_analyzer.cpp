@@ -3917,6 +3917,111 @@ const char *check_for_renamed_identifier(String identifier, GDScriptParser::Node
 }
 #endif // SUGGEST_GODOT4_RENAMES
 
+GDScriptParser::SignalNode *GDScriptAnalyzer::find_signal_in_class(GDScriptParser::ClassNode *p_class, const StringName &p_name) {
+	GDScriptParser::ClassNode *current = p_class;
+	while (current != nullptr) {
+		if (current->has_member(p_name)) {
+			const GDScriptParser::ClassNode::Member &member = current->get_member(p_name);
+			if (member.type == GDScriptParser::ClassNode::Member::SIGNAL) {
+				return member.signal;
+			}
+		}
+		current = current->base_type.kind == GDScriptParser::DataType::CLASS ? current->base_type.class_type : nullptr;
+	}
+	return nullptr;
+}
+
+static bool _signal_has_typed_parameters(const GDScriptParser::SignalNode *p_signal) {
+	for (const GDScriptParser::ParameterNode *parameter : p_signal->parameters) {
+		if (parameter->datatype_specifier != nullptr) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void GDScriptAnalyzer::validate_signal_emit(GDScriptParser::SignalNode *p_signal, GDScriptParser::CallNode *p_call, int p_argument_offset) {
+	if (p_signal == nullptr || !_signal_has_typed_parameters(p_signal)) {
+		return;
+	}
+	const int passed = p_call->arguments.size() - p_argument_offset;
+	const int expected = p_signal->parameters.size();
+	if (passed != expected) {
+		push_error(vformat(R"(Signal "%s" expects %d argument(s), but %d were passed.)", p_signal->identifier->name, expected, passed), p_call);
+	}
+	const int count = MIN(passed, expected);
+	for (int i = 0; i < count; i++) {
+		const GDScriptParser::ParameterNode *parameter = p_signal->parameters[i];
+		if (parameter->datatype_specifier == nullptr) {
+			continue;
+		}
+		const GDScriptParser::ExpressionNode *argument = p_call->arguments[p_argument_offset + i];
+		const GDScriptParser::DataType &expected_type = parameter->type_constraint;
+		const GDScriptParser::DataType &argument_type = argument->type_constraint;
+		if (argument_type.is_variant() || !argument_type.is_hard_type()) {
+#ifdef DEBUG_ENABLED
+			parser->push_warning(argument, GDScriptWarning::UNSAFE_CALL_ARGUMENT, itos(i + 1), "signal", p_signal->identifier->name, expected_type.to_string(), argument_type.to_string_strict());
+#endif
+		} else if (!is_type_compatible(expected_type, argument_type, true)) {
+			push_error(vformat(R"(Cannot pass a value of type "%s" as signal argument "%s: %s".)", argument_type.to_string(), parameter->identifier->name, expected_type.to_string()), argument);
+		}
+	}
+}
+
+void GDScriptAnalyzer::validate_signal_connect(GDScriptParser::SignalNode *p_signal, GDScriptParser::CallNode *p_call) {
+	if (p_signal == nullptr || !_signal_has_typed_parameters(p_signal) || p_call->arguments.is_empty()) {
+		return;
+	}
+	GDScriptParser::ExpressionNode *target = p_call->arguments[0];
+	int bound_arguments = 0;
+	if (target->type == GDScriptParser::Node::CALL) {
+		GDScriptParser::CallNode *bind_call = static_cast<GDScriptParser::CallNode *>(target);
+		if (bind_call->function_name != SNAME("bind") || bind_call->callee == nullptr || bind_call->callee->type != GDScriptParser::Node::SUBSCRIPT) {
+			return;
+		}
+		GDScriptParser::SubscriptNode *bind_subscript = static_cast<GDScriptParser::SubscriptNode *>(bind_call->callee);
+		if (!bind_subscript->is_attribute || bind_subscript->attribute == nullptr || bind_subscript->attribute->name != SNAME("bind")) {
+			return;
+		}
+		target = bind_subscript->base;
+		bound_arguments = bind_call->arguments.size();
+		if (target == nullptr || target->type != GDScriptParser::Node::LAMBDA) {
+			return;
+		}
+	}
+	if (target->type != GDScriptParser::Node::LAMBDA) {
+		return;
+	}
+	const GDScriptParser::LambdaNode *lambda = static_cast<const GDScriptParser::LambdaNode *>(target);
+	if (lambda->function == nullptr) {
+		return;
+	}
+	const int callback_count = lambda->function->parameters.size() - bound_arguments;
+	const int signal_count = p_signal->parameters.size();
+	if (callback_count > signal_count) {
+		push_error(vformat(R"(Callable connected to signal "%s" takes %d argument(s), but the signal only provides %d (callbacks may take fewer, not more).)", p_signal->identifier->name, callback_count, signal_count), p_call);
+		return;
+	}
+	if (bound_arguments > 0) {
+		return; // Bound prefix types are not statically known.
+	}
+	for (int i = 0; i < callback_count; i++) {
+		const GDScriptParser::ParameterNode *callback_parameter = lambda->function->parameters[i];
+		const GDScriptParser::ParameterNode *signal_parameter = p_signal->parameters[i];
+		if (signal_parameter->datatype_specifier == nullptr || callback_parameter->datatype_specifier == nullptr) {
+			continue;
+		}
+		const GDScriptParser::DataType &signal_type = signal_parameter->type_constraint;
+		const GDScriptParser::DataType &callback_type = callback_parameter->type_constraint;
+		if (signal_type.is_variant() || callback_type.is_variant() || !signal_type.is_hard_type() || !callback_type.is_hard_type()) {
+			continue;
+		}
+		if (!is_type_compatible(callback_type, signal_type, true)) {
+			push_error(vformat(R"(Signal "%s" argument %d has type "%s", but the connected callable declares "%s".)", p_signal->identifier->name, i + 1, signal_type.to_string(), callback_type.to_string()), p_call);
+		}
+	}
+}
+
 void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_await, bool p_is_root) {
 	bool all_is_constant = true;
 	HashMap<int, GDScriptParser::ArrayNode *> arrays; // For array literal to potentially type when passing.
@@ -3929,6 +4034,31 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 			dictionaries[i] = static_cast<GDScriptParser::DictionaryNode *>(p_call->arguments[i]);
 		}
 		all_is_constant = all_is_constant && p_call->arguments[i]->is_constant;
+	}
+
+	// Typed signal validation happens after the arguments were reduced.
+	if (p_call->callee != nullptr && p_call->callee->type == GDScriptParser::Node::SUBSCRIPT) {
+		GDScriptParser::SubscriptNode *subscript = static_cast<GDScriptParser::SubscriptNode *>(p_call->callee);
+		if (subscript->is_attribute && subscript->attribute != nullptr && subscript->base != nullptr && subscript->base->type == GDScriptParser::Node::IDENTIFIER) {
+			GDScriptParser::IdentifierNode *base_identifier = static_cast<GDScriptParser::IdentifierNode *>(subscript->base);
+			bool is_signal = base_identifier->source == GDScriptParser::IdentifierNode::MEMBER_SIGNAL;
+			if (!is_signal && find_signal_in_class(parser->current_class, base_identifier->name) != nullptr) {
+				reduce_expression(subscript->base);
+				is_signal = base_identifier->source == GDScriptParser::IdentifierNode::MEMBER_SIGNAL;
+			}
+			if (is_signal && base_identifier->signal_source != nullptr) {
+				if (subscript->attribute->name == SNAME("emit")) {
+					validate_signal_emit(base_identifier->signal_source, p_call, 0);
+				} else if (subscript->attribute->name == SNAME("connect")) {
+					validate_signal_connect(base_identifier->signal_source, p_call);
+				}
+			}
+		}
+	} else if (p_call->function_name == SNAME("emit_signal") && !p_call->arguments.is_empty() && p_call->arguments[0]->is_constant && p_call->arguments[0]->reduced_value.get_type() == Variant::STRING) {
+		GDScriptParser::SignalNode *signal = find_signal_in_class(parser->current_class, p_call->arguments[0]->reduced_value);
+		if (signal != nullptr) {
+			validate_signal_emit(signal, p_call, 1);
+		}
 	}
 
 	GDScriptParser::Node::Type callee_type = p_call->get_callee_type();

@@ -4355,4 +4355,17 @@ func test():
 )"));
 }
 
+TEST_CASE("[Modules][GDScript][GDScriptFormatter] Signal parameter types round-trip") {
+	CHECK_FORMAT(GDSCRIPT(R"(
+signal hit(dmg: int, pos: Vector2)
+signal empty()
+signal old(x)
+)"),
+			GDSCRIPT(R"(
+signal hit(dmg: int, pos: Vector2)
+signal empty()
+signal old(x)
+)"));
+}
+
 } //namespace GDScriptTests

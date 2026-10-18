@@ -1,0 +1,2 @@
+GDTEST_ANALYZER_ERROR
+>> ERROR at line 7: Callable connected to signal "hit" takes 2 argument(s), but the signal only provides 1 (callbacks may take fewer, not more).
