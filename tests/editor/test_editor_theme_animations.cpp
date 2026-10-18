@@ -32,7 +32,9 @@
 
 TEST_FORCE_LINK(test_editor_theme_animations)
 
+#include "editor/gui/code_editor.h"
 #include "editor/themes/editor_theme_manager.h"
+#include "scene/gui/popup.h"
 
 namespace TestEditorThemeAnimations {
 
@@ -147,6 +149,29 @@ TEST_CASE("[Editor][Theme] Animation tables keep the perceptibility budget") {
 			CHECK(parameters.animate_rect == expects_rect_animation);
 		}
 	}
+}
+
+TEST_CASE("[Editor][Theme] Effect-specific animations keep the perceptibility budget") {
+	// Popup / menu entry: Subtle fades, Expressive adds a small scale-up from the interaction point.
+	CHECK(Popup::OPEN_ANIMATION_DURATION_SUBTLE <= 0.24);
+	CHECK(Popup::OPEN_ANIMATION_DURATION_EXPRESSIVE <= 0.24);
+	CHECK(Popup::OPEN_ANIMATION_SCALE_EXPRESSIVE >= 0.82f);
+	CHECK(Popup::OPEN_ANIMATION_SCALE_EXPRESSIVE <= 1.06f);
+
+	// Tooltips are more restrained, never overshoot, and are suppressed when repeated within the window.
+	CHECK(Popup::TOOLTIP_ANIMATION_DURATION_SUBTLE <= 0.24);
+	CHECK(Popup::TOOLTIP_ANIMATION_DURATION_EXPRESSIVE <= 0.24);
+	CHECK(Popup::TOOLTIP_ANIMATION_SCALE_EXPRESSIVE >= 0.82f);
+	CHECK(Popup::TOOLTIP_ANIMATION_SCALE_EXPRESSIVE <= 1.06f);
+	CHECK(Popup::TOOLTIP_REPLAY_WINDOW_MSEC >= 300);
+
+	// Script reveal: one line stays inside the normal animation budget, while the whole non-blocking
+	// reveal (stagger capped at INTRO_MAX_LINES) stays inside the R1 carve-out for content reveals.
+	CHECK(CodeTextEditor::INTRO_LINE_DURATION <= 0.24);
+	CHECK(CodeTextEditor::INTRO_LINE_STAGGER > 0.0);
+	CHECK(CodeTextEditor::INTRO_MAX_LINES > 0);
+	CHECK(CodeTextEditor::INTRO_LINE_DURATION + CodeTextEditor::INTRO_MAX_LINES * CodeTextEditor::INTRO_LINE_STAGGER <= CodeTextEditor::INTRO_MAX_TOTAL);
+	CHECK(CodeTextEditor::INTRO_MAX_TOTAL <= 0.45);
 }
 
 } // namespace TestEditorThemeAnimations
