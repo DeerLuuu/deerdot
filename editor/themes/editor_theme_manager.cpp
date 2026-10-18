@@ -400,8 +400,20 @@ Ref<EditorTheme> EditorThemeManager::_create_base_theme(const Ref<EditorTheme> &
 
 	// Expressive only: hovering an ordinary button blooms its background outwards by two pixels. This is
 	// applied after the style files duplicated the shared stylebox, so only controls that use the shared
-	// hover box (Button, MenuBar, OptionButton) get the bloom. Flat buttons, spin box arrows and menu
-	// highlights keep their own transform-based signatures instead of stacking another geometry change.
+	// hover box directly (Button and its mirrored variant, MenuBar, OptionButton) get the bloom.
+	//
+	// Copies made from that box before this point are deliberately left without it, because they either
+	// carry their own transform-based signature or are shared by both themes as a flat box:
+	//   - ProjectTagButton (the `tag` copy), PanelBackgroundButton, EditorInspectorButton, and the classic
+	//     InspectorActionButton hover copies;
+	//   - classic MainScreenContainer tab_hovered / MainMenuBar (the `main_screen_button_hover` copy);
+	//   - flat buttons, spin box arrows and menu highlights (they animate scale/offset instead).
+	// The rule is: bloom belongs to the shared ordinary-button hover box, not to every copy of it. A copy
+	// that wants bloom must add it in both themes through this same gate. Classic's mirrored OptionButton
+	// is the one exception because its copy is created later and receives the same bloom explicitly in
+	// theme_classic.cpp. Note that Modern's InspectorActionButton declares no stylebox of its own and falls
+	// back to the Button hover, so it inherits the bloom while the classic copy does not; making the classic
+	// copy match would be a theme_classic change and is left for a follow-up.
 	if (is_expressive_animation_style() && config.button_style_hover.is_valid()) {
 		config.button_style_hover->set_expand_margin_all(2 * EDSCALE);
 	}
