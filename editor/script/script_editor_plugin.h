@@ -36,6 +36,7 @@
 #include "editor/docks/editor_dock.h"
 #include "editor/plugins/editor_plugin.h"
 #include "editor/script/script_editor_base.h"
+#include "scene/animation/tween.h"
 #include "scene/gui/margin_container.h"
 #include "scene/resources/text_file.h"
 
@@ -310,6 +311,14 @@ class DocumentEditorContainer : public MarginContainer {
 	Label *split_drop_hint = nullptr; // Hint text shown inside the drop highlight.
 	VBoxContainer *split_drop_box = nullptr; // Holds the overlay hint; alignment depends on the zone.
 	Label *drop_code_preview = nullptr; // Inline preview of the text a drop would insert.
+	// Appearance transition of the drop overlay. Only the fade/scale is tweened; the rectangle itself is
+	// only tweened when swapping between the right and bottom drop zones (a discrete event), never while
+	// the pointer moves inside one zone.
+	Ref<Tween> split_overlay_tween;
+	Ref<Tween> split_overlay_morph_tween;
+	Rect2 split_overlay_target_rect;
+	DropZone split_overlay_target_zone = DROP_ZONE_NONE;
+	bool split_overlay_shown = false; // Whether the overlay is shown (or appearing) for the current drag.
 	DropZone drop_overlay_zone = DROP_ZONE_NONE;
 	int active_pane = 0; // 0 = primary pane, 1 = split pane.
 	AcceptDialog *error_dialog = nullptr;
@@ -476,6 +485,13 @@ class DocumentEditorContainer : public MarginContainer {
 	// actions that hint where a document will go.
 	void _show_highlight_overlay(const Rect2 &p_rect, const String &p_hint);
 	void _apply_drop_overlay(const Rect2 &p_rect, const String &p_hint, bool p_accept_drops);
+	void _update_drop_overlay_pivot();
+	void _stop_split_overlay_tween();
+	void _start_split_overlay_tween(bool p_show);
+	void _split_overlay_fade_out_finished();
+	void _stop_split_overlay_morph_tween();
+	void _start_split_overlay_morph_tween(const Rect2 &p_rect);
+	void _set_split_overlay_morph_progress(real_t p_progress, const Rect2 &p_from, const Rect2 &p_to, real_t p_back_amplitude);
 	void _tab_menu_option_focused(int p_option);
 	// The pane the tab menu acts on, or null when it was dropped meanwhile.
 	TabContainer *_tab_context_pane() const;
