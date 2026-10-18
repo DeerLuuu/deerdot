@@ -1163,7 +1163,9 @@ void CodeTextEditor::play_intro_reveal() {
 	if (text_editor == nullptr || intro_material.is_valid()) {
 		return;
 	}
-	if (!EditorThemeManager::is_expressive_animation_style()) {
+	if (!EDITOR_GET("interface/theme/ui_animations") || EditorThemeManager::get_animation_style() == EditorThemeManager::ANIMATION_STYLE_SUBTLE) {
+		// Subtle and disabled animations stay static; the Custom style still reveals (its base table is
+		// Expressive), which is required for the line-delay parameter to be usable at all.
 		return;
 	}
 	if (!is_visible_in_tree() || text_editor->get_line_count() == 0) {
@@ -1178,7 +1180,11 @@ void CodeTextEditor::play_intro_reveal() {
 	reveal_material->set_shader(shader);
 	reveal_material->set_shader_parameter("start_time", (double)Time::get_singleton()->get_ticks_msec() / 1000.0);
 	reveal_material->set_shader_parameter("line_height", (double)text_editor->get_line_height());
-	reveal_material->set_shader_parameter("line_stagger", INTRO_LINE_STAGGER);
+	// The line stagger is user-tunable; cap it so the whole non-blocking reveal still fits the 0.45 s
+	// carve-out (a 0 ms delay means every line starts together, i.e. one overall fade).
+	const double max_stagger = (INTRO_MAX_TOTAL - INTRO_LINE_DURATION) / INTRO_MAX_LINES;
+	const double line_stagger = MIN(EditorThemeManager::get_script_reveal_delay_ms() / 1000.0, max_stagger);
+	reveal_material->set_shader_parameter("line_stagger", line_stagger);
 	reveal_material->set_shader_parameter("line_duration", INTRO_LINE_DURATION);
 	reveal_material->set_shader_parameter("max_lines", (double)INTRO_MAX_LINES);
 	reveal_material->set_shader_parameter("reveal_width", (double)MAX(text_editor->get_size().x, 1.0f));
@@ -1188,7 +1194,7 @@ void CodeTextEditor::play_intro_reveal() {
 	text_editor->set_material(reveal_material);
 
 	const int revealed_lines = MIN(text_editor->get_line_count(), INTRO_MAX_LINES);
-	const double total = INTRO_LINE_DURATION + revealed_lines * INTRO_LINE_STAGGER + 0.05;
+	const double total = INTRO_LINE_DURATION + revealed_lines * line_stagger + 0.05;
 	Ref<SceneTreeTimer> timer = get_tree()->create_timer(total);
 	timer->connect(SNAME("timeout"), callable_mp(this, &CodeTextEditor::_finish_intro_reveal));
 }

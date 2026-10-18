@@ -41,6 +41,10 @@
 #include "servers/display/display_server.h"
 
 #ifdef TOOLS_ENABLED
+#include "editor/themes/editor_theme_manager.h"
+#endif
+
+#ifdef TOOLS_ENABLED
 #include "core/config/project_settings.h"
 #endif
 
@@ -182,8 +186,21 @@ void Popup::_play_open_animation() {
 	content->set_pivot_offset(pivot);
 
 	const float start_scale = tooltip ? TOOLTIP_ANIMATION_SCALE_EXPRESSIVE : OPEN_ANIMATION_SCALE_EXPRESSIVE;
-	if (ui_open_animation_expressive) {
-		content->set_scale(open_base_scale * start_scale);
+	double animation_duration = tooltip ? (ui_open_animation_expressive ? TOOLTIP_ANIMATION_DURATION_EXPRESSIVE : TOOLTIP_ANIMATION_DURATION_SUBTLE)
+										: (ui_open_animation_expressive ? OPEN_ANIMATION_DURATION_EXPRESSIVE : OPEN_ANIMATION_DURATION_SUBTLE);
+	double popup_start_scale = start_scale;
+#ifdef TOOLS_ENABLED
+	if (!tooltip) {
+		// Read the user knobs at popup time, so changing them applies to the next popup without a restart.
+		// The manager already clamps to its documented range; clamp the budget here as a second line of
+		// defense (scale never below 0.82, duration never above 0.24 s).
+		popup_start_scale = CLAMP(EditorThemeManager::get_popup_open_scale(), 0.82, 1.0);
+		animation_duration = MIN(EditorThemeManager::get_popup_open_ms(), 240) / 1000.0;
+	}
+#endif
+	const bool use_scale = tooltip ? ui_open_animation_expressive : popup_start_scale < 0.9999;
+	if (use_scale) {
+		content->set_scale(open_base_scale * (float)popup_start_scale);
 	}
 	content->set_modulate(Color(open_base_modulate.r, open_base_modulate.g, open_base_modulate.b, 0.0f));
 
@@ -195,15 +212,13 @@ void Popup::_play_open_animation() {
 	if (tooltip) {
 		tooltip_animation_played = true;
 	}
-	const double duration = tooltip ? (ui_open_animation_expressive ? TOOLTIP_ANIMATION_DURATION_EXPRESSIVE : TOOLTIP_ANIMATION_DURATION_SUBTLE)
-									: (ui_open_animation_expressive ? OPEN_ANIMATION_DURATION_EXPRESSIVE : OPEN_ANIMATION_DURATION_SUBTLE);
 	open_tween->set_parallel(true);
-	open_tween->set_trans((!tooltip && ui_open_animation_expressive) ? Tween::TRANS_BACK : Tween::TRANS_SINE);
+	open_tween->set_trans(use_scale ? Tween::TRANS_BACK : Tween::TRANS_SINE);
 	open_tween->set_ease(Tween::EASE_OUT);
-	if (ui_open_animation_expressive) {
-		open_tween->tween_property(content, NodePath("scale"), open_base_scale, duration);
+	if (use_scale) {
+		open_tween->tween_property(content, NodePath("scale"), open_base_scale, animation_duration);
 	}
-	open_tween->tween_property(content, NodePath("modulate:a"), open_base_modulate.a, duration);
+	open_tween->tween_property(content, NodePath("modulate:a"), open_base_modulate.a, animation_duration);
 }
 
 void Popup::_notification(int p_what) {
