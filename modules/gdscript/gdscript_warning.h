@@ -94,6 +94,7 @@ public:
 		ONREADY_WITH_EXPORT, // The `@onready` annotation will set the value after `@export` which is likely not intended.
 		ONREADY_WITH_CAST, // The cast will silently assign `null` if the node has a wrong type. This is likely not intended.
 		SHADOWED_TRAIT_MEMBER, // A trait's member is not copied because the class already has a member with that name.
+		UNNECESSARY_SAFE_NAVIGATION, // Safe navigation on a non-nullable value type.
 #ifndef DISABLE_DEPRECATED
 		PROPERTY_USED_AS_FUNCTION, // Function not found, but there's a property with the same name.
 		CONSTANT_USED_AS_FUNCTION, // Function not found, but there's a constant with the same name.
@@ -155,6 +156,7 @@ public:
 		ERROR, // ONREADY_WITH_EXPORT // May not work as expected.
 		WARN, // ONREADY_WITH_CAST
 		WARN, // SHADOWED_TRAIT_MEMBER
+		WARN, // UNNECESSARY_SAFE_NAVIGATION
 #ifndef DISABLE_DEPRECATED
 		WARN, // PROPERTY_USED_AS_FUNCTION
 		WARN, // CONSTANT_USED_AS_FUNCTION

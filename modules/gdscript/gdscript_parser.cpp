@@ -3964,6 +3964,11 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_assignment(ExpressionNode 
 		return parse_expression(false); // Return the following expression.
 	}
 
+	if (p_previous_operand->type == Node::SAFE_NAVIGATION) {
+		push_error(R"(Cannot assign through safe navigation ("?."); check for null with "if" first.)");
+		return parse_expression(false);
+	}
+
 	if (p_previous_operand->type != Node::SUBSCRIPT && p_previous_operand->type != Node::IDENTIFIER) {
 		push_error(R"(Only identifier, attribute access, and subscription access can be used as assignment target.)");
 		return parse_expression(false); // Return the following expression.
@@ -3972,6 +3977,8 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_assignment(ExpressionNode 
 	AssignmentNode *assignment = alloc_node<AssignmentNode>();
 	reset_extents(assignment, p_previous_operand);
 	update_extents(assignment);
+
+	make_completion_context(COMPLETION_ASSIGN, assignment);
 
 	make_completion_context(COMPLETION_ASSIGN, assignment);
 	switch (previous.type) {
@@ -4288,6 +4295,59 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_attribute(ExpressionNode *
 
 	complete_extents(attribute);
 	return attribute;
+}
+
+GDScriptParser::ExpressionNode *GDScriptParser::parse_safe_navigation(ExpressionNode *p_previous_operand, bool p_can_assign) {
+	if (p_previous_operand == nullptr) {
+		push_error(R"(Unexpected "?." — safe navigation needs an expression before it.)");
+		return nullptr;
+	}
+	SafeNavigationNode *safe = alloc_node<SafeNavigationNode>();
+	reset_extents(safe, p_previous_operand);
+	update_extents(safe);
+	safe->base = p_previous_operand;
+
+	if (check(GDScriptTokenizer::Token::PARENTHESIS_OPEN) || check(GDScriptTokenizer::Token::BRACKET_OPEN)) {
+		push_error(R"(Expected an identifier after "?.". Null-conditional subscript/call ("?.[" / "?.(") is not supported yet.)");
+		complete_extents(safe);
+		return safe;
+	}
+	if (current.is_node_name()) {
+		current.type = GDScriptTokenizer::Token::IDENTIFIER;
+	}
+	if (!check(GDScriptTokenizer::Token::IDENTIFIER)) {
+		push_error(R"(Expected an identifier after "?.".)");
+		complete_extents(safe);
+		return safe;
+	}
+
+	PlaceholderNode *placeholder = alloc_node<PlaceholderNode>();
+	reset_extents(placeholder, current);
+	complete_extents(placeholder);
+	ExpressionNode *chain = parse_attribute(placeholder, false);
+
+	for (;;) {
+		if (check(GDScriptTokenizer::Token::PERIOD)) {
+			advance();
+			chain = parse_attribute(chain, false);
+		} else if (check(GDScriptTokenizer::Token::BRACKET_OPEN)) {
+			push_multiline(true);
+			advance();
+			chain = parse_subscript(chain, false);
+		} else if (check(GDScriptTokenizer::Token::PARENTHESIS_OPEN)) {
+			push_multiline(true);
+			advance();
+			chain = parse_call(chain, false);
+		} else if (check(GDScriptTokenizer::Token::SAFE_NAVIGATION)) {
+			advance();
+			chain = parse_safe_navigation(chain, false);
+		} else {
+			break;
+		}
+	}
+	safe->chain = chain;
+	complete_extents(safe);
+	return safe;
 }
 
 GDScriptParser::ExpressionNode *GDScriptParser::parse_subscript(ExpressionNode *p_previous_operand, bool p_can_assign) {
@@ -5269,6 +5329,7 @@ GDScriptParser::ParseRule *GDScriptParser::get_rule(GDScriptTokenizer::Token::Ty
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // VCS_CONFLICT_MARKER,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // BACKTICK,
 		{ nullptr,                                          &GDScriptParser::parse_invalid_token,        	PREC_CAST }, // QUESTION_MARK,
+		{ &GDScriptParser::parse_safe_navigation,           &GDScriptParser::parse_safe_navigation,       	PREC_ATTRIBUTE }, // SAFE_NAVIGATION,
 		// Special
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // ERROR,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // TK_EOF,

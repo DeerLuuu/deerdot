@@ -975,6 +975,13 @@ String GDScriptFormat::parse_expression(const GDP::ExpressionNode *p_node, const
 		case GDP::Node::Type::SUBSCRIPT:
 			expression = parse_subscript(dynamic_cast<const GDP::SubscriptNode *>(p_node), p_indent_level, p_break_type);
 			break;
+		case GDP::Node::Type::SAFE_NAVIGATION: {
+			const GDP::SafeNavigationNode *safe = dynamic_cast<const GDP::SafeNavigationNode *>(p_node);
+			expression = parse_expression(safe->base, p_indent_level) + "?." + parse_expression(safe->chain, p_indent_level);
+		} break;
+		case GDP::Node::Type::PLACEHOLDER:
+			expression = String();
+			break;
 		case GDP::Node::Type::TERNARY_OPERATOR:
 			expression = parse_ternary_op(dynamic_cast<const GDP::TernaryOpNode *>(p_node), p_indent_level, p_break_type);
 			break;
@@ -1617,16 +1624,19 @@ String GDScriptFormat::parse_subscript(const GDP::SubscriptNode *p_node, const i
 		break_type = WRAP;
 	}
 	String base = parse_expression(p_node->base, p_indent_level);
+	const bool placeholder_base = p_node->base->type == GDP::Node::Type::PLACEHOLDER;
 
 	StringBuilder output;
-	if ((p_node->base->type == GDP::Node::Type::CAST || p_node->base->type == GDP::Node::Type::BINARY_OPERATOR) && !(base.begins_with("(") || base.ends_with(")"))) {
+	if (!placeholder_base && (p_node->base->type == GDP::Node::Type::CAST || p_node->base->type == GDP::Node::Type::BINARY_OPERATOR) && !(base.begins_with("(") || base.ends_with(")"))) {
 		output += "(";
 	}
-	if (break_type != NONE && get_length_without_comments(base) > line_length_maximum) {
+	if (!placeholder_base && break_type != NONE && get_length_without_comments(base) > line_length_maximum) {
 		base = parse_expression(p_node->base, p_indent_level, break_type);
 	}
-	output += base;
-	if ((p_node->base->type == GDP::Node::Type::CAST || p_node->base->type == GDP::Node::Type::BINARY_OPERATOR) && !(base.begins_with("(") || base.ends_with(")"))) {
+	if (!placeholder_base) {
+		output += base;
+	}
+	if (!placeholder_base && (p_node->base->type == GDP::Node::Type::CAST || p_node->base->type == GDP::Node::Type::BINARY_OPERATOR) && !(base.begins_with("(") || base.ends_with(")"))) {
 		output += ")";
 	}
 	if (p_node->is_attribute) {
@@ -1634,7 +1644,9 @@ String GDScriptFormat::parse_subscript(const GDP::SubscriptNode *p_node, const i
 		if (p_break_type != NONE && get_length_without_comments(attribute) + 1 > line_length_maximum) {
 			attribute = parse_expression(p_node->attribute, p_indent_level, p_break_type);
 		}
-		output += ".";
+		if (!placeholder_base) {
+			output += ".";
+		}
 		output += attribute;
 	} else {
 		output += "[";

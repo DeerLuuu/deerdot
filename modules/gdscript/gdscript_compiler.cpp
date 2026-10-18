@@ -259,6 +259,9 @@ static bool _can_use_validate_call(const MethodBind *p_method, const Vector<GDSc
 	return true;
 }
 
+static HashMap<const GDScriptParser::PlaceholderNode *, GDScriptCodeGenerator::Address> _safe_navigation_placeholders;
+static int _safe_navigation_local_counter = 0;
+
 GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &codegen, Error &r_error, const GDScriptParser::ExpressionNode *p_expression, bool p_root, bool p_initializer) {
 	if (p_expression->is_constant && !(p_expression->type_constraint.is_meta_type && p_expression->type_constraint.kind == GDScriptParser::DataType::CLASS)) {
 		return codegen.add_constant(p_expression->reduced_value);
@@ -792,6 +795,79 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 			return result;
 		} break;
 		// Indexing operator.
+		case GDScriptParser::Node::SAFE_NAVIGATION: {
+			const GDScriptParser::SafeNavigationNode *safe = static_cast<const GDScriptParser::SafeNavigationNode *>(p_expression);
+			// Reuse the ternary opcodes: result starts as null, the base is evaluated once into a local and
+			// the chain runs only when that local is not null.
+			GDScriptCodeGenerator::Address result = codegen.add_temporary(_gdtype_from_datatype(safe->type_constraint, codegen.script));
+			gen->write_start_ternary(result);
+
+			GDScriptCodeGenerator::Address base = _parse_expression(codegen, r_error, safe->base);
+			if (r_error) {
+				return GDScriptCodeGenerator::Address();
+			}
+			GDScriptDataType base_type = _gdtype_from_datatype(safe->base->type_constraint, codegen.script);
+			GDScriptCodeGenerator::Address base_local = codegen.add_local(StringName("@safe_nav_" + itos(_safe_navigation_local_counter++)), base_type);
+			gen->write_assign(base_local, base);
+			if (base.mode == GDScriptCodeGenerator::Address::TEMPORARY) {
+				gen->pop_temporary();
+			}
+
+			GDScriptDataType condition_type;
+			condition_type.kind = GDScriptDataType::BUILTIN;
+			condition_type.builtin_type = Variant::BOOL;
+			GDScriptCodeGenerator::Address condition = codegen.add_temporary(condition_type);
+			GDScriptCodeGenerator::Address null_address = codegen.add_constant(Variant());
+			gen->write_binary_operator(condition, Variant::OP_NOT_EQUAL, base_local, null_address);
+			gen->write_ternary_condition(condition);
+			gen->pop_temporary();
+
+			GDScriptParser::ExpressionNode *chain_base = safe->chain;
+			while (chain_base != nullptr && chain_base->type != GDScriptParser::Node::PLACEHOLDER) {
+				switch (chain_base->type) {
+					case GDScriptParser::Node::SUBSCRIPT:
+						chain_base = static_cast<GDScriptParser::SubscriptNode *>(chain_base)->base;
+						break;
+					case GDScriptParser::Node::CALL:
+						chain_base = static_cast<GDScriptParser::CallNode *>(chain_base)->callee;
+						break;
+					case GDScriptParser::Node::SAFE_NAVIGATION:
+						chain_base = static_cast<GDScriptParser::SafeNavigationNode *>(chain_base)->base;
+						break;
+					default:
+						chain_base = nullptr;
+						break;
+				}
+			}
+			if (chain_base == nullptr) {
+				_set_error("Internal error: safe navigation chain has no placeholder.", safe);
+				r_error = ERR_COMPILATION_FAILED;
+				return GDScriptCodeGenerator::Address();
+			}
+			_safe_navigation_placeholders[static_cast<const GDScriptParser::PlaceholderNode *>(chain_base)] = base_local;
+			GDScriptCodeGenerator::Address chain = _parse_expression(codegen, r_error, safe->chain);
+			_safe_navigation_placeholders.erase(static_cast<const GDScriptParser::PlaceholderNode *>(chain_base));
+			if (r_error) {
+				return GDScriptCodeGenerator::Address();
+			}
+			gen->write_ternary_true_expr(chain);
+			if (chain.mode == GDScriptCodeGenerator::Address::TEMPORARY) {
+				gen->pop_temporary();
+			}
+			gen->write_ternary_false_expr(null_address);
+			gen->write_end_ternary();
+			return result;
+		} break;
+		case GDScriptParser::Node::PLACEHOLDER: {
+			const GDScriptParser::PlaceholderNode *placeholder = static_cast<const GDScriptParser::PlaceholderNode *>(p_expression);
+			const HashMap<const GDScriptParser::PlaceholderNode *, GDScriptCodeGenerator::Address>::Iterator E = _safe_navigation_placeholders.find(placeholder);
+			if (!E) {
+				_set_error("Internal error: unbound safe navigation placeholder.", placeholder);
+				r_error = ERR_COMPILATION_FAILED;
+				return GDScriptCodeGenerator::Address();
+			}
+			return E->value;
+		} break;
 		case GDScriptParser::Node::SUBSCRIPT: {
 			const GDScriptParser::SubscriptNode *subscript = static_cast<const GDScriptParser::SubscriptNode *>(p_expression);
 			GDScriptCodeGenerator::Address result = codegen.add_temporary(_gdtype_from_datatype(subscript->type_constraint, codegen.script));

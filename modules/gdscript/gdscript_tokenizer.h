@@ -160,6 +160,7 @@ public:
 			VCS_CONFLICT_MARKER,
 			BACKTICK,
 			QUESTION_MARK,
+			SAFE_NAVIGATION,
 			// Special
 			ERROR,
 			TK_EOF, // "EOF" is reserved

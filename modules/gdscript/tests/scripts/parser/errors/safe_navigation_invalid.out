@@ -1,0 +1,2 @@
+GDTEST_PARSER_ERROR
+Expected an identifier after "?.". Null-conditional subscript/call ("?.[" / "?.(") is not supported yet.

@@ -347,6 +347,8 @@ public:
 			SELF,
 			SIGNAL,
 			SUBSCRIPT,
+			SAFE_NAVIGATION,
+			PLACEHOLDER,
 			SUITE,
 			TERNARY_OPERATOR,
 			TYPE,
@@ -1228,6 +1230,23 @@ public:
 		}
 	};
 
+	// `base?.chain`: the chain is parsed as a normal postfix expression whose innermost base is a
+	// PlaceholderNode; the analyzer/compiler bind it to the single evaluation of `base`.
+	struct SafeNavigationNode : public ExpressionNode {
+		ExpressionNode *base = nullptr;
+		ExpressionNode *chain = nullptr;
+
+		SafeNavigationNode() {
+			type = SAFE_NAVIGATION;
+		}
+	};
+
+	struct PlaceholderNode : public ExpressionNode {
+		PlaceholderNode() {
+			type = PLACEHOLDER;
+		}
+	};
+
 	struct SuiteNode : public Node {
 		DataType suite_type;
 
@@ -1788,6 +1807,7 @@ private:
 	ExpressionNode *parse_await(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_attribute(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_subscript(ExpressionNode *p_previous_operand, bool p_can_assign);
+	ExpressionNode *parse_safe_navigation(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_lambda(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_type_test(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_yield(ExpressionNode *p_previous_operand, bool p_can_assign);

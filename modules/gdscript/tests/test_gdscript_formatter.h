@@ -4284,4 +4284,43 @@ func test():
 	}
 } // TEST_SUITE("[Modules][GDScript][GDScriptFormatter][FString]")
 
+TEST_CASE("[Modules][GDScript][GDScriptFormatter] Safe navigation keeps its operator") {
+	CHECK_FORMAT(GDSCRIPT(R"(
+var a = null
+
+func test():
+	print(a?.b)
+	print(a?.b.c)
+	print(a?.b())
+	print(a?.b?.c)
+)"),
+			GDSCRIPT(R"(
+var a = null
+
+
+func test():
+	print(a?.b)
+	print(a?.b.c)
+	print(a?.b())
+	print(a?.b?.c)
+)"));
+}
+
+TEST_CASE("[Modules][GDScript][GDScriptFormatter] Safe navigation survives the token cache") {
+	const Vector<uint8_t> buffer = GDScriptTokenizerBuffer::parse_code_string("var x = a?.b", GDScriptTokenizerBuffer::COMPRESS_ZSTD);
+	GDScriptTokenizerBuffer tokenizer;
+	REQUIRE(tokenizer.set_code_buffer(buffer) == OK);
+	bool found = false;
+	for (;;) {
+		const GDScriptTokenizer::Token token = tokenizer.scan();
+		if (token.type == GDScriptTokenizer::Token::TK_EOF) {
+			break;
+		}
+		if (token.type == GDScriptTokenizer::Token::SAFE_NAVIGATION) {
+			found = true;
+		}
+	}
+	CHECK(found);
+}
+
 } //namespace GDScriptTests

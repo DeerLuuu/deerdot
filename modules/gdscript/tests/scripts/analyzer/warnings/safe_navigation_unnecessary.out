@@ -1,0 +1,3 @@
+GDTEST_OK
+~~ WARNING at line 5: (UNNECESSARY_SAFE_NAVIGATION) Safe navigation ("?.") is unnecessary on a non-nullable value type.
+3

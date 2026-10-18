@@ -1927,6 +1927,8 @@ void GDScriptAnalyzer::resolve_node(GDScriptParser::Node *p_node, bool p_is_root
 		case GDScriptParser::Node::PRELOAD:
 		case GDScriptParser::Node::SELF:
 		case GDScriptParser::Node::SUBSCRIPT:
+		case GDScriptParser::Node::SAFE_NAVIGATION:
+		case GDScriptParser::Node::PLACEHOLDER:
 		case GDScriptParser::Node::TERNARY_OPERATOR:
 		case GDScriptParser::Node::TYPE_TEST:
 		case GDScriptParser::Node::UNARY_OPERATOR:
@@ -2987,6 +2989,41 @@ void GDScriptAnalyzer::reduce_expression(GDScriptParser::ExpressionNode *p_expre
 			break;
 		case GDScriptParser::Node::SUBSCRIPT:
 			reduce_subscript(static_cast<GDScriptParser::SubscriptNode *>(p_expression));
+			break;
+		case GDScriptParser::Node::SAFE_NAVIGATION: {
+			GDScriptParser::SafeNavigationNode *safe = static_cast<GDScriptParser::SafeNavigationNode *>(p_expression);
+			reduce_expression(safe->base);
+			if (safe->base->type_constraint.kind == GDScriptParser::DataType::BUILTIN && safe->base->type_constraint.builtin_type != Variant::NIL && safe->base->type_constraint.builtin_type != Variant::VARIANT_MAX) {
+				parser->push_warning(safe->start_line, safe->start_column, safe->end_line, safe->end_column, GDScriptWarning::UNNECESSARY_SAFE_NAVIGATION);
+			}
+			// Bind this safe navigation's own placeholder to the base type before reducing the chain.
+			GDScriptParser::ExpressionNode *chain_base = safe->chain;
+			while (chain_base != nullptr && chain_base->type != GDScriptParser::Node::PLACEHOLDER) {
+				switch (chain_base->type) {
+					case GDScriptParser::Node::SUBSCRIPT:
+						chain_base = static_cast<GDScriptParser::SubscriptNode *>(chain_base)->base;
+						break;
+					case GDScriptParser::Node::CALL:
+						chain_base = static_cast<GDScriptParser::CallNode *>(chain_base)->callee;
+						break;
+					case GDScriptParser::Node::SAFE_NAVIGATION:
+						chain_base = static_cast<GDScriptParser::SafeNavigationNode *>(chain_base)->base;
+						break;
+					default:
+						chain_base = nullptr;
+						break;
+				}
+			}
+			if (chain_base != nullptr) {
+				chain_base->type_constraint = safe->base->type_constraint;
+				chain_base->is_constant = safe->base->is_constant;
+			}
+			reduce_expression(safe->chain);
+			safe->type_constraint = safe->chain->type_constraint;
+			safe->is_constant = safe->chain->is_constant;
+		} break;
+		case GDScriptParser::Node::PLACEHOLDER:
+			// Type is provided by the enclosing SAFE_NAVIGATION.
 			break;
 		case GDScriptParser::Node::TERNARY_OPERATOR:
 			reduce_ternary_op(static_cast<GDScriptParser::TernaryOpNode *>(p_expression), p_is_root);
