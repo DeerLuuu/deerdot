@@ -96,6 +96,8 @@ public:
 		SHADOWED_TRAIT_MEMBER, // A trait's member is not copied because the class already has a member with that name.
 		UNNECESSARY_SAFE_NAVIGATION, // Safe navigation on a non-nullable value type.
 		NULLABLE_DEREFERENCE, // Member access on an explicitly nullable value without a null check.
+		UNNECESSARY_NULL_COALESCING, // Left operand of "??" can never be null.
+		REDUNDANT_NULL_COALESCING, // One side of "??" is the null literal.
 #ifndef DISABLE_DEPRECATED
 		PROPERTY_USED_AS_FUNCTION, // Function not found, but there's a property with the same name.
 		CONSTANT_USED_AS_FUNCTION, // Function not found, but there's a constant with the same name.
@@ -159,6 +161,8 @@ public:
 		WARN, // SHADOWED_TRAIT_MEMBER
 		WARN, // UNNECESSARY_SAFE_NAVIGATION
 		WARN, // NULLABLE_DEREFERENCE
+		WARN, // UNNECESSARY_NULL_COALESCING
+		IGNORE, // REDUNDANT_NULL_COALESCING
 #ifndef DISABLE_DEPRECATED
 		WARN, // PROPERTY_USED_AS_FUNCTION
 		WARN, // CONSTANT_USED_AS_FUNCTION

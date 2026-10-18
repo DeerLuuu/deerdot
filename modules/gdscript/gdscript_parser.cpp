@@ -3830,6 +3830,15 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_binary_operator(Expression
 	reset_extents(operation, p_previous_operand);
 	update_extents(operation);
 
+	if (op.type == GDScriptTokenizer::Token::NULL_COALESCE && check(GDScriptTokenizer::Token::EQUAL)) {
+		push_error(R"("??=" is not supported yet (planned). Use "a = a ?? b" for now.)");
+		advance();
+		operation->left_operand = p_previous_operand;
+		operation->right_operand = parse_expression(false);
+		complete_extents(operation);
+		return operation;
+	}
+
 	Precedence precedence = (Precedence)(get_rule(op.type)->precedence + 1);
 	operation->left_operand = p_previous_operand;
 	operation->right_operand = parse_precedence(precedence, false);
@@ -3898,6 +3907,10 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_binary_operator(Expression
 		case GDScriptTokenizer::Token::TK_IN:
 			operation->operation = BinaryOpNode::OP_CONTENT_TEST;
 			operation->variant_op = Variant::OP_IN;
+			break;
+		case GDScriptTokenizer::Token::NULL_COALESCE:
+			operation->operation = BinaryOpNode::OP_NULL_COALESCE;
+			operation->variant_op = Variant::OP_MAX;
 			break;
 		case GDScriptTokenizer::Token::EQUAL_EQUAL:
 			operation->operation = BinaryOpNode::OP_COMP_EQUAL;
@@ -5336,6 +5349,7 @@ GDScriptParser::ParseRule *GDScriptParser::get_rule(GDScriptTokenizer::Token::Ty
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // BACKTICK,
 		{ nullptr,                                          &GDScriptParser::parse_invalid_token,        	PREC_CAST }, // QUESTION_MARK,
 		{ &GDScriptParser::parse_safe_navigation,           &GDScriptParser::parse_safe_navigation,       	PREC_ATTRIBUTE }, // SAFE_NAVIGATION,
+		{ nullptr,                                          &GDScriptParser::parse_binary_operator,       	PREC_NULL_COALESCING }, // NULL_COALESCE,
 		// Special
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // ERROR,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // TK_EOF,

@@ -3750,6 +3750,48 @@ void GDScriptAnalyzer::reduce_binary_op(GDScriptParser::BinaryOpNode *p_binary_o
 		return;
 	}
 
+	if (p_binary_op->operation == GDScriptParser::BinaryOpNode::OP_NULL_COALESCE) {
+		const bool left_is_null = p_binary_op->left_operand->is_constant && left_type.kind == GDScriptParser::DataType::BUILTIN && left_type.builtin_type == Variant::NIL;
+		const bool right_is_null = p_binary_op->right_operand->is_constant && right_type.kind == GDScriptParser::DataType::BUILTIN && right_type.builtin_type == Variant::NIL;
+
+		if (p_binary_op->left_operand->is_constant && p_binary_op->right_operand->is_constant) {
+			p_binary_op->is_constant = true;
+			p_binary_op->reduced_value = left_is_null ? p_binary_op->right_operand->reduced_value : p_binary_op->left_operand->reduced_value;
+		}
+
+		GDScriptParser::DataType result;
+		if (right_is_null) {
+			result = left_type;
+		} else if (left_is_null) {
+			result = right_type;
+		} else {
+			GDScriptParser::DataType left_nonnull = left_type;
+			left_nonnull.is_nullable = false;
+			if (left_nonnull.is_variant() || right_type.is_variant()) {
+				result.kind = GDScriptParser::DataType::VARIANT;
+			} else {
+				result = left_nonnull;
+				if (!is_type_compatible(left_nonnull, right_type)) {
+					result = right_type;
+					if (!is_type_compatible(right_type, left_nonnull)) {
+						result.kind = GDScriptParser::DataType::VARIANT;
+					}
+				}
+			}
+			result.is_nullable = right_type.is_nullable;
+		}
+		result.type_source = (left_type.is_hard_type() && right_type.is_hard_type()) ? GDScriptParser::DataType::ANNOTATED_INFERRED : GDScriptParser::DataType::INFERRED;
+
+		if (left_is_null || right_is_null) {
+			parser->push_warning(p_binary_op, GDScriptWarning::REDUNDANT_NULL_COALESCING);
+		} else if (!left_type.is_nullable && left_type.kind == GDScriptParser::DataType::BUILTIN && left_type.builtin_type != Variant::NIL) {
+			parser->push_warning(p_binary_op, GDScriptWarning::UNNECESSARY_NULL_COALESCING);
+		}
+
+		p_binary_op->type_constraint = result;
+		return;
+	}
+
 #ifdef DEBUG_ENABLED
 	if (p_binary_op->variant_op == Variant::OP_DIVIDE &&
 			(left_type.builtin_type == Variant::INT ||

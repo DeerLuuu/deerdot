@@ -994,6 +994,40 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 						gen->pop_temporary();
 					}
 				} break;
+				case GDScriptParser::BinaryOpNode::OP_NULL_COALESCE: {
+					GDScriptCodeGenerator::Address left_operand = _parse_expression(codegen, r_error, binary->left_operand);
+					if (r_error) {
+						return GDScriptCodeGenerator::Address();
+					}
+					GDScriptCodeGenerator::Address left_temp = codegen.add_temporary(_gdtype_from_datatype(binary->left_operand->type_constraint, codegen.script));
+					gen->write_assign(left_temp, left_operand);
+					if (left_operand.mode == GDScriptCodeGenerator::Address::TEMPORARY) {
+						gen->pop_temporary();
+					}
+
+					GDScriptDataType condition_type;
+					condition_type.kind = GDScriptDataType::BUILTIN;
+					condition_type.builtin_type = Variant::BOOL;
+					GDScriptCodeGenerator::Address condition = codegen.add_temporary(condition_type);
+					GDScriptCodeGenerator::Address null_address = codegen.add_constant(Variant());
+					gen->write_binary_operator(condition, Variant::OP_EQUAL, left_temp, null_address);
+
+					gen->write_start_ternary(result);
+					gen->write_ternary_condition(condition);
+					gen->pop_temporary();
+
+					GDScriptCodeGenerator::Address right_operand = _parse_expression(codegen, r_error, binary->right_operand);
+					if (r_error) {
+						return GDScriptCodeGenerator::Address();
+					}
+					gen->write_ternary_true_expr(right_operand);
+					if (right_operand.mode == GDScriptCodeGenerator::Address::TEMPORARY) {
+						gen->pop_temporary();
+					}
+					gen->write_ternary_false_expr(left_temp);
+					gen->write_end_ternary();
+					gen->pop_temporary();
+				} break;
 				default: {
 					GDScriptCodeGenerator::Address left_operand = _parse_expression(codegen, r_error, binary->left_operand);
 					GDScriptCodeGenerator::Address right_operand = _parse_expression(codegen, r_error, binary->right_operand);

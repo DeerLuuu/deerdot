@@ -1,0 +1,4 @@
+GDTEST_OK
+~~ WARNING at line 19: (UNNECESSARY_NULL_COALESCING) Left operand of "??" can never be null; the right side is dead code.
+7 1
+9 2

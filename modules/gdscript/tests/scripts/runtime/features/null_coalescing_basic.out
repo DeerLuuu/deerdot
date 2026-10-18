@@ -1,0 +1,7 @@
+GDTEST_OK
+~~ WARNING at line 8: (REDUNDANT_NULL_COALESCING) "a ?? null" is always equal to "a".
+~~ WARNING at line 11: (UNNECESSARY_NULL_COALESCING) Left operand of "??" can never be null; the right side is dead code.
+3
+x
+4
+5

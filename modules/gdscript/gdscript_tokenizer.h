@@ -161,6 +161,7 @@ public:
 			BACKTICK,
 			QUESTION_MARK,
 			SAFE_NAVIGATION,
+			NULL_COALESCE,
 			// Special
 			ERROR,
 			TK_EOF, // "EOF" is reserved

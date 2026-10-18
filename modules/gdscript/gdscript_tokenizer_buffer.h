@@ -39,7 +39,7 @@ public:
 		COMPRESS_ZSTD,
 	};
 
-	static constexpr uint32_t TOKENIZER_VERSION = 104;
+	static constexpr uint32_t TOKENIZER_VERSION = 105;
 	static constexpr uint32_t TOKEN_BYTE_MASK = 0x80;
 	static constexpr uint32_t TOKEN_BITS = 8;
 	static constexpr uint32_t TOKEN_MASK = (1 << (TOKEN_BITS - 1)) - 1;

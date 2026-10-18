@@ -180,6 +180,10 @@ String GDScriptWarning::get_message() const {
 			return R"(Safe navigation ("?.") is unnecessary on a non-nullable value type.)";
 		case NULLABLE_DEREFERENCE:
 			return R"(Dereferencing a nullable value without checking for null first.)";
+		case UNNECESSARY_NULL_COALESCING:
+			return R"(Left operand of "??" can never be null; the right side is dead code.)";
+		case REDUNDANT_NULL_COALESCING:
+			return R"("a ?? null" is always equal to "a".)";
 #ifndef DISABLE_DEPRECATED
 		// Never produced. These warnings migrated from 3.x by mistake.
 		case PROPERTY_USED_AS_FUNCTION: // There is already an error.
@@ -262,6 +266,8 @@ String GDScriptWarning::get_name_from_code(Code p_code) {
 		PNAME("SHADOWED_TRAIT_MEMBER"),
 		PNAME("UNNECESSARY_SAFE_NAVIGATION"),
 		PNAME("NULLABLE_DEREFERENCE"),
+		PNAME("UNNECESSARY_NULL_COALESCING"),
+		PNAME("REDUNDANT_NULL_COALESCING"),
 #ifndef DISABLE_DEPRECATED
 		"PROPERTY_USED_AS_FUNCTION",
 		"CONSTANT_USED_AS_FUNCTION",

@@ -1798,6 +1798,9 @@ String GDScriptFormat::parse_binary_operator(const GDP::BinaryOpNode *p_node, co
 		case GDP::BinaryOpNode::OpType::OP_COMP_GREATER_EQUAL:
 			operator_string = ">= ";
 			break;
+		case GDP::BinaryOpNode::OpType::OP_NULL_COALESCE:
+			operator_string = "?? ";
+			break;
 		case GDScriptParser::BinaryOpNode::OP_POWER:
 			operator_string += "** ";
 			break;

@@ -158,6 +158,7 @@ static const char *token_names[] = {
 	"`", // BACKTICK,
 	"?", // QUESTION_MARK,
 	"?.", // SAFE_NAVIGATION,
+	"??", // NULL_COALESCE,
 	// Special
 	"Error", // ERROR,
 	"End of file", // EOF,
@@ -1658,6 +1659,10 @@ GDScriptTokenizer::Token GDScriptTokenizerText::scan() {
 			if (_peek() == '.') {
 				_advance();
 				return make_token(Token::SAFE_NAVIGATION);
+			}
+			if (_peek() == '?') {
+				_advance();
+				return make_token(Token::NULL_COALESCE);
 			}
 			return make_token(Token::QUESTION_MARK);
 		case '`':

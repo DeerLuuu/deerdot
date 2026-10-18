@@ -4336,4 +4336,23 @@ var list: Array[int]?
 )"));
 }
 
+TEST_CASE("[Modules][GDScript][GDScriptFormatter] Null coalescing operator round-trip") {
+	CHECK_FORMAT(GDSCRIPT(R"(
+func test():
+	var a = null
+	var b = 1
+	print(a ?? b)
+	print(a??b)
+	print(a ?? b ?? 2)
+)"),
+			GDSCRIPT(R"(
+func test():
+	var a = null
+	var b = 1
+	print(a ?? b)
+	print(a ?? b)
+	print(a ?? b ?? 2)
+)"));
+}
+
 } //namespace GDScriptTests
