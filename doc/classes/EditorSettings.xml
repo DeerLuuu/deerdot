@@ -1297,7 +1297,37 @@
 			If [code]true[/code], transition animations are enabled on editor UI controls (buttons, tabs, trees, menus, lists, scrollbars, sliders, spin boxes). How expressive these are is set by [member interface/theme/ui_animations_style]. When disabled, all state changes are drawn instantly. Consider disabling it if you are sensitive to motion or on low-end hardware.
 		</member>
 		<member name="interface/theme/ui_animations_style" type="String" setter="" getter="">
-			The animation style for editor UI transitions. [b]Subtle[/b] keeps short, motion-minimal transitions; [b]Expressive[/b] adds bouncy overshoot, sliding highlights and springy tab movement. Requires [member interface/theme/ui_animations] to be enabled. Users sensitive to motion should stay on [b]Subtle[/b] or disable animations entirely.
+			The animation style for editor UI transitions. [b]Subtle[/b] keeps short, motion-minimal transitions; [b]Expressive[/b] adds bouncy overshoot, sliding highlights and springy tab movement. Requires [member interface/theme/ui_animations] to be enabled. Users sensitive to motion should stay on [b]Subtle[/b] or disable animations entirely. The style switches to [b]Custom[/b] automatically when any animation parameter differs from the selected preset: picking [b]Subtle[/b] or [b]Expressive[/b] overwrites the parameters with that preset, while picking [b]Custom[/b] keeps the current values.
+		</member>
+		<member name="interface/theme/ui_animations/speed_scale" type="float" setter="" getter="">
+			Multiplies the duration of all editor UI animations; higher values make transitions finish faster. Changing any animation parameter switches the style to [b]Custom[/b].
+		</member>
+		<member name="interface/theme/ui_animations/motion_amount" type="float" setter="" getter="">
+			Controls how much pop-in transform movement (scale and small offsets) the animations use. [code]0[/code] keeps pure fades, [code]1[/code] uses the full preset transforms.
+		</member>
+		<member name="interface/theme/ui_animations/button_bloom_px" type="int" setter="" getter="">
+			How many pixels an ordinary button's background grows outwards when hovered.
+		</member>
+		<member name="interface/theme/ui_animations/button_press_squash_px" type="int" setter="" getter="">
+			How many pixels a pressed button shrinks inwards.
+		</member>
+		<member name="interface/theme/ui_animations/row_highlight_slide_px" type="int" setter="" getter="">
+			Horizontal distance a tree or list row highlight slides in from.
+		</member>
+		<member name="interface/theme/ui_animations/menu_highlight_slide_px" type="int" setter="" getter="">
+			Horizontal distance a menu item highlight slides in from.
+		</member>
+		<member name="interface/theme/ui_animations/tab_lift_px" type="int" setter="" getter="">
+			How many pixels the selected tab is lifted upwards. The same amount of room is reserved above the script panes.
+		</member>
+		<member name="interface/theme/ui_animations/popup_open_scale" type="float" setter="" getter="">
+			Starting scale of popup menus when they open. [code]1.0[/code] disables the scale-up.
+		</member>
+		<member name="interface/theme/ui_animations/popup_open_ms" type="int" setter="" getter="">
+			Duration of the popup menu opening animation in milliseconds.
+		</member>
+		<member name="interface/theme/ui_animations/script_reveal_line_delay_ms" type="int" setter="" getter="">
+			Delay between lines in the script reveal animation, in milliseconds. [code]0[/code] disables the per-line stagger.
 		</member>
 		<member name="interface/theme/script_reveal_on_open" type="bool" setter="" getter="">
 			If [code]true[/code], opening a script for the first time plays a short line-by-line reveal in the script editor's text area. The reveal is only used when [member interface/theme/ui_animations] is enabled and [member interface/theme/ui_animations_style] is [b]Expressive[/b]; it never replays when switching back to an already opened script.

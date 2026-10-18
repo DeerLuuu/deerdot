@@ -203821,11 +203821,16 @@ msgid ""
 "motion-minimal transitions; [b]Expressive[/b] adds bouncy overshoot, sliding "
 "highlights and springy tab movement. Requires [member "
 "interface/theme/ui_animations] to be enabled. Users sensitive to motion "
-"should stay on [b]Subtle[/b] or disable animations entirely."
+"should stay on [b]Subtle[/b] or disable animations entirely. The style "
+"switches to [b]Custom[/b] automatically when any animation parameter "
+"differs from the selected preset: picking [b]Subtle[/b] or [b]Expressive[/b] "
+"overwrites the parameters with that preset, while picking [b]Custom[/b] "
+"keeps the current values."
 msgstr ""
 "编辑器界面过渡动画的风格。Subtle 保持轻微低调的过渡；Expressive 增加弹性过冲、"
 "高亮滑入与标签页弹簧位移。需启用 interface/theme/ui_animations。对动效敏感的"
-"用户建议使用 Subtle 或直接关闭动画。"
+"用户建议使用 Subtle 或直接关闭动画。任一动画参数与所选预设不一致时会自动切换为"
+" Custom；选择 Subtle 或 Expressive 会覆盖参数为该预设值，选择 Custom 则保留当前参数。"
 
 #: doc/classes/EditorSettings.xml
 msgid ""
@@ -203838,3 +203843,62 @@ msgstr ""
 "启用时，首次打开脚本会在脚本编辑器的文本区域播放一次简短的逐行显现动画。"
 "该效果仅在启用 [member interface/theme/ui_animations] 且动画风格为 "
 "[b]Expressive[/b] 时使用；切换回已打开的脚本时不会重播。"
+
+#: doc/classes/EditorSettings.xml
+msgid ""
+"Multiplies the duration of all editor UI animations; higher values make "
+"transitions finish faster. Changing any animation parameter switches the "
+"style to [b]Custom[/b]."
+msgstr ""
+"缩放所有编辑器界面动画的时长；数值越大过渡结束越快。修改任一动画参数都会切换到 Custom。"
+
+#: doc/classes/EditorSettings.xml
+msgid ""
+"Controls how much pop-in transform movement (scale and small offsets) the "
+"animations use. [code]0[/code] keeps pure fades, [code]1[/code] uses the "
+"full preset transforms."
+msgstr ""
+"控制弹出动画的变换幅度（缩放与小幅位移）。0 为纯淡入淡出，1 为完整预设变换。"
+
+#: doc/classes/EditorSettings.xml
+msgid ""
+"How many pixels an ordinary button's background grows outwards when hovered."
+msgstr "普通按钮悬停时背景向外扩展的像素数。"
+
+#: doc/classes/EditorSettings.xml
+msgid ""
+"How many pixels a pressed button shrinks inwards."
+msgstr "按钮按下时向内收缩的像素数。"
+
+#: doc/classes/EditorSettings.xml
+msgid ""
+"Horizontal distance a tree or list row highlight slides in from."
+msgstr "树或列表行高亮从水平方向滑入的距离。"
+
+#: doc/classes/EditorSettings.xml
+msgid ""
+"Horizontal distance a menu item highlight slides in from."
+msgstr "菜单项高亮从水平方向滑入的距离。"
+
+#: doc/classes/EditorSettings.xml
+msgid ""
+"How many pixels the selected tab is lifted upwards. The same amount of room "
+"is reserved above the script panes."
+msgstr "选中标签页向上浮起的像素数；脚本窗格上方会预留相同高度的留白。"
+
+#: doc/classes/EditorSettings.xml
+msgid ""
+"Starting scale of popup menus when they open. [code]1.0[/code] disables the "
+"scale-up."
+msgstr "弹出菜单打开时的初始缩放；1.0 表示不缩放。"
+
+#: doc/classes/EditorSettings.xml
+msgid ""
+"Duration of the popup menu opening animation in milliseconds."
+msgstr "弹出菜单打开动画的时长（毫秒）。"
+
+#: doc/classes/EditorSettings.xml
+msgid ""
+"Delay between lines in the script reveal animation, in milliseconds. "
+"[code]0[/code] disables the per-line stagger."
+msgstr "脚本逐行显现动画的行间延迟（毫秒）；0 表示不使用逐行错峰。"
