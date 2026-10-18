@@ -541,55 +541,6 @@ bool GDScript::_update_exports(bool *r_err, bool p_recursive_call, PlaceHolderSc
 		if (err == OK && analyzer.analyze() == OK) {
 			const GDScriptParser::ClassNode *c = parser.get_tree();
 
-			// Collect custom annotations for runtime queries. The table is rebuilt from source on every
-			// reload, so there is nothing binary to persist.
-			custom_annotations.clear();
-			auto add_annotations = [&](const GDScriptParser::Node *p_target, const String &p_symbol) {
-				Vector<CustomAnnotation> list;
-				for (const GDScriptParser::AnnotationNode *annotation : p_target->annotations) {
-					if (annotation->info != nullptr) {
-						continue; // Built-in annotations keep their own behavior.
-					}
-					CustomAnnotation custom;
-					custom.name = String(annotation->name).trim_prefix("@");
-					for (const Variant &argument : annotation->resolved_arguments) {
-						custom.args.push_back(argument);
-					}
-					custom.named = annotation->resolved_named_arguments;
-					list.push_back(custom);
-				}
-				if (!list.is_empty()) {
-					custom_annotations[p_symbol] = list;
-				}
-			};
-			auto collect = [&](auto &&self, const GDScriptParser::ClassNode *p_class, const String &p_prefix) -> void {
-				add_annotations(p_class, p_prefix);
-				for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
-					const String member_name = member.get_name();
-					const String symbol = p_prefix.is_empty() ? member_name : p_prefix + "/" + member_name;
-					switch (member.type) {
-						case GDScriptParser::ClassNode::Member::CLASS:
-							self(self, member.m_class, symbol);
-							break;
-						case GDScriptParser::ClassNode::Member::CONSTANT:
-							add_annotations(member.constant, symbol);
-							break;
-						case GDScriptParser::ClassNode::Member::FUNCTION:
-							add_annotations(member.function, symbol);
-							break;
-						case GDScriptParser::ClassNode::Member::SIGNAL:
-							add_annotations(member.signal, symbol);
-							break;
-						case GDScriptParser::ClassNode::Member::VARIABLE:
-							add_annotations(member.variable, symbol);
-							break;
-						default:
-							break;
-					}
-				}
-			};
-			collect(collect, c, "");
-
 			if (base_cache.is_valid()) {
 				base_cache->inheriters_cache.erase(get_instance_id());
 				base_cache = Ref<GDScript>();
@@ -913,6 +864,55 @@ Error GDScript::reload(bool p_keep_state) {
 	}
 
 	can_run = ScriptServer::is_scripting_enabled() || parser.is_tool();
+
+	// Collect custom annotations for runtime queries. The table is rebuilt from source on every reload,
+	// so there is nothing binary to persist.
+	custom_annotations.clear();
+	auto add_annotations = [&](const GDScriptParser::Node *p_target, const String &p_symbol) {
+		Vector<CustomAnnotation> list;
+		for (const GDScriptParser::AnnotationNode *annotation : p_target->annotations) {
+			if (annotation->info != nullptr) {
+				continue; // Built-in annotations keep their own behavior.
+			}
+			CustomAnnotation custom;
+			custom.name = String(annotation->name).trim_prefix("@");
+			for (const Variant &argument : annotation->resolved_arguments) {
+				custom.args.push_back(argument);
+			}
+			custom.named = annotation->resolved_named_arguments;
+			list.push_back(custom);
+		}
+		if (!list.is_empty()) {
+			custom_annotations[p_symbol] = list;
+		}
+	};
+	auto collect = [&](auto &&self, const GDScriptParser::ClassNode *p_class, const String &p_prefix) -> void {
+		add_annotations(p_class, p_prefix);
+		for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+			const String member_name = member.get_name();
+			const String symbol = p_prefix.is_empty() ? member_name : p_prefix + "/" + member_name;
+			switch (member.type) {
+				case GDScriptParser::ClassNode::Member::CLASS:
+					self(self, member.m_class, symbol);
+					break;
+				case GDScriptParser::ClassNode::Member::CONSTANT:
+					add_annotations(member.constant, symbol);
+					break;
+				case GDScriptParser::ClassNode::Member::FUNCTION:
+					add_annotations(member.function, symbol);
+					break;
+				case GDScriptParser::ClassNode::Member::SIGNAL:
+					add_annotations(member.signal, symbol);
+					break;
+				case GDScriptParser::ClassNode::Member::VARIABLE:
+					add_annotations(member.variable, symbol);
+					break;
+				default:
+					break;
+			}
+		}
+	};
+	collect(collect, parser.get_tree(), "");
 
 	GDScriptCompiler compiler;
 	err = compiler.compile(&parser, this, p_keep_state);
