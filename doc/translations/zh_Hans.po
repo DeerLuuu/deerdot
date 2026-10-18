@@ -203804,13 +203804,17 @@ msgstr ""
 
 #: doc/classes/EditorSettings.xml
 msgid ""
-"If [code]true[/code], subtle transition animations are enabled on editor UI "
+msgid ""
+"If [code]true[/code], transition animations are enabled on editor UI "
 "controls (buttons, tabs, trees, menus, lists, scrollbars, sliders, spin "
-"boxes). When disabled, all state changes are drawn instantly. Consider "
-"disabling it if you are sensitive to motion or on low-end hardware."
+"boxes). How expressive these are is set by [member "
+"interface/theme/ui_animations_style]. When disabled, all state changes are "
+"drawn instantly. Consider disabling it if you are sensitive to motion or on "
+"low-end hardware."
 msgstr ""
-"启用时，编辑器界面控件（按钮、标签页、树、菜单、列表、滚动条、滑块、微调框）带"
-"有轻微的过渡动画；禁用后所有状态变化立即呈现。对动效敏感或使用低配硬件时可关闭。"
+"启用时，编辑器界面控件（按钮、标签页、树、菜单、列表、滚动条、滑块、微调框）带有过渡动画；"
+"动画的夸张程度由 [member interface/theme/ui_animations_style] 决定。"
+"禁用后所有状态变化立即呈现。对动效敏感或使用低配硬件时可关闭。"
 
 #: doc/classes/EditorSettings.xml
 msgid ""

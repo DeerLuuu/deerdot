@@ -1294,7 +1294,7 @@
 			The editor theme style to use.
 		</member>
 		<member name="interface/theme/ui_animations" type="bool" setter="" getter="">
-			If [code]true[/code], subtle transition animations are enabled on editor UI controls (buttons, tabs, trees, menus, lists, scrollbars, sliders, spin boxes). When disabled, all state changes are drawn instantly. Consider disabling it if you are sensitive to motion or on low-end hardware.
+			If [code]true[/code], transition animations are enabled on editor UI controls (buttons, tabs, trees, menus, lists, scrollbars, sliders, spin boxes). How expressive these are is set by [member interface/theme/ui_animations_style]. When disabled, all state changes are drawn instantly. Consider disabling it if you are sensitive to motion or on low-end hardware.
 		</member>
 		<member name="interface/theme/ui_animations_style" type="String" setter="" getter="">
 			The animation style for editor UI transitions. [b]Subtle[/b] keeps short, motion-minimal transitions; [b]Expressive[/b] adds bouncy overshoot, sliding highlights and springy tab movement. Requires [member interface/theme/ui_animations] to be enabled. Users sensitive to motion should stay on [b]Subtle[/b] or disable animations entirely.
