@@ -1299,6 +1299,9 @@
 		<member name="interface/theme/ui_animations_style" type="String" setter="" getter="">
 			The animation style for editor UI transitions. [b]Subtle[/b] keeps short, motion-minimal transitions; [b]Expressive[/b] adds bouncy overshoot, sliding highlights and springy tab movement. Requires [member interface/theme/ui_animations] to be enabled. Users sensitive to motion should stay on [b]Subtle[/b] or disable animations entirely.
 		</member>
+		<member name="interface/theme/script_reveal_on_open" type="bool" setter="" getter="">
+			If [code]true[/code], opening a script for the first time plays a short line-by-line reveal in the script editor's text area. The reveal is only used when [member interface/theme/ui_animations] is enabled and [member interface/theme/ui_animations_style] is [b]Expressive[/b]; it never replays when switching back to an already opened script.
+		</member>
 		<member name="interface/theme/use_monospace_font_for_editor_symbols" type="bool" setter="" getter="">
 			If [code]true[/code], use the monospace font for some labels in the editor that display code symbols, such as signals, properties, and methods.
 		</member>
