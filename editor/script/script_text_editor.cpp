@@ -56,6 +56,7 @@
 #include "editor/settings/editor_command_palette.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
+#include "editor/themes/editor_theme_manager.h"
 #include "scene/gui/grid_container.h"
 #include "scene/gui/menu_button.h"
 #include "scene/gui/rich_text_label.h"
@@ -2047,6 +2048,16 @@ void ScriptTextEditor::_apply_project_settings() {
 
 void ScriptTextEditor::_notification(int p_what) {
 	switch (p_what) {
+		case NOTIFICATION_VISIBILITY_CHANGED: {
+			// A script tab reveals its code once, the first time it becomes visible. Switching back to an
+			// already opened tab must not replay it, and Subtle (or disabled animations) stays static.
+			if (!intro_reveal_played && is_visible_in_tree() && code_editor != nullptr) {
+				intro_reveal_played = true;
+				if (EDITOR_GET("interface/theme/script_reveal_on_open")) {
+					code_editor->play_intro_reveal();
+				}
+			}
+		} break;
 		case NOTIFICATION_READY: {
 			_apply_project_settings();
 			ProjectSettings::get_singleton()->connect("settings_changed", callable_mp(this, &ScriptTextEditor::_apply_project_settings));

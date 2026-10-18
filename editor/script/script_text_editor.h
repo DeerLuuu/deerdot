@@ -59,6 +59,7 @@ class ScriptTextEditor : public CodeEditorBase {
 	GDCLASS(ScriptTextEditor, CodeEditorBase);
 
 	Variant pending_state;
+	bool intro_reveal_played = false;
 
 	RichTextLabel *errors_panel = nullptr;
 	Label *drag_info_label = nullptr;

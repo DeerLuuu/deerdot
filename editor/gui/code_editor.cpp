@@ -35,6 +35,7 @@
 #include "core/object/class_db.h"
 #include "core/object/editor_language.h"
 #include "core/os/keyboard.h"
+#include "core/os/time.h"
 #include "core/string/string_builder.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
@@ -50,8 +51,11 @@
 #include "scene/gui/menu_button.h"
 #include "scene/gui/rich_text_label.h"
 #include "scene/gui/separator.h"
+#include "scene/main/scene_tree.h"
 #include "scene/main/timer.h"
 #include "scene/resources/font.h"
+#include "scene/resources/material.h"
+#include "scene/resources/shader.h"
 
 void GotoLinePopup::popup_find_line(CodeTextEditor *p_text_editor) {
 	text_editor = p_text_editor;
@@ -1118,6 +1122,82 @@ Ref<Texture2D> CodeTextEditor::_get_completion_icon(const EditorLanguage::Comple
 			break;
 	}
 	return tex;
+}
+
+// One-shot reveal for a freshly opened script. This is the "ghost code" layer: the real text is already
+// laid out, and the shader fades it in line by line (10 ms stagger, capped at 24 lines) with a
+// right-to-left wipe so the code appears to arrive from the right. Fragment shaders cannot move already
+// rasterized glyphs, so the horizontal part is a directional mask, not a translation. Once the reveal ends
+// the material is removed, which is the moment the real text "settles" and the ghost disappears.
+static const char *const CODE_INTRO_REVEAL_SHADER = R"(
+shader_type canvas_item;
+
+uniform float start_time;
+uniform float line_height;
+uniform float line_stagger;
+uniform float line_duration;
+uniform float max_lines;
+uniform float reveal_width;
+uniform float wipe_soft;
+
+varying vec2 local_pos;
+
+void vertex() {
+	local_pos = VERTEX;
+}
+
+void fragment() {
+	float row = floor(max(local_pos.y, 0.0) / max(line_height, 1.0));
+	float row_delay = min(row, max_lines) * line_stagger;
+	float t = clamp((TIME - start_time - row_delay) / max(line_duration, 0.001), 0.0, 1.0);
+	float ease = 1.0 - (1.0 - t) * (1.0 - t);
+	float x = clamp(local_pos.x / max(reveal_width, 1.0), 0.0, 1.0);
+	float p = clamp(t / 0.6, 0.0, 1.0);
+	float edge = 1.1 - 1.2 * p;
+	float wipe = smoothstep(edge, edge + wipe_soft, x);
+	COLOR.a *= ease * wipe;
+}
+)";
+
+void CodeTextEditor::play_intro_reveal() {
+	if (text_editor == nullptr || intro_material.is_valid()) {
+		return;
+	}
+	if (!EditorThemeManager::is_expressive_animation_style()) {
+		return;
+	}
+	if (!is_visible_in_tree() || text_editor->get_line_count() == 0) {
+		return;
+	}
+
+	Ref<Shader> shader;
+	shader.instantiate();
+	shader->set_code(CODE_INTRO_REVEAL_SHADER);
+	Ref<ShaderMaterial> material;
+	material.instantiate();
+	material->set_shader(shader);
+	material->set_shader_parameter("start_time", (double)Time::get_singleton()->get_ticks_msec() / 1000.0);
+	material->set_shader_parameter("line_height", (double)text_editor->get_line_height());
+	material->set_shader_parameter("line_stagger", INTRO_LINE_STAGGER);
+	material->set_shader_parameter("line_duration", INTRO_LINE_DURATION);
+	material->set_shader_parameter("max_lines", (double)INTRO_MAX_LINES);
+	material->set_shader_parameter("reveal_width", (double)MAX(text_editor->get_size().x, 1.0f));
+	material->set_shader_parameter("wipe_soft", 0.08);
+
+	intro_material = material;
+	text_editor->set_material(material);
+
+	const int revealed_lines = MIN(text_editor->get_line_count(), INTRO_MAX_LINES);
+	const double total = INTRO_LINE_DURATION + revealed_lines * INTRO_LINE_STAGGER + 0.05;
+	Ref<SceneTreeTimer> timer = get_tree()->create_timer(total);
+	timer->connect(SNAME("timeout"), callable_mp(this, &CodeTextEditor::_finish_intro_reveal));
+}
+
+void CodeTextEditor::_finish_intro_reveal() {
+	if (text_editor != nullptr && intro_material.is_valid() && text_editor->get_material().ptr() == intro_material.ptr()) {
+		text_editor->set_material(Ref<Material>());
+	}
+	intro_material = Ref<ShaderMaterial>();
 }
 
 void CodeTextEditor::update_editor_settings() {

@@ -42,6 +42,7 @@ class Label;
 class LineEdit;
 class MenuButton;
 class RichTextLabel;
+class ShaderMaterial;
 class Timer;
 
 class GotoLinePopup : public PopupPanel {
@@ -164,6 +165,8 @@ class CodeTextEditor : public VBoxContainer {
 	CodeEdit *text_editor = nullptr;
 	FindReplaceBar *find_replace_bar = nullptr;
 	HBoxContainer *status_bar = nullptr;
+	Ref<ShaderMaterial> intro_material;
+	void _finish_intro_reveal();
 
 	Button *error_button = nullptr;
 	Button *warning_button = nullptr;
@@ -284,6 +287,15 @@ public:
 	Point2i get_pos_for_display(Point2i p_internal_position) const;
 	void update_line_and_column() { _line_col_changed(); }
 	CodeEdit *get_text_editor() { return text_editor; }
+	// One-shot line reveal parameters (Expressive only). Public so the budget regression test can check
+	// them without duplicating the numbers.
+	static constexpr double INTRO_LINE_DURATION = 0.16;
+	static constexpr double INTRO_LINE_STAGGER = 0.010;
+	static constexpr int INTRO_MAX_LINES = 24;
+	static constexpr double INTRO_MAX_TOTAL = 0.45;
+	// Plays the one-shot line-by-line reveal of a freshly opened script (Expressive only). No-op if the
+	// reveal already runs or the style does not allow it.
+	void play_intro_reveal();
 	FindReplaceBar *get_find_replace_bar() { return find_replace_bar; }
 	void set_find_replace_bar(FindReplaceBar *p_bar);
 	void remove_find_replace_bar();
