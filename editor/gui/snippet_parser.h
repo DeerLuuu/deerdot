@@ -64,8 +64,9 @@ struct SnippetTabStop {
 namespace SnippetParser {
 
 // Returns the expanded body. r_tabstops receives the stops in order of
-// appearance; variables missing from p_variables resolve to their default
-// text (after ':') or an empty string.
+// appearance; variables missing from p_variables are kept literally, which
+// preserves Godot's `$Node`/`$node/path` syntax inside snippets. Use
+// `\$NAME` to produce a literal dollar sign followed by NAME.
 String parse(const String &p_body, const HashMap<String, String> &p_variables, List<SnippetTabStop> &r_tabstops);
 
 } // namespace SnippetParser

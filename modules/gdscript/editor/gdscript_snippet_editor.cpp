@@ -147,14 +147,9 @@ void GDScriptSnippetEditor::_expand_context_menu_snippet(int p_id) {
 	}
 
 	// Same variables as the completion entries, so both expand alike.
-	HashMap<String, String> variables;
 	const Ref<Resource> edited = context_menu_editor->get_edited_resource();
-	if (edited.is_valid()) {
-		const String &path = edited->get_path();
-		variables["TM_FILENAME"] = path.get_file();
-		variables["TM_FILENAME_BASE"] = path.get_file().get_basename();
-		variables["TM_DIRECTORY"] = path.get_base_dir();
-	}
+	const String path = edited.is_valid() ? edited->get_path() : String();
+	const HashMap<String, String> variables = GDScriptLanguage::make_snippet_variables(path);
 
 	List<SnippetTabStop> stops;
 	const String expanded = SnippetParser::parse(snippet->body, variables, stops);

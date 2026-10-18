@@ -173,14 +173,15 @@ String parse(const String &p_body, const HashMap<String, String> &p_variables, L
 				stop.end_col = out.col;
 				r_tabstops.push_back(stop);
 			} else {
-				// Variable: ${name} or ${name:default}.
-				String value;
+				// Variable: ${name} or ${name:default}. Unknown variables are
+				// kept literally: GDScript snippet bodies contain `$Node` syntax.
 				if (p_variables.has(key)) {
-					value = p_variables[key];
-				} else if (!has_choices) {
-					value = remainder;
+					out.append(p_variables[key]);
+				} else {
+					out.append("${");
+					out.append(content);
+					out.append("}");
 				}
-				out.append(value);
 			}
 			continue;
 		}
@@ -209,6 +210,11 @@ String parse(const String &p_body, const HashMap<String, String> &p_variables, L
 			const String name = p_body.substr(i + 1, j - i - 1);
 			if (p_variables.has(name)) {
 				out.append(p_variables[name]);
+			} else {
+				// Preserve unknown names (notably `$Sprite2D`/`$node/path`) instead
+				// of dropping them. Use `\$NAME` for a literal dollar sign.
+				out.append("$");
+				out.append(name);
 			}
 			i = j;
 			continue;

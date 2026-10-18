@@ -6,6 +6,36 @@
 	<description>
 		A list of utility functions and annotations accessible from any script written in GDScript.
 		For the list of global functions and constants that can be accessed in any scripting language, see [@GlobalScope].
+		This page also documents the language features listed below.
+		[b]F-strings[/b]
+		An [code]f"..."[/code] literal interpolates expressions between braces. The [code]f[/code] prefix must be lowercase, attached to a double quote, and the literal must stay on one line. Double braces escape a literal brace. Format specifiers such as [code]{x:.2f}[/code] are not supported; use [code]"%.2f" % x[/code], [code]x.toFixed(2)[/code], or [code]String.num(x, 2)[/code] inside the braces instead. Node paths like [code]$Sprite2D[/code] are unrelated syntax and cannot appear inside an f-string (write [code]f"{get_node(...)}"[/code] instead).
+		[codeblock]
+		var name = "World"
+		print(f"Hello, {name}! 2 + 2 = {2 + 2}") # Hello, World! 2 + 2 = 4
+		print(f"{{braces}} {name.to_upper()}")   # {braces} WORLD
+		[/codeblock]
+		[b]Safe navigation operator[/b]
+		[code]a?.b[/code] evaluates [code]a[/code] exactly once: if it is [code]null[/code], the whole remaining chain ([code].c[/code], calls, subscripts) is skipped and the expression yields [code]null[/code]; otherwise it behaves like [code]a.b[/code]. Only [code]null[/code] is guarded — a freed object still errors (use [method @GlobalScope.is_instance_valid] for that). Safe navigation cannot be the target of an assignment.
+		[codeblock]
+		var label = get_node_or_null("Label")
+		print(label?.text) # Prints null or the text; never errors on null.
+		[/codeblock]
+		[b]Null coalescing operator[/b]
+		[code]a ?? b[/code] yields [code]a[/code] unless it is [code]null[/code], in which case it yields [code]b[/code]. The left operand is evaluated exactly once and [code]b[/code] is only evaluated when [code]a[/code] is [code]null[/code]. The operator binds tighter than [code]or[/code] but looser than [code]and[/code]; parenthesize mixed expressions for clarity. It combines with safe navigation and nullable types: [code]a?.b ?? fallback[/code].
+		[b]Nullable types[/b]
+		A type hint may end with [code]?[/code] to allow [code]null[/code]: [code]var target: Node? = null[/code], [code]func find(name: String) -> Node?[/code]. A [code]null[/code] value can only be assigned to a nullable type, and a nullable value cannot be assigned to a plain type without a guard (use [code]if x != null:[/code] or [code]??[/code]). Code that does not use [code]?[/code] keeps its previous behavior. Plain value types such as [code skip-lint]int[/code] can be made nullable with [code skip-lint]int?[/code]; [code skip-lint]Variant?[/code] is the same as [code skip-lint]Variant[/code]. Collection element types cannot be nullable yet.
+		[b]Typed signal parameters[/b]
+		Signal parameters accept type hints: [code]signal hit(dmg: int, pos: Vector2)[/code]. Emitting with the wrong count or type is a compile-time error for [code]hit.emit(...)[/code] and for [code]emit_signal("hit", ...)[/code] with a literal name; a dynamic signal name is not checked at all. Connected callbacks must accept every signal argument; trailing parameters may be omitted only when they have default values, and callbacks may not declare more parameters than the signal provides.
+		[codeblock]
+		signal hit(dmg: int)
+		func _ready():
+		    hit.connect(func (dmg): print(dmg)) # OK: one parameter.
+		    hit.emit("five") # Error: cannot pass a String as int.
+		[/codeblock]
+		[b]Custom annotations[/b]
+		Annotations that are not built in are allowed without registration and become queryable metadata: arguments must be constant expressions, named arguments are written [code]@Name(key = 1)[/code], and multiple annotations keep their source order. Query them with [method GDScript.has_annotation], [method GDScript.get_annotation], [method GDScript.get_annotations], and [method GDScript.get_annotation_symbols]. Built-in annotation names cannot be shadowed, even with different casing.
+		[b]Code snippets[/b]
+		Snippets are JSON files in the editor or project snippet directories. Bodies support [code]$TM_FILENAME[/code], [code]$TM_FILENAME_BASE[/code], [code]$TM_DIRECTORY[/code], [code]$CURRENT_YEAR[/code], [code]$CURRENT_MONTH[/code] and [code]$CURRENT_DATE[/code], written as [code]$NAME[/code] or [code]${NAME}[/code]. Unknown variables and node paths such as [code]$Sprite2D[/code], [code]$"Node"[/code] and [code]$node/path[/code] are kept literally; write [code]\$NAME[/code] for a literal dollar sign. A snippet's [code]scope[/code] field is a comma-separated language list (for example [code]"gdscript, gdshader"[/code]); omitting it keeps the snippet available to GDScript.
 	</description>
 	<tutorials>
 		<link title="GDScript exports">$DOCS_URL/tutorials/scripting/gdscript/gdscript_exports.html</link>
@@ -298,8 +328,15 @@
 	<annotations>
 		<annotation name="@observable">
 			<return type="void" />
+			<param index="0" name="signal" type="String" default="&quot;&quot;" />
 			<description>
-				Marks a variable as observable. Assigning a different value emits the generated [code]&lt;property&gt;_changed(new_value)[/code] signal after the assignment, comparing with [code]==[/code] (containers are compared by content). The initializer does not emit because member initialization writes the member directly; an explicit assignment in [code]_init()[/code] does emit. In-place container changes such as [code]self.arr.append(x)[/code] are not observed; reassign the container to trigger the signal.
+				Marks a variable as observable. Without arguments, a [code]&lt;property&gt;_changed(new_value)[/code] signal is generated automatically. Alternatively, pass the name of an already declared signal: a 0-parameter signal is emitted with no arguments, a 1-parameter signal receives the new value, and a 2-parameter signal receives the old and the new value. Several properties may reference the same signal for a batch entry point.
+				The signal is emitted after assigning a value that compares unequal with [code]==[/code] (containers are compared by content). The initializer does not emit because member initialization writes the member directly; an explicit assignment in [code]_init()[/code] does emit. In-place container changes such as [code]self.arr.append(x)[/code] are not observed; reassign the container to trigger the signal. The variable must not declare its own setter.
+				[codeblock]
+				signal damaged(old_hp, new_hp)
+				@observable("damaged")
+				var hp := 10
+				[/codeblock]
 			</description>
 		</annotation>
 		<annotation name="@abstract">

@@ -49,6 +49,7 @@
 #include "core/io/file_access.h"
 #include "core/io/json.h"
 #include "core/os/os.h"
+#include "core/os/time.h"
 #include "editor/file_system/editor_paths.h"
 #include "editor/gdscript_docgen.h"
 #endif
@@ -3143,6 +3144,36 @@ void GDScriptLanguage::_scan_snippets_dir(const String &p_dir, bool p_load, uint
 	dir->list_dir_end();
 }
 
+bool GDScriptLanguage::snippet_scope_matches(const String &p_scope, const String &p_language) {
+	if (p_scope.strip_edges().is_empty()) {
+		return true; // No scope means the snippet is for this language.
+	}
+	const PackedStringArray scopes = p_scope.split(",", false);
+	for (const String &scope : scopes) {
+		if (scope.strip_edges().to_lower() == p_language.to_lower()) {
+			return true;
+		}
+	}
+	return false;
+}
+
+HashMap<String, String> GDScriptLanguage::make_snippet_variables(const String &p_path) {
+	HashMap<String, String> variables;
+	if (!p_path.is_empty()) {
+		variables["TM_FILENAME"] = p_path.get_file();
+		variables["TM_FILENAME_BASE"] = p_path.get_file().get_basename();
+		variables["TM_DIRECTORY"] = p_path.get_base_dir();
+	}
+	const Dictionary date = Time::get_singleton()->get_date_dict_from_system();
+	const int year = date.get("year", 0);
+	const int month = date.get("month", 0);
+	const int day = date.get("day", 0);
+	variables["CURRENT_YEAR"] = itos(year);
+	variables["CURRENT_MONTH"] = vformat("%02d", month);
+	variables["CURRENT_DATE"] = vformat("%04d-%02d-%02d", year, month, day);
+	return variables;
+}
+
 void GDScriptLanguage::load_snippets() {
 	snippets.clear();
 
@@ -3185,18 +3216,8 @@ void GDScriptLanguage::_load_snippet_file(const String &p_path) {
 		// `.code-snippets` files can target several languages; skip snippets
 		// that do not list GDScript. Plain JSON files are assumed to be
 		// GDScript-only.
-		if (snippet_data.has("scope")) {
-			bool matches_gdscript = false;
-			PackedStringArray scopes = String(snippet_data["scope"]).split(",", false);
-			for (const String &lang : scopes) {
-				if (lang.strip_edges().to_lower() == "gdscript") {
-					matches_gdscript = true;
-					break;
-				}
-			}
-			if (!matches_gdscript) {
-				continue;
-			}
+		if (!snippet_scope_matches(snippet_data.get("scope", ""), "gdscript")) {
+			continue;
 		}
 
 		Array prefixes;
@@ -3220,13 +3241,14 @@ void GDScriptLanguage::_load_snippet_file(const String &p_path) {
 		}
 
 		String description = snippet_data.get("description", "");
+		String scope = snippet_data.get("scope", "");
 
 		for (int i = 0; i < prefixes.size(); i++) {
 			String prefix = prefixes[i];
 			if (prefix.is_empty() || body.is_empty()) {
 				continue;
 			}
-			snippets[prefix] = SnippetConfig(snippet_name, prefix, body, description);
+			snippets[prefix] = SnippetConfig(snippet_name, prefix, body, description, scope);
 		}
 	}
 }

@@ -4103,12 +4103,7 @@ static void _find_call_arguments(GDScriptParser::CompletionContext &p_context, c
 	if (completion_context.type == GDScriptParser::COMPLETION_IDENTIFIER ||
 			completion_context.type == GDScriptParser::COMPLETION_METHOD ||
 			completion_context.type == GDScriptParser::COMPLETION_NONE) {
-		HashMap<String, String> snippet_variables;
-		if (!p_path.is_empty()) {
-			snippet_variables["TM_FILENAME"] = p_path.get_file();
-			snippet_variables["TM_FILENAME_BASE"] = p_path.get_file().get_basename();
-			snippet_variables["TM_DIRECTORY"] = p_path.get_base_dir();
-		}
+		const HashMap<String, String> snippet_variables = GDScriptLanguage::make_snippet_variables(p_path);
 
 		const HashMap<String, GDScriptLanguage::SnippetConfig> &snippets = GDScriptLanguage::get_singleton()->_get_snippets();
 		for (const KeyValue<String, GDScriptLanguage::SnippetConfig> &E : snippets) {

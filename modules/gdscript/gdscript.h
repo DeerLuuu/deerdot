@@ -495,11 +495,12 @@ public:
 		String prefix;
 		String body;
 		String description;
+		String scope; // Raw comma-separated scope list; empty means GDScript only.
 
 		SnippetConfig() {}
 
-		SnippetConfig(const String &p_name, const String &p_prefix, const String &p_body, const String &p_description) :
-				name(p_name), prefix(p_prefix), body(p_body), description(p_description) {}
+		SnippetConfig(const String &p_name, const String &p_prefix, const String &p_body, const String &p_description, const String &p_scope = String()) :
+				name(p_name), prefix(p_prefix), body(p_body), description(p_description), scope(p_scope) {}
 	};
 
 private:
@@ -513,6 +514,8 @@ private:
 public:
 	void load_snippets();
 	const HashMap<String, SnippetConfig> &_get_snippets() const { return snippets; }
+	static HashMap<String, String> make_snippet_variables(const String &p_path);
+	static bool snippet_scope_matches(const String &p_scope, const String &p_language);
 	void check_snippets_reload();
 #endif
 
