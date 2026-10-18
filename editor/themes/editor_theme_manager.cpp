@@ -242,8 +242,12 @@ static_assert(sizeof(subtle_animations) / sizeof(subtle_animations[0]) == Editor
 static_assert(sizeof(expressive_animations) / sizeof(expressive_animations[0]) == EditorThemeManager::ANIM_KIND_MAX, "Expressive animation table must cover every animation kind.");
 } // namespace
 
+static String _stored_animation_style_name();
+
 EditorThemeManager::AnimationStyle EditorThemeManager::get_animation_style() {
-	return String(EDITOR_GET("interface/theme/ui_animations_style")) == "Expressive" ? ANIMATION_STYLE_EXPRESSIVE : ANIMATION_STYLE_SUBTLE;
+	// Derived, zero-write: a stored preset whose parameters were changed reports Custom. This also covers
+	// hand-edited settings files and half-finished preset writes; the dialog only fixes the enum display.
+	return get_derived_animation_style(get_user_animation_params(), _stored_animation_style_name());
 }
 
 bool EditorThemeManager::is_expressive_animation_style() {
@@ -265,6 +269,144 @@ EditorThemeManager::AnimationParameters EditorThemeManager::get_animation_parame
 	return parameters;
 }
 
+const EditorThemeManager::AnimationParams EditorThemeManager::PRESET_PARAMS[2] = {
+	{ 1.0, 0.0, 0, 0, 0, 0, 0, 1.00, 100, 0 }, // Subtle
+	{ 1.0, 1.0, 2, 3, 6, 8, 5, 0.92, 140, 10 }, // Expressive
+};
+
+static String _stored_animation_style_name() {
+	return EDITOR_GET("interface/theme/ui_animations_style");
+}
+
+static double _clamp_speed(double p_speed) {
+	return CLAMP(p_speed, 0.5, 2.0);
+}
+
+EditorThemeManager::AnimationParams EditorThemeManager::get_user_animation_params() {
+	const String stored = _stored_animation_style_name();
+	// A missing parameter falls back to the preset of the stored style. In particular an old Expressive
+	// settings file keeps Expressive values instead of picking up the Subtle registration defaults.
+	const int fallback_style = (stored == "Expressive" || stored == "Custom") ? 1 : 0;
+	const AnimationParams &fallback = PRESET_PARAMS[fallback_style];
+	EditorSettings *settings = EditorSettings::get_singleton();
+	const PackedStringArray changed = settings->get_changed_settings();
+
+	auto read_double = [&](const char *p_name, double p_default) -> double {
+		const String key = String("interface/theme/ui_animations/") + p_name;
+		return changed.has(key) ? (double)settings->get_setting(key) : p_default;
+	};
+	auto read_int = [&](const char *p_name, int p_default) -> int {
+		const String key = String("interface/theme/ui_animations/") + p_name;
+		return changed.has(key) ? (int)settings->get_setting(key) : p_default;
+	};
+
+	AnimationParams params;
+	params.speed_scale = _clamp_speed(read_double("speed_scale", fallback.speed_scale));
+	params.motion_amount = CLAMP(read_double("motion_amount", fallback.motion_amount), 0.0, 1.0);
+	params.bloom_px = CLAMP(read_int("button_bloom_px", fallback.bloom_px), 0, 4);
+	params.press_squash_px = CLAMP(read_int("button_press_squash_px", fallback.press_squash_px), 0, 6);
+	params.row_slide_px = CLAMP(read_int("row_highlight_slide_px", fallback.row_slide_px), 0, 12);
+	params.menu_slide_px = CLAMP(read_int("menu_highlight_slide_px", fallback.menu_slide_px), 0, 12);
+	params.tab_lift_px = CLAMP(read_int("tab_lift_px", fallback.tab_lift_px), 0, 8);
+	params.popup_open_scale = CLAMP(read_double("popup_open_scale", fallback.popup_open_scale), 0.80, 1.00);
+	params.popup_open_ms = CLAMP(read_int("popup_open_ms", fallback.popup_open_ms), 80, 240);
+	params.reveal_delay_ms = CLAMP(read_int("script_reveal_line_delay_ms", fallback.reveal_delay_ms), 0, 30);
+	return params;
+}
+
+bool EditorThemeManager::animation_params_match(const AnimationParams &p_a, const AnimationParams &p_b) {
+	return Math::is_equal_approx(p_a.speed_scale, p_b.speed_scale) &&
+			Math::is_equal_approx(p_a.motion_amount, p_b.motion_amount) &&
+			p_a.bloom_px == p_b.bloom_px &&
+			p_a.press_squash_px == p_b.press_squash_px &&
+			p_a.row_slide_px == p_b.row_slide_px &&
+			p_a.menu_slide_px == p_b.menu_slide_px &&
+			p_a.tab_lift_px == p_b.tab_lift_px &&
+			Math::is_equal_approx(p_a.popup_open_scale, p_b.popup_open_scale) &&
+			p_a.popup_open_ms == p_b.popup_open_ms &&
+			p_a.reveal_delay_ms == p_b.reveal_delay_ms;
+}
+
+EditorThemeManager::AnimationStyle EditorThemeManager::get_derived_animation_style(const AnimationParams &p_params, const String &p_stored_style) {
+	if (p_stored_style == "Custom") {
+		return ANIMATION_STYLE_CUSTOM;
+	}
+	const AnimationStyle preset = p_stored_style == "Expressive" ? ANIMATION_STYLE_EXPRESSIVE : ANIMATION_STYLE_SUBTLE;
+	return animation_params_match(p_params, PRESET_PARAMS[preset]) ? preset : ANIMATION_STYLE_CUSTOM;
+}
+
+EditorThemeManager::AnimationParameters EditorThemeManager::resolve_animation_parameters(AnimationKind p_kind, AnimationStyle p_stored_style, const AnimationParams &p_params) {
+	ERR_FAIL_INDEX_V(p_kind, ANIM_KIND_MAX, AnimationParameters());
+
+	const String stored = p_stored_style == ANIMATION_STYLE_EXPRESSIVE ? "Expressive" : p_stored_style == ANIMATION_STYLE_CUSTOM ? "Custom"
+																																 : "Subtle";
+	const AnimationStyle derived = get_derived_animation_style(p_params, stored);
+	const StyleBoxAnimation &base = derived == ANIMATION_STYLE_SUBTLE ? subtle_animations[p_kind] : expressive_animations[p_kind];
+
+	AnimationParameters out;
+	out.transition = base.transition;
+	out.animate_rect = base.animate_rect;
+	out.exit_transition = base.exit_transition;
+	out.fade = base.fade;
+
+	const double speed = _clamp_speed(p_params.speed_scale);
+	out.duration = base.duration > 0.0 ? CLAMP(base.duration * speed, 0.06, 0.26) : 0.0;
+	out.exit_duration = base.exit_duration > 0.0 ? CLAMP(base.exit_duration * speed, 0.04, 0.16) : 0.0;
+
+	const double motion = CLAMP(p_params.motion_amount, 0.0, 1.0);
+	out.scale = Size2(1.0 + (base.scale.x - 1.0) * motion, 1.0 + (base.scale.y - 1.0) * motion);
+	out.offset = base.offset * motion;
+
+	switch (p_kind) {
+		case ANIM_TREE_HOVER:
+		case ANIM_ITEMLIST_HOVER:
+			out.offset.x = -p_params.row_slide_px;
+			break;
+		case ANIM_MENU_HOVER:
+			out.offset.x = -p_params.menu_slide_px;
+			break;
+		default:
+			break;
+	}
+
+	out.offset.x = CLAMP(out.offset.x, -10.0f, 10.0f);
+	out.offset.y = CLAMP(out.offset.y, -10.0f, 10.0f);
+	out.scale.x = CLAMP(out.scale.x, 0.80f, 1.00f);
+	out.scale.y = CLAMP(out.scale.y, 0.80f, 1.00f);
+	return out;
+}
+
+EditorThemeManager::AnimationParameters EditorThemeManager::get_resolved_animation_parameters(AnimationKind p_kind) {
+	const String stored = _stored_animation_style_name();
+	const AnimationStyle stored_style = stored == "Expressive" ? ANIMATION_STYLE_EXPRESSIVE : stored == "Custom" ? ANIMATION_STYLE_CUSTOM
+																												 : ANIMATION_STYLE_SUBTLE;
+	return resolve_animation_parameters(p_kind, stored_style, get_user_animation_params());
+}
+
+int EditorThemeManager::get_button_bloom_px() {
+	return get_user_animation_params().bloom_px;
+}
+
+int EditorThemeManager::get_button_press_squash_px() {
+	return get_user_animation_params().press_squash_px;
+}
+
+int EditorThemeManager::get_tab_lift_px() {
+	return get_user_animation_params().tab_lift_px;
+}
+
+double EditorThemeManager::get_popup_open_scale() {
+	return get_user_animation_params().popup_open_scale;
+}
+
+int EditorThemeManager::get_popup_open_ms() {
+	return get_user_animation_params().popup_open_ms;
+}
+
+int EditorThemeManager::get_script_reveal_delay_ms() {
+	return get_user_animation_params().reveal_delay_ms;
+}
+
 void EditorThemeManager::animate_stylebox(const Ref<StyleBox> &p_style, AnimationKind p_kind) {
 	ERR_FAIL_INDEX(p_kind, ANIM_KIND_MAX);
 	if (p_style.is_null()) {
@@ -275,8 +417,7 @@ void EditorThemeManager::animate_stylebox(const Ref<StyleBox> &p_style, Animatio
 		return;
 	}
 
-	const bool expressive = get_animation_style() == ANIMATION_STYLE_EXPRESSIVE;
-	const StyleBoxAnimation &animation = expressive ? expressive_animations[p_kind] : subtle_animations[p_kind];
+	const AnimationParameters animation = get_resolved_animation_parameters(p_kind);
 
 	if (animation.duration > 0.0) {
 		p_style->set_animation_duration(StyleBox::PHASE_NORMAL, animation.duration);
@@ -292,16 +433,13 @@ void EditorThemeManager::animate_stylebox(const Ref<StyleBox> &p_style, Animatio
 		p_style->set_animation_ease(StyleBox::PHASE_EXIT, Tween::EASE_OUT);
 	}
 
-	if (expressive) {
-		// Write all transform keyframes: duplicated styleboxes would otherwise inherit a scale or an offset
-		// from the stylebox they were copied from.
-		p_style->set_transform_offset(animation.offset * EDSCALE);
-		p_style->set_transform_scale(animation.scale);
-		p_style->set_transform_modulate(animation.fade ? Color(1, 1, 1, 0) : Color(1, 1, 1, 1));
-	} else if (animation.exit_duration > 0.0) {
-		// Subtle only fades the background out, transforms would desync it from text and icons.
-		p_style->set_transform_modulate(Color(1, 1, 1, 0));
-	}
+	// Always write all transform keyframes: duplicated styleboxes would otherwise inherit a scale or an
+	// offset from the stylebox they were copied from. Resolved values are identity for plain fades, and
+	// the exit alpha stays 0 whenever the box fades out.
+	p_style->set_transform_offset(animation.offset * EDSCALE);
+	p_style->set_transform_scale(animation.scale);
+	const bool exit_fades = animation.fade || animation.exit_duration > 0.0;
+	p_style->set_transform_modulate(exit_fades ? Color(1, 1, 1, 0) : Color(1, 1, 1, 1));
 }
 
 // Theme generation and population routines.
@@ -338,15 +476,16 @@ Ref<EditorTheme> EditorThemeManager::_create_base_theme(const Ref<EditorTheme> &
 	animate_stylebox(config.flat_button_pressed, ANIM_FLAT_PRESSED);
 	animate_stylebox(config.flat_button_hover_pressed, ANIM_FLAT_HOVER_PRESSED);
 
-	// Expressive only: pressed styleboxes shrink by three pixels, which reads as the button being pushed in.
+	// Pressed styleboxes shrink by the configured pixel amount, which reads as the button being pushed in.
 	// The styleboxes are duplicated by the theme files afterwards, so the whole pressed family inherits it.
-	// Gated by the style (and by the master switch) so Subtle and disabled animations keep the v1 look.
-	if (is_expressive_animation_style()) {
+	// Subtle's preset is 0, so the v1 look is unchanged unless the user raises the knob.
+	const int press_squash = get_button_press_squash_px();
+	if (press_squash > 0) {
 		if (config.button_style_pressed.is_valid()) {
-			config.button_style_pressed->set_expand_margin_all(-3 * EDSCALE);
+			config.button_style_pressed->set_expand_margin_all(-press_squash * EDSCALE);
 		}
 		if (config.flat_button_pressed.is_valid()) {
-			config.flat_button_pressed->set_expand_margin_all(-3 * EDSCALE);
+			config.flat_button_pressed->set_expand_margin_all(-press_squash * EDSCALE);
 		}
 	}
 
@@ -399,9 +538,10 @@ Ref<EditorTheme> EditorThemeManager::_create_base_theme(const Ref<EditorTheme> &
 	_populate_text_editor_styles(theme, config);
 	_populate_visual_shader_styles(theme, config);
 
-	// Expressive only: hovering an ordinary button blooms its background outwards by two pixels. This is
+	// Hovering an ordinary button blooms its background outwards by the configured pixel amount. This is
 	// applied after the style files duplicated the shared stylebox, so only controls that use the shared
 	// hover box directly (Button and its mirrored variant, MenuBar, OptionButton) get the bloom.
+	// The Subtle preset is 0, so the default look is unchanged; the knob is orthogonal to the bounce amount.
 	//
 	// Copies made from that box before this point are deliberately left without it, because they either
 	// carry their own transform-based signature or are shared by both themes as a flat box:
@@ -415,8 +555,9 @@ Ref<EditorTheme> EditorThemeManager::_create_base_theme(const Ref<EditorTheme> &
 	// theme_classic.cpp. Note that Modern's InspectorActionButton declares no stylebox of its own and falls
 	// back to the Button hover, so it inherits the bloom while the classic copy does not; making the classic
 	// copy match would be a theme_classic change and is left for a follow-up.
-	if (is_expressive_animation_style() && config.button_style_hover.is_valid()) {
-		config.button_style_hover->set_expand_margin_all(2 * EDSCALE);
+	const int bloom = get_button_bloom_px();
+	if (bloom > 0 && config.button_style_hover.is_valid()) {
+		config.button_style_hover->set_expand_margin_all(bloom * EDSCALE);
 	}
 
 	OS::get_singleton()->benchmark_end_measure(get_benchmark_key(), "Create Base Theme");

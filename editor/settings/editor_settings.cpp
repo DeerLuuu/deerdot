@@ -620,7 +620,20 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 	// Theme
 	EDITOR_SETTING_BASIC(Variant::BOOL, PROPERTY_HINT_ENUM, "interface/theme/follow_system_theme", false, "")
 	EDITOR_SETTING_BASIC(Variant::BOOL, PROPERTY_HINT_NONE, "interface/theme/ui_animations", true, "")
-	EDITOR_SETTING_BASIC(Variant::STRING, PROPERTY_HINT_ENUM, "interface/theme/ui_animations_style", "Subtle", "Subtle,Expressive")
+	EDITOR_SETTING_BASIC(Variant::STRING, PROPERTY_HINT_ENUM, "interface/theme/ui_animations_style", "Subtle", "Subtle,Expressive,Custom")
+	// User-tunable animation knobs. Defaults are the Subtle preset so a fresh install stays pixel-identical;
+	// an old Expressive settings file falls back to the Expressive preset in
+	// EditorThemeManager::get_user_animation_params() because these keys are not in the changed list.
+	EDITOR_SETTING_BASIC(Variant::FLOAT, PROPERTY_HINT_RANGE, "interface/theme/ui_animations/speed_scale", 1.0, "0.5,2.0,0.05")
+	EDITOR_SETTING_BASIC(Variant::FLOAT, PROPERTY_HINT_RANGE, "interface/theme/ui_animations/motion_amount", 0.0, "0.0,1.0,0.05")
+	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_RANGE, "interface/theme/ui_animations/button_bloom_px", 0, "0,4,1")
+	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_RANGE, "interface/theme/ui_animations/button_press_squash_px", 0, "0,6,1")
+	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_RANGE, "interface/theme/ui_animations/row_highlight_slide_px", 0, "0,12,1")
+	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_RANGE, "interface/theme/ui_animations/menu_highlight_slide_px", 0, "0,12,1")
+	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_RANGE, "interface/theme/ui_animations/tab_lift_px", 0, "0,8,1")
+	EDITOR_SETTING_BASIC(Variant::FLOAT, PROPERTY_HINT_RANGE, "interface/theme/ui_animations/popup_open_scale", 1.0, "0.80,1.0,0.01")
+	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_RANGE, "interface/theme/ui_animations/popup_open_ms", 100, "80,240,10")
+	EDITOR_SETTING_BASIC(Variant::INT, PROPERTY_HINT_RANGE, "interface/theme/ui_animations/script_reveal_line_delay_ms", 0, "0,30,1")
 	EDITOR_SETTING_BASIC(Variant::BOOL, PROPERTY_HINT_NONE, "interface/theme/script_reveal_on_open", true, "")
 	EDITOR_SETTING_BASIC(Variant::STRING, PROPERTY_HINT_ENUM, "interface/theme/style", "Modern", "Modern,Classic")
 	EDITOR_SETTING_BASIC(Variant::STRING, PROPERTY_HINT_ENUM, "interface/theme/color_preset", "Default", "Default,Breeze Dark,Godot 2,Godot 3,Gray,Light,Solarized (Dark),Solarized (Light),Black (OLED),Custom")

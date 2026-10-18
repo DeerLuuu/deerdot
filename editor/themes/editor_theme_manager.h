@@ -225,7 +225,41 @@ public:
 	enum AnimationStyle {
 		ANIMATION_STYLE_SUBTLE,
 		ANIMATION_STYLE_EXPRESSIVE,
+		// Derived, never stored by the manager: the stored preset no longer matches the parameter values.
+		ANIMATION_STYLE_CUSTOM,
 	};
+
+	// The user-tunable animation knobs (interface/theme/ui_animations/*). The preset tables above stay the
+	// source of the per-kind curves; these parameters scale or override them.
+	struct AnimationParams {
+		double speed_scale = 1.0;
+		double motion_amount = 0.0;
+		int bloom_px = 0;
+		int press_squash_px = 0;
+		int row_slide_px = 0;
+		int menu_slide_px = 0;
+		int tab_lift_px = 0;
+		double popup_open_scale = 1.0;
+		int popup_open_ms = 100;
+		int reveal_delay_ms = 0;
+	};
+
+	// Indexed by ANIMATION_STYLE_SUBTLE / ANIMATION_STYLE_EXPRESSIVE.
+	static const AnimationParams PRESET_PARAMS[2];
+	// Values the user currently has, with the legacy fallback: a missing parameter reads the preset of the
+	// *stored* style, so an old Expressive settings file does not silently get Subtle values.
+	static AnimationParams get_user_animation_params();
+	// Pure derived style: Custom when the stored preset no longer matches the parameters. Never writes.
+	static AnimationStyle get_derived_animation_style(const AnimationParams &p_params, const String &p_stored_style);
+	static bool animation_params_match(const AnimationParams &p_a, const AnimationParams &p_b);
+
+	// Convenience readers for the geometry/effect consumers. All are clamped to the documented ranges.
+	static int get_button_bloom_px();
+	static int get_button_press_squash_px();
+	static int get_tab_lift_px();
+	static double get_popup_open_scale();
+	static int get_popup_open_ms();
+	static int get_script_reveal_delay_ms();
 
 	// Semantic animation targets. Every animated StyleBox picks a kind, and the manager resolves the
 	// actual animation values from the table of the active style (see editor_theme_manager.cpp).
@@ -277,6 +311,11 @@ public:
 		double rotation = 0.0;
 	};
 	static AnimationParameters get_animation_parameters(AnimationKind p_kind, AnimationStyle p_style);
+
+	// Pure resolution of one kind for the given stored style/parameters. Exposed for the golden tests.
+	static AnimationParameters resolve_animation_parameters(AnimationKind p_kind, AnimationStyle p_stored_style, const AnimationParams &p_params);
+	// Resolved parameters for the active settings (uses get_user_animation_params()).
+	static AnimationParameters get_resolved_animation_parameters(AnimationKind p_kind);
 
 	// Sets up animation parameters for an editor StyleBox based on the active animation style. Does nothing if
 	// the `interface/theme/ui_animations` setting is disabled, so the editor stays fully static in that case.
