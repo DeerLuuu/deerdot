@@ -373,6 +373,7 @@ class DocumentEditorContainer : public MarginContainer {
 
 	bool restoring_layout = false;
 	bool grab_focus_block = false;
+	int suppress_empty_pane_checks = 0;
 
 	int edit_pass = 0;
 
@@ -569,7 +570,13 @@ class DocumentEditorContainer : public MarginContainer {
 	void _update_layout_save_ok_unused(const String &p_text = String());
 	void _show_layout_save_dialog();
 	void _save_layout_preset(const String &p_name);
-	void _apply_layout_preset(const String &p_name);
+	void _apply_layout_preset(const String &p_name, bool p_structure_only = false);
+	void _finish_structure_only_restore();
+
+public:
+	static Dictionary _filter_layout_to_structure(const Dictionary &p_layout);
+
+private:
 	void _show_layout_delete_dialog();
 	void _delete_layout_preset(const String &p_name);
 	void _update_layout_delete_ok();

@@ -86,6 +86,8 @@
 #include "scene/resources/style_box_flat.h"
 #include "servers/display/display_server.h"
 
+static bool _get_structure_only_option();
+
 void ScriptEditorQuickOpen::popup_dialog(const Vector<String> &p_functions, bool p_dontclear) {
 	popup_centered_ratio(0.6);
 	if (p_dontclear) {
@@ -1570,8 +1572,9 @@ void DocumentEditorContainer::_request_close_tab(TabContainer *p_pane, int p_idx
 }
 
 void DocumentEditorContainer::_check_split_pane_empty() {
-	if (restoring_layout) {
-		// Panes are empty on purpose while a layout is being rebuilt.
+	if (restoring_layout || suppress_empty_pane_checks > 0) {
+		// Panes are empty on purpose while a layout is being rebuilt, and the
+		// deferred check can arrive after restoring_layout was reset.
 		return;
 	}
 
@@ -2232,15 +2235,18 @@ void DocumentEditorContainer::_update_layout_presets_menu() {
 	if (names.is_empty()) {
 		layout_presets_menu->add_item(TTRC("No saved layouts"), -1);
 		layout_presets_menu->set_item_disabled(0, true);
-		return;
+	} else {
+		const int base_id = 200000;
+		for (int i = 0; i < names.size(); i++) {
+			const int id = base_id + i;
+			layout_preset_ids.insert(id, names[i]);
+			layout_presets_menu->add_item(names[i], id);
+		}
 	}
 
-	const int base_id = 200000;
-	for (int i = 0; i < names.size(); i++) {
-		const int id = base_id + i;
-		layout_preset_ids.insert(id, names[i]);
-		layout_presets_menu->add_item(names[i], id);
-	}
+	layout_presets_menu->add_separator();
+	layout_presets_menu->add_check_item(TTRC("Apply Structure Only"), -2);
+	layout_presets_menu->set_item_checked(layout_presets_menu->get_item_index(-2), _get_structure_only_option());
 }
 
 void DocumentEditorContainer::_update_layout_save_ok() {
@@ -2277,21 +2283,73 @@ void DocumentEditorContainer::_save_layout_preset(const String &p_name) {
 	EditorToaster::get_singleton()->popup_str(vformat(TTR("Saved layout \"%s\"."), name), EditorToaster::SEVERITY_INFO);
 }
 
-void DocumentEditorContainer::_apply_layout_preset(const String &p_name) {
+Dictionary DocumentEditorContainer::_filter_layout_to_structure(const Dictionary &p_layout) {
+	if (p_layout.has("first") && p_layout.has("second")) {
+		Dictionary node;
+		node["direction"] = p_layout.get("direction", "horizontal");
+		node["offset"] = p_layout.get("offset", 0);
+		const Variant first = p_layout["first"];
+		const Variant second = p_layout["second"];
+		node["first"] = first.get_type() == Variant::DICTIONARY ? _filter_layout_to_structure(first) : Dictionary();
+		node["second"] = second.get_type() == Variant::DICTIONARY ? _filter_layout_to_structure(second) : Dictionary();
+		return node;
+	}
+
+	Dictionary leaf;
+	leaf["scripts"] = Array();
+	leaf["help"] = Array();
+	leaf["selected"] = "";
+	return leaf;
+}
+
+static bool _get_structure_only_option() {
+	if (!EditorSettings::get_singleton()) {
+		return false;
+	}
+	return EditorSettings::get_singleton()->get_project_metadata("script_editor_layouts", "_options/structure_only", false);
+}
+
+void DocumentEditorContainer::_apply_layout_preset(const String &p_name, bool p_structure_only) {
 	const Dictionary presets = _get_layout_presets();
 	if (!presets.has(p_name)) {
 		return;
 	}
 
+	Variant layout = presets[p_name];
+	if (p_structure_only) {
+		layout = _filter_layout_to_structure(layout);
+	}
+
 	// Start from a single pane, so applying a layout cannot pile panes up.
 	_merge_all_panes();
 
+	if (p_structure_only) {
+		// The deferred empty-pane check may run after restoring_layout is reset.
+		suppress_empty_pane_checks++;
+	}
+
 	restoring_layout = true;
-	_restore_pane_layout(presets[p_name], tab_container);
+	_restore_pane_layout(layout, tab_container);
 	restoring_layout = false;
+
+	if (p_structure_only) {
+		// Keep the user's current document in the main pane.
+		active_pane = 0;
+		callable_mp(this, &DocumentEditorContainer::_finish_structure_only_restore).call_deferred();
+	}
 
 	_update_filenames();
 	document_list->update_list();
+
+	if (p_structure_only) {
+		EditorToaster::get_singleton()->popup_str(vformat(TTR("Applied layout \"%s\" (structure only)."), p_name), EditorToaster::SEVERITY_INFO);
+	} else {
+		EditorToaster::get_singleton()->popup_str(vformat(TTR("Applied layout \"%s\"."), p_name), EditorToaster::SEVERITY_INFO);
+	}
+}
+
+void DocumentEditorContainer::_finish_structure_only_restore() {
+	suppress_empty_pane_checks = MAX(0, suppress_empty_pane_checks - 1);
 }
 
 void DocumentEditorContainer::_show_layout_delete_dialog() {
@@ -2336,9 +2394,17 @@ void DocumentEditorContainer::_on_layout_delete_selected(int p_index) {
 }
 
 void DocumentEditorContainer::_layout_preset_selected(int p_id) {
+	if (p_id == -2) {
+		const bool enabled = !_get_structure_only_option();
+		if (EditorSettings::get_singleton()) {
+			EditorSettings::get_singleton()->set_project_metadata("script_editor_layouts", "_options/structure_only", enabled);
+		}
+		_update_layout_presets_menu();
+		return;
+	}
 	const String *name = layout_preset_ids.getptr(p_id);
 	if (name != nullptr) {
-		_apply_layout_preset(*name);
+		_apply_layout_preset(*name, _get_structure_only_option());
 	}
 }
 
