@@ -2440,7 +2440,8 @@ void DocumentEditorContainer::_apply_drop_overlay(const Rect2 &p_rect, const Str
 		return;
 	}
 
-	// Highlights that only hint at a target must not take drags over.
+	// Highlights that only hint at a target must not take drags over. This also restores the filter
+	// immediately when the overlay is shown again while it is still fading out.
 	split_drop_overlay->set_mouse_filter(p_accept_drops ? Control::MOUSE_FILTER_STOP : Control::MOUSE_FILTER_IGNORE);
 	if (split_drop_hint != nullptr) {
 		split_drop_hint->set_text(p_hint);
@@ -2630,6 +2631,8 @@ void DocumentEditorContainer::_split_overlay_fade_out_finished() {
 	if (split_drop_overlay != nullptr) {
 		split_drop_overlay->set_modulate(Color(1, 1, 1, 1));
 		split_drop_overlay->set_scale(Vector2(1, 1));
+		// Keep the hidden overlay out of the way; the next _apply_drop_overlay() sets the target filter.
+		split_drop_overlay->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 		split_drop_overlay->hide();
 	}
 }
@@ -2641,8 +2644,9 @@ void DocumentEditorContainer::_hide_split_overlay() {
 		return;
 	}
 	_stop_split_overlay_morph_tween();
-	// Back to being a drop target for the next drag.
-	split_drop_overlay->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+	// A fading-out overlay is no longer a drop target: release the mouse right away instead of eating
+	// clicks and hover until hide() runs. _apply_drop_overlay() restores the real filter when shown again.
+	split_drop_overlay->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 
 	if (!split_overlay_shown) {
 		// Already hidden, or already fading out (the running tween finishes the hide).
@@ -6098,7 +6102,9 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	// since the code editors below it stop drag propagation.
 	split_drop_overlay = memnew(Panel);
 	split_drop_overlay->set_as_top_level(true);
-	split_drop_overlay->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+	// Hidden until a drag starts; _apply_drop_overlay() sets the real filter (STOP for a drop target,
+	// IGNORE for a hint-only highlight) when it appears.
+	split_drop_overlay->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 	split_drop_overlay->set_drag_forwarding(Callable(), callable_mp(this, &DocumentEditorContainer::_can_drop_on_editor), callable_mp(this, &DocumentEditorContainer::_drop_on_editor));
 	split_drop_overlay->hide();
 	code_editor_container->add_child(split_drop_overlay);
