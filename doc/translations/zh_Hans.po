@@ -203847,10 +203847,12 @@ msgstr ""
 #: doc/classes/EditorSettings.xml
 msgid ""
 "Multiplies the duration of all editor UI animations; higher values make "
-"transitions finish faster. Changing any animation parameter switches the "
-"style to [b]Custom[/b]."
+"transitions finish faster. Resolved durations are clamped to 0.06-0.26 "
+"seconds (exit animations to 0.04-0.16 seconds), so extreme values stay "
+"within the perceptibility budget. Changing any animation parameter switches "
+"the style to [b]Custom[/b]."
 msgstr ""
-"缩放所有编辑器界面动画的时长；数值越大过渡结束越快。修改任一动画参数都会切换到 Custom。"
+"缩放所有编辑器界面动画的时长；数值越大过渡结束越快。解析后的时长会被限制在 0.06–0.26 秒（退出动画为 0.04–0.16 秒），因此极端数值也保持在可感知预算内。修改任一动画参数都会切换到 Custom。"
 
 #: doc/classes/EditorSettings.xml
 msgid ""

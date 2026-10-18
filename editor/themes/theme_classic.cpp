@@ -461,7 +461,7 @@ void ThemeClassic::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edi
 			option_button_pressed_style->set_content_margin(SIDE_RIGHT, EDSCALE_RND(4));
 			option_button_disabled_style->set_content_margin(SIDE_RIGHT, EDSCALE_RND(4));
 
-			if (EditorThemeManager::is_expressive_animation_style()) {
+			if (EditorThemeManager::uses_expressive_base_table()) {
 				// Mirrored option buttons use this copy of the shared hover box, so they need the same bloom
 				// as the unmirrored ones (the shared box gets it after the style files are populated).
 				option_button_hover_style->set_expand_margin_all(2 * EDSCALE);
@@ -1904,7 +1904,7 @@ void ThemeClassic::populate_editor_styles(const Ref<EditorTheme> &p_theme, Edito
 		// Recovery mode button is implicitly styled from the panel's background.
 		// So, remove any existing borders. (e.g. from draw_extra_borders config)
 		style_recovery_mode_button->set_border_width_all(0);
-		if (EditorThemeManager::is_expressive_animation_style()) {
+		if (EditorThemeManager::uses_expressive_base_table()) {
 			// This style is used as a normal button in recovery mode, so do not inherit the pressed shrink.
 			style_recovery_mode_button->set_expand_margin(SIDE_LEFT, 0);
 			style_recovery_mode_button->set_expand_margin(SIDE_TOP, 0);

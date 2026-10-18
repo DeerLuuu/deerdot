@@ -263,4 +263,34 @@ TEST_CASE("[Editor][Theme] Derived style reports Custom when parameters diverge"
 	CHECK(EditorThemeManager::get_derived_animation_style(pixel, "Subtle") == EditorThemeManager::ANIMATION_STYLE_CUSTOM);
 }
 
+TEST_CASE("[Editor][Theme] Animation parameter reads prefer file values after a restart") {
+	const EditorThemeManager::AnimationParams subtle = EditorThemeManager::PRESET_PARAMS[0];
+	const EditorThemeManager::AnimationParams expressive = EditorThemeManager::PRESET_PARAMS[1];
+
+	// Old Expressive settings file with missing keys: the value equals the Subtle registration default and
+	// the session changed list is empty (it is cleared by save()/restart), so the Expressive preset wins.
+	CHECK_FALSE(EditorThemeManager::should_read_animation_param_from_file("Expressive", false, subtle.speed_scale, subtle.speed_scale));
+	CHECK_FALSE(EditorThemeManager::should_read_animation_param_from_file("Expressive", false, subtle.popup_open_ms, subtle.popup_open_ms));
+
+	// After a restart of a materialized Custom file the changed list is empty, but the file value differs
+	// from the registration default, so it must be read back instead of falling back to the preset.
+	CHECK(EditorThemeManager::should_read_animation_param_from_file("Custom", false, 1.4, subtle.speed_scale));
+	CHECK(EditorThemeManager::should_read_animation_param_from_file("Expressive", false, 1.4, subtle.speed_scale));
+	CHECK(EditorThemeManager::should_read_animation_param_from_file("Subtle", false, 0.85, subtle.popup_open_scale));
+
+	// A key changed in this session is always authoritative, even when it equals the registration default.
+	CHECK(EditorThemeManager::should_read_animation_param_from_file("Expressive", true, subtle.speed_scale, subtle.speed_scale));
+
+	// stored=Custom + file values -> derived Custom, Expressive base table and the file parameters.
+	EditorThemeManager::AnimationParams file = expressive;
+	file.speed_scale = 1.4;
+	CHECK(EditorThemeManager::get_derived_animation_style(file, "Custom") == EditorThemeManager::ANIMATION_STYLE_CUSTOM);
+	const AnimationParameters custom = EditorThemeManager::resolve_animation_parameters(EditorThemeManager::ANIM_BUTTON_NORMAL, EditorThemeManager::ANIMATION_STYLE_CUSTOM, file);
+	const AnimationParameters expressive_base = EditorThemeManager::resolve_animation_parameters(EditorThemeManager::ANIM_BUTTON_NORMAL, EditorThemeManager::ANIMATION_STYLE_EXPRESSIVE, file);
+	const AnimationParameters table = EditorThemeManager::get_animation_parameters(EditorThemeManager::ANIM_BUTTON_NORMAL, EditorThemeManager::ANIMATION_STYLE_EXPRESSIVE);
+	CHECK(custom.duration == doctest::Approx(expressive_base.duration));
+	CHECK(custom.duration == doctest::Approx(CLAMP(table.duration * 1.4, 0.06, 0.26)));
+	CHECK(custom.scale == expressive_base.scale);
+}
+
 } // namespace TestEditorThemeAnimations

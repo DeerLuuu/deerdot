@@ -249,6 +249,12 @@ public:
 	// Values the user currently has, with the legacy fallback: a missing parameter reads the preset of the
 	// *stored* style, so an old Expressive settings file does not silently get Subtle values.
 	static AnimationParams get_user_animation_params();
+	// True when the value stored in the settings file must win over the stored-style preset: the style is
+	// Custom, the key changed this session, or the file value differs from the registered default. The file
+	// value is what survives a restart, so this must not depend on the session-only changed list alone.
+	static bool should_read_animation_param_from_file(const String &p_stored_style, bool p_changed, double p_value, double p_registered_default);
+	// Expressive semantics for geometry resets and bloom: Custom uses the Expressive base table too.
+	static bool uses_expressive_base_table();
 	// Pure derived style: Custom when the stored preset no longer matches the parameters. Never writes.
 	static AnimationStyle get_derived_animation_style(const AnimationParams &p_params, const String &p_stored_style);
 	static bool animation_params_match(const AnimationParams &p_a, const AnimationParams &p_b);

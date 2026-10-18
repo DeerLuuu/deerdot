@@ -94,8 +94,20 @@ void EditorSettingsDialog::_settings_property_edited() {
 		update_3d_navigation_preset();
 		_update_shortcuts();
 	} else if (full_name.begins_with("interface/theme/ui_animations/")) {
-		// Any animation knob diverges from the stored preset: report Custom. The manager derives this too,
-		// this only keeps the enum display in sync.
+		// Any animation knob diverges from the stored preset: materialize the ten effective values first,
+		// then report Custom. This keeps an old settings file self-consistent (all knobs present), so a
+		// restart reads back the same values even with an empty session changed list.
+		const EditorThemeManager::AnimationParams params = EditorThemeManager::get_user_animation_params();
+		EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/speed_scale", params.speed_scale);
+		EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/motion_amount", params.motion_amount);
+		EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/button_bloom_px", params.bloom_px);
+		EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/button_press_squash_px", params.press_squash_px);
+		EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/row_highlight_slide_px", params.row_slide_px);
+		EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/menu_highlight_slide_px", params.menu_slide_px);
+		EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/tab_lift_px", params.tab_lift_px);
+		EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/popup_open_scale", params.popup_open_scale);
+		EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/popup_open_ms", params.popup_open_ms);
+		EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/script_reveal_line_delay_ms", params.reveal_delay_ms);
 		EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations_style", "Custom");
 	} else if (full_name == "interface/theme/ui_animations_style") {
 		const String style = EDITOR_GET("interface/theme/ui_animations_style");

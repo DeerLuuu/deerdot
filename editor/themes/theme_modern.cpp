@@ -710,7 +710,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			Ref<StyleBoxFlat> style_tree_selected = p_config.flat_button_pressed->duplicate();
 			style_tree_selected->set_content_margin_all(0);
 			EditorThemeManager::animate_stylebox(style_tree_selected, EditorThemeManager::ANIM_TREE_SELECTED);
-			if (EditorThemeManager::is_expressive_animation_style()) {
+			if (EditorThemeManager::uses_expressive_base_table()) {
 				// Expressive shrinks the flat pressed stylebox by 1px. A selected row is not a press,
 				// so keep it at full size instead of inheriting the shrink.
 				style_tree_selected->set_expand_margin_all(0);
@@ -757,7 +757,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			Ref<StyleBoxFlat> style_project_list_hover_pressed = style_project_list_selected->duplicate();
 			style_project_list_hover_pressed->set_bg_color(_get_base_color(p_config, -1.2, 0.75));
 
-			if (EditorThemeManager::is_expressive_animation_style()) {
+			if (EditorThemeManager::uses_expressive_base_table()) {
 				// ProjectList inherits the flat button styles, which would give list rows the toolbar bounce
 				// and no animation at all for the selected row. Use the Tree row animations instead, so list
 				// rows share the same sliding hover and popping selection as every other list in the editor.
@@ -788,7 +788,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			p_theme->set_stylebox("cursor", "ItemList", style_itemlist_cursor);
 			p_theme->set_stylebox("cursor_unfocused", "ItemList", style_itemlist_cursor);
 			p_theme->set_stylebox("selected_focus", "ItemList", p_config.focus_style);
-			if (EditorThemeManager::is_expressive_animation_style()) {
+			if (EditorThemeManager::uses_expressive_base_table()) {
 				// Expressive shrinks the flat pressed stylebox by 1px. A selected item is not a press,
 				// so use a copy that keeps the full size (the animation values are inherited).
 				Ref<StyleBoxFlat> style_itemlist_selected = p_config.flat_button_pressed->duplicate();
@@ -1883,7 +1883,7 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 		Ref<StyleBoxFlat> bottom_panel_button_hover = p_config.flat_button_hover->duplicate();
 		bottom_panel_button_hover->set_content_margin_individual(EDSCALE_RND(p_config.base_margin * 2), EDSCALE_RND(p_config.base_margin * 1.2), EDSCALE_RND(p_config.base_margin * 2), EDSCALE_RND(p_config.base_margin * 1.2));
 
-		if (EditorThemeManager::is_expressive_animation_style()) {
+		if (EditorThemeManager::uses_expressive_base_table()) {
 			// Bottom panel tabs follow the main tab rhythm: a springy reorder with no inherited pressed shrink,
 			// toolbar bounce or fade-out seed. The tab state also enables rect animation, like the main tabs.
 			bottom_panel_button_pressed->set_expand_margin_all(0);
@@ -1998,7 +1998,7 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 		// Recovery mode button is implicitly styled from the panel's background.
 		// So, remove any existing borders. (e.g. from draw_extra_borders config)
 		style_recovery_mode_button->set_border_width_all(0);
-		if (EditorThemeManager::is_expressive_animation_style()) {
+		if (EditorThemeManager::uses_expressive_base_table()) {
 			// This style is used as a normal button in recovery mode, so do not inherit the pressed shrink.
 			style_recovery_mode_button->set_expand_margin(SIDE_LEFT, 0);
 			style_recovery_mode_button->set_expand_margin(SIDE_TOP, 0);

@@ -291,27 +291,47 @@ EditorThemeManager::AnimationParams EditorThemeManager::get_user_animation_param
 	EditorSettings *settings = EditorSettings::get_singleton();
 	const PackedStringArray changed = settings->get_changed_settings();
 
-	auto read_double = [&](const char *p_name, double p_default) -> double {
+	// Read the value from the file when it is authoritative (Custom style, changed this session, or it
+	// differs from the registered default); otherwise use the stored-style preset. The changed list is
+	// session-only and is cleared by save(), so the default comparison is what keeps user values after a
+	// restart or after the dialog's save debounce.
+	auto read_double = [&](const char *p_name, double p_default, double p_registered_default) -> double {
 		const String key = String("interface/theme/ui_animations/") + p_name;
-		return changed.has(key) ? (double)settings->get_setting(key) : p_default;
+		const double value = (double)settings->get_setting(key);
+		return should_read_animation_param_from_file(stored, changed.has(key), value, p_registered_default) ? value : p_default;
 	};
-	auto read_int = [&](const char *p_name, int p_default) -> int {
+	auto read_int = [&](const char *p_name, int p_default, int p_registered_default) -> int {
 		const String key = String("interface/theme/ui_animations/") + p_name;
-		return changed.has(key) ? (int)settings->get_setting(key) : p_default;
+		const int value = (int)settings->get_setting(key);
+		return should_read_animation_param_from_file(stored, changed.has(key), value, p_registered_default) ? value : p_default;
 	};
 
+	const AnimationParams &registration_defaults = PRESET_PARAMS[0];
 	AnimationParams params;
-	params.speed_scale = _clamp_speed(read_double("speed_scale", fallback.speed_scale));
-	params.motion_amount = CLAMP(read_double("motion_amount", fallback.motion_amount), 0.0, 1.0);
-	params.bloom_px = CLAMP(read_int("button_bloom_px", fallback.bloom_px), 0, 4);
-	params.press_squash_px = CLAMP(read_int("button_press_squash_px", fallback.press_squash_px), 0, 6);
-	params.row_slide_px = CLAMP(read_int("row_highlight_slide_px", fallback.row_slide_px), 0, 12);
-	params.menu_slide_px = CLAMP(read_int("menu_highlight_slide_px", fallback.menu_slide_px), 0, 12);
-	params.tab_lift_px = CLAMP(read_int("tab_lift_px", fallback.tab_lift_px), 0, 8);
-	params.popup_open_scale = CLAMP(read_double("popup_open_scale", fallback.popup_open_scale), 0.80, 1.00);
-	params.popup_open_ms = CLAMP(read_int("popup_open_ms", fallback.popup_open_ms), 80, 240);
-	params.reveal_delay_ms = CLAMP(read_int("script_reveal_line_delay_ms", fallback.reveal_delay_ms), 0, 30);
+	params.speed_scale = _clamp_speed(read_double("speed_scale", fallback.speed_scale, registration_defaults.speed_scale));
+	params.motion_amount = CLAMP(read_double("motion_amount", fallback.motion_amount, registration_defaults.motion_amount), 0.0, 1.0);
+	params.bloom_px = CLAMP(read_int("button_bloom_px", fallback.bloom_px, registration_defaults.bloom_px), 0, 4);
+	params.press_squash_px = CLAMP(read_int("button_press_squash_px", fallback.press_squash_px, registration_defaults.press_squash_px), 0, 6);
+	params.row_slide_px = CLAMP(read_int("row_highlight_slide_px", fallback.row_slide_px, registration_defaults.row_slide_px), 0, 12);
+	params.menu_slide_px = CLAMP(read_int("menu_highlight_slide_px", fallback.menu_slide_px, registration_defaults.menu_slide_px), 0, 12);
+	params.tab_lift_px = CLAMP(read_int("tab_lift_px", fallback.tab_lift_px, registration_defaults.tab_lift_px), 0, 8);
+	params.popup_open_scale = CLAMP(read_double("popup_open_scale", fallback.popup_open_scale, registration_defaults.popup_open_scale), 0.80, 1.00);
+	params.popup_open_ms = CLAMP(read_int("popup_open_ms", fallback.popup_open_ms, registration_defaults.popup_open_ms), 80, 240);
+	params.reveal_delay_ms = CLAMP(read_int("script_reveal_line_delay_ms", fallback.reveal_delay_ms, registration_defaults.reveal_delay_ms), 0, 30);
 	return params;
+}
+
+bool EditorThemeManager::should_read_animation_param_from_file(const String &p_stored_style, bool p_changed, double p_value, double p_registered_default) {
+	if (p_stored_style == "Custom" || p_changed) {
+		return true;
+	}
+	return !Math::is_equal_approx(p_value, p_registered_default);
+}
+
+bool EditorThemeManager::uses_expressive_base_table() {
+	// Custom also resolves to the Expressive base table; only Subtle (and disabled animations) keep the
+	// Subtle behavior. Used by geometry resets/bloom so a parameterized Custom style behaves like Expressive.
+	return EDITOR_GET("interface/theme/ui_animations") && get_animation_style() != ANIMATION_STYLE_SUBTLE;
 }
 
 bool EditorThemeManager::animation_params_match(const AnimationParams &p_a, const AnimationParams &p_b) {
