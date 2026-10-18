@@ -3023,6 +3023,7 @@ func _ready() -> void:
 		CHECK_FORMAT(code, pre_formatted);
 	}
 
+	// Kept in line with the get node initializer above: the formatter keeps explicit parentheses in variable initializers.
 	TEST_CASE("Should output a get node statement with a comment") {
 		const String code =
 				GDSCRIPT(R"(
@@ -3032,7 +3033,7 @@ func _ready() -> void:
 )");
 		const String pre_formatted =
 				GDSCRIPT(R"(
-@onready var some_var := $Path/To/Node # Comment here
+@onready var some_var := ($Path/To/Node) # Comment here
 )");
 
 		CHECK_FORMAT(code, pre_formatted);
