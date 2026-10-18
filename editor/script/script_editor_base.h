@@ -101,6 +101,7 @@ protected:
 		EDIT_SELECT_ALL,
 		EDIT_TRIM_TRAILING_WHITESAPCE,
 		EDIT_TRIM_FINAL_NEWLINES,
+		EDIT_FORMAT_CODE,
 		EDIT_CONVERT_INDENT_TO_SPACES,
 		EDIT_CONVERT_INDENT_TO_TABS,
 		EDIT_MOVE_LINE_UP,
@@ -223,6 +224,7 @@ public:
 
 	virtual void trim_trailing_whitespace() { code_editor->trim_trailing_whitespace(); }
 	virtual void trim_final_newlines() { code_editor->trim_final_newlines(); }
+	virtual void format_code() {}
 	virtual void insert_final_newline() { code_editor->insert_final_newline(); }
 
 	virtual void goto_line_without_history(int p_line, int p_column = 0) { code_editor->goto_line_without_history(p_line, p_column); }

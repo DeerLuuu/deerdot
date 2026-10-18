@@ -4507,6 +4507,10 @@ void DocumentEditorContainer::_reload_scripts(bool p_refresh_only) {
 
 void DocumentEditorContainer::_auto_format_text(ScriptEditorBase *p_seb) {
 	if (TextEditorBase *teb = Object::cast_to<TextEditorBase>(p_seb)) {
+		if (format_on_save) {
+			teb->format_code();
+			return;
+		}
 		if (trim_trailing_whitespace_on_save) {
 			teb->trim_trailing_whitespace();
 		}
@@ -4664,6 +4668,7 @@ void DocumentEditorContainer::_apply_editor_settings() {
 	trim_trailing_whitespace_on_save = EDITOR_GET("text_editor/behavior/files/trim_trailing_whitespace_on_save");
 	trim_final_newlines_on_save = EDITOR_GET("text_editor/behavior/files/trim_final_newlines_on_save");
 	convert_indent_on_save = EDITOR_GET("text_editor/behavior/files/convert_indent_on_save");
+	format_on_save = EDITOR_GET("text_editor/behavior/formatter/format_on_save");
 
 	document_outline->update_editor_settings();
 
@@ -6254,6 +6259,7 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 	trim_trailing_whitespace_on_save = EDITOR_GET("text_editor/behavior/files/trim_trailing_whitespace_on_save");
 	trim_final_newlines_on_save = EDITOR_GET("text_editor/behavior/files/trim_final_newlines_on_save");
 	convert_indent_on_save = EDITOR_GET("text_editor/behavior/files/convert_indent_on_save");
+	format_on_save = EDITOR_GET("text_editor/behavior/formatter/format_on_save");
 
 	//// Highlighters ////
 

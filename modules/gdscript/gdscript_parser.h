@@ -363,6 +363,8 @@ public:
 		int end_line = -1;
 		int end_column = -1;
 		Node *next = nullptr;
+		Vector<String> header_comment;
+		String inline_comment;
 		List<AnnotationNode *> annotations;
 
 		virtual bool is_expression() const { return false; }
@@ -374,6 +376,7 @@ public:
 		// Base type for all expression kinds.
 		bool reduced = false;
 		bool is_constant = false;
+		bool is_grouped = false;
 		Variant reduced_value;
 
 		DataType type_constraint;
@@ -406,6 +409,7 @@ public:
 
 	struct ArrayNode : public ExpressionNode {
 		LocalVector<ExpressionNode *> elements;
+		Vector<String> footer_comments;
 
 		ArrayNode() {
 			type = ARRAY;
@@ -525,6 +529,7 @@ public:
 		StringName function_name;
 		bool is_super = false;
 		bool is_static = false;
+		Vector<String> params_footer_comment;
 
 		CallNode() {
 			type = CALL;
@@ -798,6 +803,13 @@ public:
 		bool annotated_static_unload = false;
 		String extends_path;
 		Vector<IdentifierNode *> extends; // List for indexing: extends A.B.C
+		String extends_inline_comment;
+		Vector<String> extends_header_comment;
+		String tool_inline_comment;
+		Vector<String> tool_header_comment;
+		String icon_inline_comment;
+		Vector<String> icon_header_comment;
+		Vector<String> footer_comment;
 		DataType base_type;
 		// Metatype that represents this class. Always contains a hard-type.
 		DataType self_type;
@@ -920,6 +932,7 @@ public:
 			ExpressionNode *value = nullptr;
 		};
 		LocalVector<Pair> elements;
+		Vector<String> footer_comments;
 
 		enum Style {
 			LUA_TABLE,
@@ -972,6 +985,7 @@ public:
 
 		bool resolved_signature = false;
 		bool resolved_body = false;
+		Vector<String> params_footer_comments;
 
 		_FORCE_INLINE_ bool is_vararg() const { return rest_parameter != nullptr; }
 
@@ -1059,6 +1073,9 @@ public:
 
 	struct LiteralNode : public ExpressionNode {
 		Variant value;
+		String source;
+		bool is_builtin_constant = false;
+		GDScriptTokenizer::Token::Type constant_type = GDScriptTokenizer::Token::EMPTY;
 
 		LiteralNode() {
 			type = LITERAL;
@@ -1167,6 +1184,7 @@ public:
 		LocalVector<ParameterNode *> parameters;
 		HashMap<StringName, uint32_t> parameters_indices;
 		MethodInfo method_info;
+		bool has_empty_parameter_list = false;
 #ifdef TOOLS_ENABLED
 		MemberDocData doc_data;
 #endif // TOOLS_ENABLED
@@ -1275,6 +1293,7 @@ public:
 		Local empty;
 		LocalVector<Local> locals;
 		HashMap<StringName, uint32_t> locals_indices;
+		Vector<String> footer_comment;
 
 		FunctionNode *parent_function = nullptr;
 		IfNode *parent_if = nullptr;
@@ -1515,6 +1534,7 @@ private:
 
 	CompletionContext completion_context;
 	List<CompletionCall> completion_call_stack;
+	Vector<String> last_comment_block;
 	bool in_lambda = false;
 	bool lambda_ended = false; // Marker for when a lambda ends, to apply an end of statement if needed.
 
@@ -1639,6 +1659,8 @@ private:
 	void evaluate_warning_directory_rules_for_script_path();
 #endif // DEBUG_ENABLED
 
+	String turn_disabled_lines_into_headers(const String &p_source);
+
 	// Setting p_force to false will prevent the completion context from being update if a context was already set before.
 	// This should only be done when we push context before we consumed any tokens for the corresponding structure.
 	// See parse_precedence for an example.
@@ -1656,6 +1678,7 @@ private:
 	bool check(GDScriptTokenizer::Token::Type p_token_type) const;
 	bool consume(GDScriptTokenizer::Token::Type p_token_type, const String &p_error_message);
 	bool is_at_end() const;
+	bool is_dedenting() const;
 	bool is_statement_end_token() const;
 	bool is_statement_end() const;
 	void end_statement(const String &p_context);
@@ -1701,6 +1724,8 @@ private:
 	bool warning_ignore_region_annotations(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool rpc_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	// Statements.
+	Vector<String> check_for_comment_block();
+	String check_for_comment();
 	Node *parse_statement();
 	VariableNode *parse_variable(bool p_is_static);
 	VariableNode *parse_variable(bool p_is_static, bool p_allow_property);

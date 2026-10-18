@@ -243,6 +243,7 @@ public:
 	virtual void set_edited_resource(const Ref<Resource> &p_res) override;
 	virtual void enable_editor() override;
 	virtual Vector<String> get_functions() override;
+	virtual void format_code() override;
 
 	virtual EditMenusBase *create_edit_menu(DocumentEditorContainer *p_document_editor_container) override { return memnew(EditMenusScTE(p_document_editor_container)); }
 

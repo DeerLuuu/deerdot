@@ -419,6 +419,7 @@ class DocumentEditorContainer : public MarginContainer {
 	bool trim_trailing_whitespace_on_save;
 	bool trim_final_newlines_on_save;
 	bool convert_indent_on_save;
+	bool format_on_save;
 	bool external_editor_active;
 
 	void _goto_script_line(Ref<RefCounted> p_script, int p_line);

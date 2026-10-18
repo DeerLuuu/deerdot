@@ -196,6 +196,17 @@ public:
 	 */
 	virtual void format_code(String &r_code, uint32_t p_from_line, uint32_t p_to_line) const {}
 
+	/**
+	 * Called by the editor to reformat an entire source fragment.
+	 *
+	 * Unlike the line-based `format_code()` above, implementations may restructure the whole
+	 * document (e.g. the GDScript formatter). The default implementation returns the code unchanged.
+	 *
+	 * @param p_code The current content of the source fragment.
+	 * @return The formatted code, or `p_code` unchanged if formatting is not supported or failed.
+	 */
+	virtual String format_code(const String &p_code) { return p_code; }
+
 	struct Warning {
 		/// One-based.
 		int start_line = 0;

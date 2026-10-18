@@ -30,6 +30,7 @@
 
 #include "gdscript.h"
 #include "gdscript_analyzer.h"
+#include "gdscript_format.h"
 #include "gdscript_linter.h"
 #include "gdscript_parser.h"
 #include "gdscript_tokenizer.h"
@@ -4191,6 +4192,16 @@ void GDScriptEditorLanguage::format_code(String &r_code, uint32_t p_from_line, u
 	}
 
 	r_code = String("\n").join(lines);
+}
+
+String GDScriptEditorLanguage::format_code(const String &p_code) {
+	GDScriptFormat formatter;
+	String formatted_code;
+	Error err = formatter.format(p_code, formatted_code);
+	if (err != OK) {
+		return p_code;
+	}
+	return formatted_code;
 }
 
 static Error _lookup_symbol_from_base(const GDScriptParser::DataType &p_base, const String &p_symbol, EditorLanguage::LookupResult &r_result) {

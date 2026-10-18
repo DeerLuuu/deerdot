@@ -46,6 +46,7 @@ public:
 	virtual int32_t find_function(const String &p_function, const String &p_code) const override;
 
 	virtual void format_code(String &r_code, uint32_t p_from_line, uint32_t p_to_line) const override;
+	virtual String format_code(const String &p_code) override;
 
 	virtual bool validate(const String &p_code, const String &p_path, List<ScriptError> *r_errors, List<Warning> *r_warnings, List<String> *r_functions, HashSet<int> *r_safe_lines) const override;
 

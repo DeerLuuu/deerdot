@@ -198,6 +198,45 @@ void ScriptTextEditor::apply_code() {
 	code_editor->get_text_editor()->get_syntax_highlighter()->update_cache();
 }
 
+void ScriptTextEditor::format_code() {
+	CodeEdit *tx = code_editor->get_text_editor();
+	const String original = tx->get_text();
+	Ref<Script> scr = edited_res;
+	if (scr.is_null()) {
+		return;
+	}
+
+	const String formatted_code = scr->get_language()->get_editor_language()->format_code(original);
+
+	if (formatted_code == original) {
+		return;
+	}
+
+	const Vector<String> original_lines = original.split("\n");
+	const Vector<String> formatted_lines = formatted_code.split("\n");
+
+	tx->begin_complex_operation();
+
+	const int end = MIN(original_lines.size(), formatted_lines.size());
+	for (int i = 0; i < end; ++i) {
+		if (original_lines[i] == formatted_lines[i]) {
+			continue;
+		}
+		tx->set_line(i, formatted_lines[i]);
+	}
+	if (original_lines.size() > formatted_lines.size()) {
+		tx->remove_text(formatted_lines.size() - 1, 0, original_lines.size() - 1, tx->get_line_width(original_lines.size() - 1));
+	} else if (original_lines.size() < formatted_lines.size()) {
+		Vector remainder{ tx->get_line(tx->get_line_count() - 1) };
+		remainder.append_array(formatted_lines.slice(tx->get_line_count()));
+		tx->set_line(tx->get_line_count() - 1, String("\n").join(remainder));
+	}
+
+	tx->end_complex_operation();
+
+	code_editor->get_text_editor()->get_syntax_highlighter()->update_cache();
+}
+
 void ScriptTextEditor::set_edited_resource(const Ref<Resource> &p_res) {
 	ERR_FAIL_COND(p_res.is_null());
 	ERR_FAIL_COND(edited_res.is_valid());
@@ -2835,6 +2874,7 @@ void ScriptTextEditor::register_editor() {
 	ED_SHORTCUT("script_text_editor/toggle_word_wrap", TTRC("Toggle Word Wrap"), KeyModifierMask::ALT | Key::Z);
 	ED_SHORTCUT("script_text_editor/trim_trailing_whitespace", TTRC("Trim Trailing Whitespace"), KeyModifierMask::CMD_OR_CTRL | KeyModifierMask::ALT | Key::T);
 	ED_SHORTCUT("script_text_editor/trim_final_newlines", TTRC("Trim Final Newlines"), Key::NONE);
+	ED_SHORTCUT("script_text_editor/format_code", TTRC("Format Code"), KeyModifierMask::SHIFT | KeyModifierMask::ALT | Key::F);
 	ED_SHORTCUT("script_text_editor/convert_indent_to_spaces", TTRC("Convert Indent to Spaces"), KeyModifierMask::CMD_OR_CTRL | KeyModifierMask::SHIFT | Key::Y);
 	ED_SHORTCUT("script_text_editor/convert_indent_to_tabs", TTRC("Convert Indent to Tabs"), KeyModifierMask::CMD_OR_CTRL | KeyModifierMask::SHIFT | Key::I);
 	ED_SHORTCUT("script_text_editor/auto_indent", TTRC("Auto Indent"), KeyModifierMask::CMD_OR_CTRL | Key::I);
