@@ -99,6 +99,13 @@ class GDScriptSnippetEditor : public AcceptDialog {
 
 	SnippetDirTab &get_tab(int p_index) { return tabs[p_index]; }
 
+	// The window is attached to the window the script editor currently lives in (a floating script editor
+	// lives in its own Window), and shown deferred so an exclusive child window cannot block it silently.
+	static Window *_get_host_window();
+	void _open_deferred();
+	void _retry_open();
+	void _reset_singleton();
+
 	void _build_tab(int p_index, const String &p_title, const String &p_dir);
 	void _refresh_tab(int p_index);
 	void _load_file(int p_index, const String &p_path);
@@ -117,9 +124,8 @@ class GDScriptSnippetEditor : public AcceptDialog {
 
 public:
 	static GDScriptSnippetEditor *get_singleton() { return singleton; }
-
-	// Registered as the script editor's "Code Snippets..." opener. Lazily
-	// creates the window (as a child of EditorNode) and shows it.
+	// Registered as the script editor's "Code Snippets..." opener. Lazily creates the window (as a child
+	// of the window the script editor currently lives in) and shows it on the next idle frame.
 	static void open_snippets_editor();
 	static void reload_snippets();
 
@@ -128,4 +134,5 @@ public:
 	static void fill_context_menu(PopupMenu *p_menu, ScriptEditorBase *p_editor);
 
 	GDScriptSnippetEditor();
+	~GDScriptSnippetEditor() override;
 };

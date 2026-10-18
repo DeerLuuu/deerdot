@@ -39,12 +39,15 @@
 #include "core/io/json.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
+#include "core/object/message_queue.h"
 #include "core/os/os.h"
+#include "editor/editor_interface.h"
 #include "editor/editor_node.h"
 #include "editor/file_system/editor_paths.h"
 #include "editor/gui/snippet_parser.h"
 #include "editor/gui/snippet_session.h"
 #include "editor/script/script_editor_base.h"
+#include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
@@ -169,14 +172,78 @@ void GDScriptSnippetEditor::_expand_context_menu_snippet(int p_id) {
 }
 
 void GDScriptSnippetEditor::open_snippets_editor() {
-	if (!singleton) {
-		singleton = memnew(GDScriptSnippetEditor);
-		EditorNode::get_singleton()->add_child(singleton);
+	if (singleton != nullptr && singleton->is_queued_for_deletion()) {
+		singleton = nullptr;
 	}
+	Window *host = _get_host_window();
+	if (host == nullptr) {
+		return;
+	}
+	if (singleton == nullptr) {
+		singleton = memnew(GDScriptSnippetEditor);
+		host->add_child(singleton);
+		// Reset the singleton while the window is still leaving the tree, so a later open() cannot reuse a
+		// pointer that is about to be freed.
+		singleton->connect(SNAME("tree_exiting"), callable_mp(singleton, &GDScriptSnippetEditor::_reset_singleton));
+	} else if (singleton->get_parent() != host) {
+		// The script editor may have been floated (or docked again) since the window was created; follow it.
+		if (singleton->is_visible()) {
+			singleton->hide();
+		}
+		singleton->reparent(host);
+	}
+	// Show on the next idle frame: another exclusive child window may still be closing, and Godot refuses
+	// to show a second exclusive window in the same frame.
+	MessageQueue::get_singleton()->push_callable(callable_mp(singleton, &GDScriptSnippetEditor::_open_deferred));
+}
 
-	singleton->_refresh_tab(TAB_GLOBAL);
-	singleton->_refresh_tab(TAB_PROJECT);
-	singleton->popup_centered(Size2i(1000, 640));
+Window *GDScriptSnippetEditor::_get_host_window() {
+	// The script editor can be docked (main window) or floating (its own Window); the snippets window must
+	// live in the same window, otherwise it opens behind the floating script editor.
+	if (EditorInterface::get_singleton()) {
+		if (ScriptEditor *script_editor = EditorInterface::get_singleton()->get_script_editor()) {
+			if (Window *window = script_editor->get_window()) {
+				return window;
+			}
+		}
+	}
+	if (EditorNode::get_singleton()) {
+		return EditorNode::get_singleton()->get_window();
+	}
+	return nullptr;
+}
+
+void GDScriptSnippetEditor::_open_deferred() {
+	if (!is_inside_tree()) {
+		return;
+	}
+	_refresh_tab(TAB_GLOBAL);
+	_refresh_tab(TAB_PROJECT);
+	popup_centered(Size2i(1000, 640));
+	if (!is_visible()) {
+		// An exclusive child window (another dialog) can still be open. Retry once on the next idle frame.
+		MessageQueue::get_singleton()->push_callable(callable_mp(this, &GDScriptSnippetEditor::_retry_open));
+	}
+}
+
+void GDScriptSnippetEditor::_retry_open() {
+	if (!is_inside_tree()) {
+		return;
+	}
+	popup_centered(Size2i(1000, 640));
+	if (!is_visible()) {
+		print_error("Code Snippets window could not be shown. Close other modal editor windows and try again.");
+	}
+}
+
+GDScriptSnippetEditor::~GDScriptSnippetEditor() {
+	_reset_singleton();
+}
+
+void GDScriptSnippetEditor::_reset_singleton() {
+	if (singleton == this) {
+		singleton = nullptr;
+	}
 }
 
 void GDScriptSnippetEditor::_build_tab(int p_index, const String &p_title, const String &p_dir) {
