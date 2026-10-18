@@ -1173,19 +1173,19 @@ void CodeTextEditor::play_intro_reveal() {
 	Ref<Shader> shader;
 	shader.instantiate();
 	shader->set_code(CODE_INTRO_REVEAL_SHADER);
-	Ref<ShaderMaterial> material;
-	material.instantiate();
-	material->set_shader(shader);
-	material->set_shader_parameter("start_time", (double)Time::get_singleton()->get_ticks_msec() / 1000.0);
-	material->set_shader_parameter("line_height", (double)text_editor->get_line_height());
-	material->set_shader_parameter("line_stagger", INTRO_LINE_STAGGER);
-	material->set_shader_parameter("line_duration", INTRO_LINE_DURATION);
-	material->set_shader_parameter("max_lines", (double)INTRO_MAX_LINES);
-	material->set_shader_parameter("reveal_width", (double)MAX(text_editor->get_size().x, 1.0f));
-	material->set_shader_parameter("wipe_soft", 0.08);
+	Ref<ShaderMaterial> reveal_material;
+	reveal_material.instantiate();
+	reveal_material->set_shader(shader);
+	reveal_material->set_shader_parameter("start_time", (double)Time::get_singleton()->get_ticks_msec() / 1000.0);
+	reveal_material->set_shader_parameter("line_height", (double)text_editor->get_line_height());
+	reveal_material->set_shader_parameter("line_stagger", INTRO_LINE_STAGGER);
+	reveal_material->set_shader_parameter("line_duration", INTRO_LINE_DURATION);
+	reveal_material->set_shader_parameter("max_lines", (double)INTRO_MAX_LINES);
+	reveal_material->set_shader_parameter("reveal_width", (double)MAX(text_editor->get_size().x, 1.0f));
+	reveal_material->set_shader_parameter("wipe_soft", 0.08);
 
-	intro_material = material;
-	text_editor->set_material(material);
+	intro_material = reveal_material;
+	text_editor->set_material(reveal_material);
 
 	const int revealed_lines = MIN(text_editor->get_line_count(), INTRO_MAX_LINES);
 	const double total = INTRO_LINE_DURATION + revealed_lines * INTRO_LINE_STAGGER + 0.05;

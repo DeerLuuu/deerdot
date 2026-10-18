@@ -172,13 +172,13 @@ void Popup::_play_open_animation() {
 	open_values_saved = true;
 
 	// Grow from the interaction point, clamped inside the popup so it never appears to fly in from outside.
-	const Vector2 size = content->get_size();
-	Vector2 pivot = size * 0.5f;
+	const Vector2 content_size = content->get_size();
+	Vector2 pivot = content_size * 0.5f;
 	if (is_inside_tree()) {
 		pivot = content->get_global_transform().affine_inverse().xform(get_mouse_position());
 	}
-	pivot.x = CLAMP(pivot.x, size.x * 0.15f, size.x * 0.85f);
-	pivot.y = CLAMP(pivot.y, size.y * 0.15f, size.y * 0.85f);
+	pivot.x = CLAMP(pivot.x, content_size.x * 0.15f, content_size.x * 0.85f);
+	pivot.y = CLAMP(pivot.y, content_size.y * 0.15f, content_size.y * 0.85f);
 	content->set_pivot_offset(pivot);
 
 	const float start_scale = tooltip ? TOOLTIP_ANIMATION_SCALE_EXPRESSIVE : OPEN_ANIMATION_SCALE_EXPRESSIVE;
