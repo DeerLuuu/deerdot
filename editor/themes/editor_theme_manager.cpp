@@ -249,6 +249,21 @@ bool EditorThemeManager::is_expressive_animation_style() {
 	return EDITOR_GET("interface/theme/ui_animations") && get_animation_style() == ANIMATION_STYLE_EXPRESSIVE;
 }
 
+EditorThemeManager::AnimationParameters EditorThemeManager::get_animation_parameters(AnimationKind p_kind, AnimationStyle p_style) {
+	ERR_FAIL_INDEX_V(p_kind, ANIM_KIND_MAX, AnimationParameters());
+	const StyleBoxAnimation &animation = p_style == ANIMATION_STYLE_EXPRESSIVE ? expressive_animations[p_kind] : subtle_animations[p_kind];
+	AnimationParameters parameters;
+	parameters.duration = animation.duration;
+	parameters.transition = animation.transition;
+	parameters.animate_rect = animation.animate_rect;
+	parameters.exit_duration = animation.exit_duration;
+	parameters.exit_transition = animation.exit_transition;
+	parameters.fade = animation.fade;
+	parameters.offset = animation.offset;
+	parameters.scale = animation.scale;
+	return parameters;
+}
+
 void EditorThemeManager::animate_stylebox(const Ref<StyleBox> &p_style, AnimationKind p_kind) {
 	ERR_FAIL_INDEX(p_kind, ANIM_KIND_MAX);
 	if (p_style.is_null()) {

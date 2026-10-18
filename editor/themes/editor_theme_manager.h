@@ -31,6 +31,7 @@
 #pragma once
 
 #include "editor/themes/editor_theme.h"
+#include "scene/animation/tween.h"
 
 class StyleBoxFlat;
 class StyleBoxLine;
@@ -259,6 +260,24 @@ public:
 	static Ref<StyleBoxEmpty> make_empty_stylebox(float p_margin_left = -1, float p_margin_top = -1, float p_margin_right = -1, float p_margin_bottom = -1);
 	static Ref<StyleBoxTexture> make_stylebox(Ref<Texture2D> p_texture, float p_left, float p_top, float p_right, float p_bottom, float p_margin_left = -1, float p_margin_top = -1, float p_margin_right = -1, float p_margin_bottom = -1, bool p_draw_center = true);
 	static Ref<StyleBoxLine> make_line_stylebox(Color p_color, int p_thickness = 1, float p_grow_begin = 1, float p_grow_end = 1, bool p_vertical = false);
+
+	// Read-only copy of one animation table entry. The tables themselves stay private; this accessor exists
+	// so tests can keep the perceptibility budget and the Subtle baseline under regression coverage.
+	struct AnimationParameters {
+		double duration = 0.0;
+		Tween::TransitionType transition = Tween::TRANS_SINE;
+		bool animate_rect = false;
+		double exit_duration = 0.0;
+		Tween::TransitionType exit_transition = Tween::TRANS_SINE;
+		bool fade = false;
+		Point2 offset;
+		Size2 scale = Size2(1, 1);
+		// The table has no rotation data: animations created from it never rotate. Exposed so the budget
+		// test can pin this down explicitly instead of relying on the struct layout.
+		double rotation = 0.0;
+	};
+	static AnimationParameters get_animation_parameters(AnimationKind p_kind, AnimationStyle p_style);
+
 	// Sets up animation parameters for an editor StyleBox based on the active animation style. Does nothing if
 	// the `interface/theme/ui_animations` setting is disabled, so the editor stays fully static in that case.
 	// The exit animation also fades the box out, for styleboxes that are only drawn conditionally.
