@@ -514,6 +514,7 @@
 # Tests
 
 /tests/                                       @godotengine/tests
+/tests/editor/                                @godotengine/tests @godotengine/editor
 /tests/**/*.py                                @godotengine/tests @godotengine/buildsystem
 /tests/**/SConstruct                          @godotengine/tests @godotengine/buildsystem
 /tests/**/SCsub                               @godotengine/tests @godotengine/buildsystem
