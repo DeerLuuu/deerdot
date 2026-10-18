@@ -1196,12 +1196,38 @@ void DocumentEditorContainer::_setup_pane(TabContainer *p_pane) {
 	p_pane->connect("tab_changed", callable_mp(this, &DocumentEditorContainer::_pane_tab_changed).bind(p_pane));
 	p_pane->connect("active_tab_rearranged", callable_mp(this, &DocumentEditorContainer::_pane_tab_rearranged).bind(p_pane));
 
-	// Per-tab close buttons and the tab context menu belong to the tab bar.
+	// Per-tab close buttons and the tab context menu belong to the tab bar. The close button policy, the
+	// maximum tab width and the icon width follow the same settings as the scene tabs, so both tab strips
+	// behave and look the same.
 	if (TabBar *bar = p_pane->get_tab_bar()) {
-		bar->set_tab_close_display_policy(TabBar::CLOSE_BUTTON_SHOW_ALWAYS);
+		bar->set_tab_close_display_policy((TabBar::CloseButtonDisplayPolicy)EDITOR_GET("interface/scene_tabs/display_close_button").operator int());
+		bar->set_max_tab_width(int(EDITOR_GET("interface/scene_tabs/maximum_width")) * EDSCALE);
 		bar->connect("tab_close_pressed", callable_mp(this, &DocumentEditorContainer::_pane_tab_close_pressed).bind(p_pane));
 		bar->connect("tab_rmb_clicked", callable_mp(this, &DocumentEditorContainer::_show_tab_context_menu).bind(p_pane));
 	}
+}
+
+void DocumentEditorContainer::_update_tab_bar_settings() {
+	const TabBar::CloseButtonDisplayPolicy close_policy = (TabBar::CloseButtonDisplayPolicy)EDITOR_GET("interface/scene_tabs/display_close_button").operator int();
+	const int max_width = int(EDITOR_GET("interface/scene_tabs/maximum_width")) * EDSCALE;
+	const int icon_max_width = get_theme_constant(SNAME("class_icon_size"), EditorStringName(Editor));
+	for (TabContainer *pane : panes) {
+		if (TabBar *bar = pane->get_tab_bar()) {
+			bar->set_tab_close_display_policy(close_policy);
+			bar->set_max_tab_width(max_width);
+			bar->add_theme_constant_override("icon_max_width", icon_max_width);
+		}
+	}
+}
+
+void DocumentEditorContainer::_update_pane_top_spacing() {
+	if (pane_top_spacer == nullptr) {
+		return;
+	}
+	// The Expressive tab lift draws five pixels above the tab, so leave the same room above the panes.
+	// Subtle and disabled animations keep a zero-height spacer (pixel-identical layout).
+	const int spacing = EditorThemeManager::is_expressive_animation_style() ? 5 * EDSCALE : 0;
+	pane_top_spacer->set_custom_minimum_size(Size2(0, spacing));
 }
 
 void DocumentEditorContainer::_pane_tab_selected(int p_tab, TabContainer *p_pane) {
@@ -3935,6 +3961,8 @@ void DocumentEditorContainer::_notification(int p_what) {
 		case NOTIFICATION_THEME_CHANGED: {
 			tab_container->add_theme_style_override(SceneStringName(panel), get_theme_stylebox(SNAME("ScriptEditor"), EditorStringName(EditorStyles)));
 			_update_drop_overlay_theme();
+			_update_tab_bar_settings();
+			_update_pane_top_spacing();
 
 			_calculate_script_name_button_size();
 
@@ -3959,6 +3987,7 @@ void DocumentEditorContainer::_notification(int p_what) {
 		case EditorSettings::NOTIFICATION_EDITOR_SETTINGS_CHANGED: {
 			if (EditorThemeManager::is_generated_theme_outdated() ||
 					EditorSettings::get_singleton()->check_changed_settings_in_group("interface/editor/fonts") ||
+					EditorSettings::get_singleton()->check_changed_settings_in_group("interface/scene_tabs") ||
 					EditorSettings::get_singleton()->check_changed_settings_in_group("text_editor") ||
 					EditorSettings::get_singleton()->check_changed_settings_in_group("docks/filesystem")) {
 				_apply_editor_settings();
@@ -4937,6 +4966,9 @@ void DocumentEditorContainer::_apply_editor_settings() {
 	}
 
 	document_list->update_editor_settings();
+
+	_update_tab_bar_settings();
+	_update_pane_top_spacing();
 
 	ScriptServer::set_reload_scripts_on_save(EDITOR_GET("text_editor/behavior/files/auto_reload_and_parse_scripts_on_save"));
 
@@ -6122,6 +6154,11 @@ DocumentEditorContainer::DocumentEditorContainer(bool p_is_main_editor, const St
 
 	VBoxContainer *code_editor_container = memnew(VBoxContainer);
 	script_split->add_child(code_editor_container);
+
+	// Room above the panes for the Expressive tab lift. Resized in _update_pane_top_spacing().
+	pane_top_spacer = memnew(Control);
+	pane_top_spacer->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	code_editor_container->add_child(pane_top_spacer);
 
 	editor_split = memnew(HSplitContainer);
 	code_editor_container->add_child(editor_split);

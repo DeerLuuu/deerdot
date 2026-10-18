@@ -321,6 +321,7 @@ class DocumentEditorContainer : public MarginContainer {
 	bool split_overlay_shown = false; // Whether the overlay is shown (or appearing) for the current drag.
 	DropZone drop_overlay_zone = DROP_ZONE_NONE;
 	int active_pane = 0; // 0 = primary pane, 1 = split pane.
+	Control *pane_top_spacer = nullptr; // Extra room above the panes so the Expressive tab lift stays inside.
 	AcceptDialog *error_dialog = nullptr;
 	ConfirmationDialog *erase_tab_confirm = nullptr;
 	FindReplaceBar *find_replace_bar = nullptr;
@@ -486,6 +487,8 @@ class DocumentEditorContainer : public MarginContainer {
 	void _show_highlight_overlay(const Rect2 &p_rect, const String &p_hint);
 	void _apply_drop_overlay(const Rect2 &p_rect, const String &p_hint, bool p_accept_drops);
 	void _update_drop_overlay_pivot();
+	void _update_tab_bar_settings();
+	void _update_pane_top_spacing();
 	void _stop_split_overlay_tween();
 	void _start_split_overlay_tween(bool p_show);
 	void _split_overlay_entrance_finished();
