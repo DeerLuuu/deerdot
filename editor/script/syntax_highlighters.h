@@ -89,10 +89,12 @@ class EditorJSONSyntaxHighlighter : public EditorSyntaxHighlighter {
 
 private:
 	Ref<CodeHighlighter> highlighter;
+	HashMap<int, int> bracket_depth_cache;
 
 public:
 	virtual void _update_cache() override;
-	virtual Dictionary _get_line_syntax_highlighting_impl(int p_line) override { return highlighter->get_line_syntax_highlighting(p_line); }
+	virtual Dictionary _get_line_syntax_highlighting_impl(int p_line) override;
+	virtual void _clear_highlighting_cache() override;
 
 	virtual PackedStringArray _get_supported_languages() const override { return PackedStringArray{ "json" }; }
 	virtual String _get_name() const override { return TTR("JSON"); }
@@ -150,10 +152,12 @@ private:
 
 	Vector<Point2i> disabled_branch_regions;
 	Color disabled_branch_color;
+	HashMap<int, int> bracket_depth_cache;
 
 public:
 	virtual void _update_cache() override;
 	virtual Dictionary _get_line_syntax_highlighting_impl(int p_line) override;
+	virtual void _clear_highlighting_cache() override;
 
 	virtual PackedStringArray _get_supported_languages() const override { return PackedStringArray{ "gdshader", "gdshaderinc" }; }
 	virtual String _get_name() const override { return TTR("GDShader"); }

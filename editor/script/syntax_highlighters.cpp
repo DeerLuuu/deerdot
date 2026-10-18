@@ -34,9 +34,105 @@
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
 #include "editor/settings/editor_settings.h"
+#include "scene/gui/text_edit.h"
 #include "scene/resources/shader.h"
 #include "servers/rendering/shader_preprocessor.h"
 #include "servers/rendering/shader_types.h"
+
+#include "modules/modules_enabled.gen.h" // For gdscript.
+
+#ifdef MODULE_GDSCRIPT_ENABLED
+#include "modules/gdscript/editor/bracket_palette.h"
+#endif
+
+// Overlays rainbow bracket colors on top of the regular highlighting result.
+// Only brackets whose base color equals the symbol color are recolored, so
+// brackets inside strings, comments, numbers or disabled regions are untouched.
+static void overlay_rainbow_brackets(Dictionary &r_color_map, const String &p_line, int p_start_depth, const Color &p_symbol_color, int &r_end_depth) {
+	Vector<int> keys;
+	keys.reserve(r_color_map.size());
+	for (const KeyValue<Variant, Variant> &E : r_color_map) {
+		keys.push_back(E.key);
+	}
+	keys.sort();
+
+	int depth = p_start_depth;
+	int key_index = 0;
+	Color base_color = p_symbol_color;
+	if (!keys.is_empty() && keys[0] == 0) {
+		const Dictionary info = r_color_map[keys[0]];
+		if (info.has("color")) {
+			base_color = info["color"];
+		}
+		key_index = 1;
+	}
+
+	for (int i = 0; i < p_line.length(); i++) {
+		while (key_index < keys.size() && keys[key_index] <= i) {
+			const Dictionary info = r_color_map[keys[key_index]];
+			if (info.has("color")) {
+				base_color = info["color"];
+			}
+			key_index++;
+		}
+		const char32_t c = p_line[i];
+		if (c != '(' && c != '[' && c != '{' && c != ')' && c != ']' && c != '}') {
+			continue;
+		}
+		if (base_color != p_symbol_color) {
+			continue;
+		}
+		if (c == ')' || c == ']' || c == '}') {
+			depth = MAX(0, depth - 1);
+		}
+#ifdef MODULE_GDSCRIPT_ENABLED
+		Dictionary info;
+		info["color"] = bracket_palette_color(depth);
+		r_color_map[i] = info;
+#endif
+		if (c == '(' || c == '[' || c == '{') {
+			depth++;
+		}
+	}
+	r_end_depth = depth;
+}
+
+static Dictionary get_line_with_rainbow_brackets(const Ref<CodeHighlighter> &p_highlighter, TextEdit *p_text_edit, HashMap<int, int> &r_depth_cache, int p_line) {
+	Dictionary color_map = p_highlighter->get_line_syntax_highlighting(p_line);
+	if (p_text_edit == nullptr || p_line < 0 || p_line >= p_text_edit->get_line_count()) {
+		r_depth_cache.erase(p_line);
+		return color_map;
+	}
+
+	const Color symbol_color = p_highlighter->get_symbol_color();
+	int start_depth = 0;
+	if (p_line > 0) {
+		if (!r_depth_cache.has(p_line - 1)) {
+			int base_depth = 0;
+			int from_line = 0;
+			for (int i = p_line - 1; i >= 0; i--) {
+				if (r_depth_cache.has(i)) {
+					base_depth = r_depth_cache[i];
+					from_line = i + 1;
+					break;
+				}
+			}
+			for (int i = from_line; i < p_line; i++) {
+				Dictionary intermediate = p_highlighter->get_line_syntax_highlighting(i);
+				int end_depth = base_depth;
+				overlay_rainbow_brackets(intermediate, p_text_edit->get_line(i), base_depth, symbol_color, end_depth);
+				r_depth_cache[i] = end_depth;
+				base_depth = end_depth;
+			}
+		}
+		start_depth = r_depth_cache.has(p_line - 1) ? r_depth_cache[p_line - 1] : 0;
+	}
+
+	int end_depth = start_depth;
+	overlay_rainbow_brackets(color_map, p_text_edit->get_line(p_line), start_depth, symbol_color, end_depth);
+	r_depth_cache[p_line] = end_depth;
+	return color_map;
+}
 
 String EditorSyntaxHighlighter::_get_name() const {
 	String ret = "Unnamed";
@@ -216,6 +312,14 @@ void EditorJSONSyntaxHighlighter::_update_cache() {
 
 	const Color string_color = EDITOR_GET("text_editor/theme/highlighting/string_color");
 	highlighter->add_color_region("\"", "\"", string_color);
+}
+
+Dictionary EditorJSONSyntaxHighlighter::_get_line_syntax_highlighting_impl(int p_line) {
+	return get_line_with_rainbow_brackets(highlighter, text_edit, bracket_depth_cache, p_line);
+}
+
+void EditorJSONSyntaxHighlighter::_clear_highlighting_cache() {
+	bracket_depth_cache.clear();
 }
 
 Ref<EditorSyntaxHighlighter> EditorJSONSyntaxHighlighter::_create() const {
@@ -425,7 +529,11 @@ Dictionary GDShaderSyntaxHighlighter::_get_line_syntax_highlighting_impl(int p_l
 		}
 	}
 
-	return highlighter->get_line_syntax_highlighting(p_line);
+	return get_line_with_rainbow_brackets(highlighter, text_edit, bracket_depth_cache, p_line);
+}
+
+void GDShaderSyntaxHighlighter::_clear_highlighting_cache() {
+	bracket_depth_cache.clear();
 }
 
 void GDShaderSyntaxHighlighter::add_disabled_branch_region(const Point2i &p_region) {
