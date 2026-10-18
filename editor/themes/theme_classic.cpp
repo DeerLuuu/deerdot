@@ -461,6 +461,12 @@ void ThemeClassic::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edi
 			option_button_pressed_style->set_content_margin(SIDE_RIGHT, EDSCALE_RND(4));
 			option_button_disabled_style->set_content_margin(SIDE_RIGHT, EDSCALE_RND(4));
 
+			if (EditorThemeManager::is_expressive_animation_style()) {
+				// Mirrored option buttons use this copy of the shared hover box, so they need the same bloom
+				// as the unmirrored ones (the shared box gets it after the style files are populated).
+				option_button_hover_style->set_expand_margin_all(2 * EDSCALE);
+			}
+
 			p_theme->set_stylebox("focus", "OptionButton", option_button_focus_style);
 			p_theme->set_stylebox(CoreStringName(normal), "OptionButton", p_config.button_style);
 			p_theme->set_stylebox(SceneStringName(hover), "OptionButton", p_config.button_style_hover);
@@ -848,9 +854,9 @@ void ThemeClassic::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edi
 		EditorThemeManager::animate_stylebox(style_tab_disabled, EditorThemeManager::ANIM_TAB_STATE);
 
 		if (EditorThemeManager::is_expressive_animation_style()) {
-			// Expressive only: extend the selected tab's background 2px upwards, so switching tabs reads as
+			// Expressive only: extend the selected tab's background 5px upwards, so switching tabs reads as
 			// a lift. Only drawing changes; layout and the hit area are unaffected.
-			style_tab_selected->set_expand_margin(SIDE_TOP, 2 * EDSCALE);
+			style_tab_selected->set_expand_margin(SIDE_TOP, 5 * EDSCALE);
 		}
 
 		// Small buttons on the right side of tabs (close button, tab list button).

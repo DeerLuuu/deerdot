@@ -212,29 +212,29 @@ const StyleBoxAnimation subtle_animations[] = {
 // styleboxes that are drawn conditionally (they are unreachable for always-drawn state boxes), and the only
 // oscillating curve (ELASTIC) is reserved for the flat button hover, which only animates a transform.
 const StyleBoxAnimation expressive_animations[] = {
-	/* ANIM_BUTTON_NORMAL */ { 0.12, Tween::TRANS_SINE, false, 0.0, Tween::TRANS_SINE },
-	/* ANIM_BUTTON_HOVER */ { 0.16, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
-	/* ANIM_BUTTON_PRESSED */ { 0.11, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_BUTTON_NORMAL */ { 0.14, Tween::TRANS_SINE, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_BUTTON_HOVER */ { 0.20, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_BUTTON_PRESSED */ { 0.13, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
 	/* ANIM_BUTTON_DISABLED */ { 0.14, Tween::TRANS_SINE, false, 0.0, Tween::TRANS_SINE },
-	/* ANIM_FOCUS_RING */ { 0.18, Tween::TRANS_BACK, false, 0.12, Tween::TRANS_SINE, true, Point2(), Size2(0.96, 0.96) },
-	/* ANIM_FLAT_HOVER */ { 0.20, Tween::TRANS_ELASTIC, false, 0.13, Tween::TRANS_SINE, true, Point2(), Size2(0.94, 0.94) },
-	/* ANIM_FLAT_PRESSED */ { 0.11, Tween::TRANS_BACK, false, 0.12, Tween::TRANS_SINE, true },
-	/* ANIM_FLAT_HOVER_PRESSED */ { 0.14, Tween::TRANS_BACK, false, 0.12, Tween::TRANS_SINE, true },
-	/* ANIM_TREE_HOVER */ { 0.14, Tween::TRANS_BACK, false, 0.11, Tween::TRANS_SINE, true, Point2(-2, 0) },
-	/* ANIM_TREE_SELECTED */ { 0.18, Tween::TRANS_BACK, false, 0.14, Tween::TRANS_SINE, true, Point2(), Size2(1.0, 0.88) },
-	/* ANIM_TREE_HOVERED_SELECTED */ { 0.14, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
-	/* ANIM_TREE_CURSOR */ { 0.12, Tween::TRANS_SINE, false, 0.10, Tween::TRANS_SINE, true, Point2(), Size2(0.96, 0.96) },
-	/* ANIM_TREE_FOCUS */ { 0.18, Tween::TRANS_BACK, false, 0.14, Tween::TRANS_SINE, true, Point2(), Size2(1.0, 0.88) },
-	/* ANIM_ITEMLIST_HOVER */ { 0.14, Tween::TRANS_BACK, false, 0.11, Tween::TRANS_SINE, true, Point2(-2, 0) },
-	/* ANIM_ITEMLIST_HOVER_SELECTED */ { 0.14, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
-	/* ANIM_ITEMLIST_CURSOR */ { 0.12, Tween::TRANS_SINE, false, 0.10, Tween::TRANS_SINE, true, Point2(), Size2(0.96, 0.96) },
-	/* ANIM_TAB_STATE */ { 0.16, Tween::TRANS_SPRING, true, 0.0, Tween::TRANS_SINE },
-	/* ANIM_TAB_SMALL_BUTTON */ { 0.15, Tween::TRANS_BACK, false, 0.10, Tween::TRANS_SINE, true, Point2(), Size2(0.88, 0.88) },
-	/* ANIM_MENU_HOVER */ { 0.14, Tween::TRANS_BACK, false, 0.10, Tween::TRANS_SINE, true, Point2(-3, 0) },
-	/* ANIM_GRABBER */ { 0.14, Tween::TRANS_QUAD, false, 0.0, Tween::TRANS_SINE },
-	/* ANIM_SLIDER_FILL */ { 0.14, Tween::TRANS_QUAD, false, 0.0, Tween::TRANS_SINE },
-	/* ANIM_SPINBOX_HOVER */ { 0.16, Tween::TRANS_BACK, false, 0.11, Tween::TRANS_SINE, true, Point2(), Size2(0.90, 0.90) },
-	/* ANIM_SPINBOX_PRESSED */ { 0.10, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_FOCUS_RING */ { 0.20, Tween::TRANS_BACK, false, 0.12, Tween::TRANS_SINE, true, Point2(), Size2(0.90, 0.90) },
+	/* ANIM_FLAT_HOVER */ { 0.22, Tween::TRANS_ELASTIC, false, 0.12, Tween::TRANS_SINE, true, Point2(0, -2), Size2(0.90, 0.90) },
+	/* ANIM_FLAT_PRESSED */ { 0.13, Tween::TRANS_BACK, false, 0.12, Tween::TRANS_SINE, true },
+	/* ANIM_FLAT_HOVER_PRESSED */ { 0.16, Tween::TRANS_BACK, false, 0.12, Tween::TRANS_SINE, true },
+	/* ANIM_TREE_HOVER */ { 0.18, Tween::TRANS_BACK, false, 0.12, Tween::TRANS_SINE, true, Point2(-6, 0) },
+	/* ANIM_TREE_SELECTED */ { 0.22, Tween::TRANS_BACK, false, 0.16, Tween::TRANS_SINE, true, Point2(0, -1), Size2(1.0, 0.86) },
+	/* ANIM_TREE_HOVERED_SELECTED */ { 0.18, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_TREE_CURSOR */ { 0.16, Tween::TRANS_BACK, false, 0.10, Tween::TRANS_SINE, true, Point2(), Size2(0.92, 0.92) },
+	/* ANIM_TREE_FOCUS */ { 0.22, Tween::TRANS_BACK, false, 0.16, Tween::TRANS_SINE, true, Point2(0, -1), Size2(1.0, 0.86) },
+	/* ANIM_ITEMLIST_HOVER */ { 0.18, Tween::TRANS_BACK, false, 0.12, Tween::TRANS_SINE, true, Point2(-6, 0) },
+	/* ANIM_ITEMLIST_HOVER_SELECTED */ { 0.18, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_ITEMLIST_CURSOR */ { 0.16, Tween::TRANS_BACK, false, 0.10, Tween::TRANS_SINE, true, Point2(), Size2(0.92, 0.92) },
+	/* ANIM_TAB_STATE */ { 0.20, Tween::TRANS_SPRING, true, 0.0, Tween::TRANS_SINE },
+	/* ANIM_TAB_SMALL_BUTTON */ { 0.18, Tween::TRANS_BACK, false, 0.10, Tween::TRANS_SINE, true, Point2(), Size2(0.82, 0.82) },
+	/* ANIM_MENU_HOVER */ { 0.18, Tween::TRANS_BACK, false, 0.10, Tween::TRANS_SINE, true, Point2(-8, 0) },
+	/* ANIM_GRABBER */ { 0.20, Tween::TRANS_QUAD, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_SLIDER_FILL */ { 0.20, Tween::TRANS_QUAD, false, 0.0, Tween::TRANS_SINE },
+	/* ANIM_SPINBOX_HOVER */ { 0.18, Tween::TRANS_BACK, false, 0.12, Tween::TRANS_SINE, true, Point2(0, -1), Size2(0.82, 0.82) },
+	/* ANIM_SPINBOX_PRESSED */ { 0.12, Tween::TRANS_BACK, false, 0.0, Tween::TRANS_SINE },
 };
 
 static_assert(sizeof(subtle_animations) / sizeof(subtle_animations[0]) == EditorThemeManager::ANIM_KIND_MAX, "Subtle animation table must cover every animation kind.");
@@ -322,15 +322,15 @@ Ref<EditorTheme> EditorThemeManager::_create_base_theme(const Ref<EditorTheme> &
 	animate_stylebox(config.flat_button_pressed, ANIM_FLAT_PRESSED);
 	animate_stylebox(config.flat_button_hover_pressed, ANIM_FLAT_HOVER_PRESSED);
 
-	// Expressive only: pressed styleboxes shrink by one pixel, which reads as the button being pushed in.
+	// Expressive only: pressed styleboxes shrink by three pixels, which reads as the button being pushed in.
 	// The styleboxes are duplicated by the theme files afterwards, so the whole pressed family inherits it.
 	// Gated by the style (and by the master switch) so Subtle and disabled animations keep the v1 look.
 	if (is_expressive_animation_style()) {
 		if (config.button_style_pressed.is_valid()) {
-			config.button_style_pressed->set_expand_margin_all(-EDSCALE);
+			config.button_style_pressed->set_expand_margin_all(-3 * EDSCALE);
 		}
 		if (config.flat_button_pressed.is_valid()) {
-			config.flat_button_pressed->set_expand_margin_all(-EDSCALE);
+			config.flat_button_pressed->set_expand_margin_all(-3 * EDSCALE);
 		}
 	}
 
@@ -382,6 +382,14 @@ Ref<EditorTheme> EditorThemeManager::_create_base_theme(const Ref<EditorTheme> &
 
 	_populate_text_editor_styles(theme, config);
 	_populate_visual_shader_styles(theme, config);
+
+	// Expressive only: hovering an ordinary button blooms its background outwards by two pixels. This is
+	// applied after the style files duplicated the shared stylebox, so only controls that use the shared
+	// hover box (Button, MenuBar, OptionButton) get the bloom. Flat buttons, spin box arrows and menu
+	// highlights keep their own transform-based signatures instead of stacking another geometry change.
+	if (is_expressive_animation_style() && config.button_style_hover.is_valid()) {
+		config.button_style_hover->set_expand_margin_all(2 * EDSCALE);
+	}
 
 	OS::get_singleton()->benchmark_end_measure(get_benchmark_key(), "Create Base Theme");
 	return theme;
