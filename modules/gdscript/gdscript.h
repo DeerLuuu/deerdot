@@ -104,6 +104,14 @@ class GDScript : public Script {
 	HashMap<StringName, MethodInfo> _signals;
 	Dictionary rpc_config;
 
+	struct CustomAnnotation {
+		StringName name;
+		Array args;
+		Dictionary named;
+	};
+	// Symbol key: "" for the script, "member" for top-level members, "Inner/member" for inner classes.
+	HashMap<StringName, Vector<CustomAnnotation>> custom_annotations;
+
 public:
 	struct LambdaInfo {
 		int capture_count;
@@ -218,6 +226,12 @@ protected:
 	Variant callp(const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error) override;
 
 	static void _bind_methods();
+
+public:
+	bool has_annotation(const StringName &p_symbol, const StringName &p_annotation) const;
+	Dictionary get_annotation(const StringName &p_symbol, const StringName &p_annotation) const;
+	Array get_annotations(const StringName &p_symbol) const;
+	Array get_annotation_symbols() const;
 
 public:
 #ifdef DEBUG_ENABLED

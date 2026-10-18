@@ -1945,12 +1945,36 @@ void GDScriptAnalyzer::resolve_node(GDScriptParser::Node *p_node, bool p_is_root
 }
 
 void GDScriptAnalyzer::resolve_annotation(GDScriptParser::AnnotationNode *p_annotation) {
-	ERR_FAIL_COND_MSG(!parser->valid_annotations.has(p_annotation->name), vformat(R"(Annotation "%s" not found to validate.)", p_annotation->name));
-
 	if (p_annotation->is_resolved) {
 		return;
 	}
 	p_annotation->is_resolved = true;
+
+	if (p_annotation->info == nullptr) {
+		// Custom annotation: every positional and named argument must reduce to a constant.
+		for (uint32_t i = 0; i < p_annotation->arguments.size(); i++) {
+			GDScriptParser::ExpressionNode *argument = p_annotation->arguments[i];
+			reduce_expression(argument);
+			bool is_argument_value_reduced = false;
+			const Variant value = make_expression_reduced_value(argument, is_argument_value_reduced);
+			if (!is_argument_value_reduced) {
+				push_error("Annotation argument must be a constant expression.", argument);
+				return;
+			}
+			p_annotation->resolved_arguments.push_back(value);
+		}
+		for (const GDScriptParser::AnnotationNode::NamedArgument &named : p_annotation->named_arguments) {
+			reduce_expression(named.value);
+			bool is_argument_value_reduced = false;
+			const Variant value = make_expression_reduced_value(named.value, is_argument_value_reduced);
+			if (!is_argument_value_reduced) {
+				push_error("Annotation argument must be a constant expression.", named.value);
+				return;
+			}
+			p_annotation->resolved_named_arguments[named.name] = value;
+		}
+		return;
+	}
 
 	const MethodInfo &annotation_info = parser->valid_annotations[p_annotation->name].info;
 

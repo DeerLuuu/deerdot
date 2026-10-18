@@ -855,9 +855,18 @@ String GDScriptFormat::parse_annotations(const List<GDP::AnnotationNode *> &p_an
 		output += print_comment(p_annotation, true, p_indent_level);
 		output += p_annotation->name;
 
-		if (!p_annotation->arguments.is_empty()) {
+		if (!p_annotation->arguments.is_empty() || !p_annotation->named_arguments.is_empty()) {
 			output += "(";
 			output += parse_call_arguments(p_annotation->arguments, p_indent_level);
+			for (uint32_t i = 0; i < p_annotation->named_arguments.size(); i++) {
+				if (i > 0 || !p_annotation->arguments.is_empty()) {
+					output += ", ";
+				}
+				const GDScriptParser::AnnotationNode::NamedArgument &named = p_annotation->named_arguments[i];
+				output += String(named.name);
+				output += " = ";
+				output += parse_expression(named.value, p_indent_level);
+			}
 			output += ")";
 		}
 

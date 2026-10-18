@@ -541,6 +541,55 @@ bool GDScript::_update_exports(bool *r_err, bool p_recursive_call, PlaceHolderSc
 		if (err == OK && analyzer.analyze() == OK) {
 			const GDScriptParser::ClassNode *c = parser.get_tree();
 
+			// Collect custom annotations for runtime queries. The table is rebuilt from source on every
+			// reload, so there is nothing binary to persist.
+			custom_annotations.clear();
+			auto add_annotations = [&](const GDScriptParser::Node *p_target, const String &p_symbol) {
+				Vector<CustomAnnotation> list;
+				for (const GDScriptParser::AnnotationNode *annotation : p_target->annotations) {
+					if (annotation->info != nullptr) {
+						continue; // Built-in annotations keep their own behavior.
+					}
+					CustomAnnotation custom;
+					custom.name = String(annotation->name).trim_prefix("@");
+					for (const Variant &argument : annotation->resolved_arguments) {
+						custom.args.push_back(argument);
+					}
+					custom.named = annotation->resolved_named_arguments;
+					list.push_back(custom);
+				}
+				if (!list.is_empty()) {
+					custom_annotations[p_symbol] = list;
+				}
+			};
+			auto collect = [&](auto &&self, const GDScriptParser::ClassNode *p_class, const String &p_prefix) -> void {
+				add_annotations(p_class, p_prefix);
+				for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+					const String member_name = member.get_name();
+					const String symbol = p_prefix.is_empty() ? member_name : p_prefix + "/" + member_name;
+					switch (member.type) {
+						case GDScriptParser::ClassNode::Member::CLASS:
+							self(self, member.m_class, symbol);
+							break;
+						case GDScriptParser::ClassNode::Member::CONSTANT:
+							add_annotations(member.constant, symbol);
+							break;
+						case GDScriptParser::ClassNode::Member::FUNCTION:
+							add_annotations(member.function, symbol);
+							break;
+						case GDScriptParser::ClassNode::Member::SIGNAL:
+							add_annotations(member.signal, symbol);
+							break;
+						case GDScriptParser::ClassNode::Member::VARIABLE:
+							add_annotations(member.variable, symbol);
+							break;
+						default:
+							break;
+					}
+				}
+			};
+			collect(collect, c, "");
+
 			if (base_cache.is_valid()) {
 				base_cache->inheriters_cache.erase(get_instance_id());
 				base_cache = Ref<GDScript>();
@@ -1100,8 +1149,67 @@ void GDScript::_get_property_list(List<PropertyInfo> *p_properties) const {
 	}
 }
 
+bool GDScript::has_annotation(const StringName &p_symbol, const StringName &p_annotation) const {
+	const HashMap<StringName, Vector<CustomAnnotation>>::ConstIterator E = custom_annotations.find(p_symbol);
+	if (!E) {
+		return false;
+	}
+	for (const CustomAnnotation &annotation : E->value) {
+		if (annotation.name == p_annotation) {
+			return true;
+		}
+	}
+	return false;
+}
+
+Dictionary GDScript::get_annotation(const StringName &p_symbol, const StringName &p_annotation) const {
+	const HashMap<StringName, Vector<CustomAnnotation>>::ConstIterator E = custom_annotations.find(p_symbol);
+	if (!E) {
+		return Dictionary();
+	}
+	for (const CustomAnnotation &annotation : E->value) {
+		if (annotation.name == p_annotation) {
+			Dictionary result;
+			result["name"] = annotation.name;
+			result["args"] = annotation.args;
+			result["named"] = annotation.named;
+			return result;
+		}
+	}
+	return Dictionary();
+}
+
+Array GDScript::get_annotations(const StringName &p_symbol) const {
+	Array result;
+	const HashMap<StringName, Vector<CustomAnnotation>>::ConstIterator E = custom_annotations.find(p_symbol);
+	if (!E) {
+		return result;
+	}
+	for (const CustomAnnotation &annotation : E->value) {
+		Dictionary entry;
+		entry["name"] = annotation.name;
+		entry["args"] = annotation.args;
+		entry["named"] = annotation.named;
+		result.push_back(entry);
+	}
+	return result;
+}
+
+Array GDScript::get_annotation_symbols() const {
+	Array result;
+	for (const KeyValue<StringName, Vector<CustomAnnotation>> &E : custom_annotations) {
+		result.push_back(E.key);
+	}
+	return result;
+}
+
 void GDScript::_bind_methods() {
 	ClassDB::bind_vararg_method(METHOD_FLAGS_DEFAULT, "new", &GDScript::_new, MethodInfo("new"));
+
+	ClassDB::bind_method(D_METHOD("has_annotation", "symbol", "annotation"), &GDScript::has_annotation);
+	ClassDB::bind_method(D_METHOD("get_annotation", "symbol", "annotation"), &GDScript::get_annotation);
+	ClassDB::bind_method(D_METHOD("get_annotations", "symbol"), &GDScript::get_annotations);
+	ClassDB::bind_method(D_METHOD("get_annotation_symbols"), &GDScript::get_annotation_symbols);
 }
 
 void GDScript::set_path_cache(const String &p_path) {

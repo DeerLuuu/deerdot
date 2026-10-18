@@ -392,9 +392,16 @@ public:
 	};
 
 	struct AnnotationNode : public Node {
+		struct NamedArgument {
+			StringName name;
+			ExpressionNode *value = nullptr;
+		};
+
 		StringName name;
 		LocalVector<ExpressionNode *> arguments;
 		LocalVector<Variant> resolved_arguments;
+		LocalVector<NamedArgument> named_arguments;
+		Dictionary resolved_named_arguments;
 
 		/** Information of the annotation. Might be null for unknown annotations. */
 		AnnotationInfo *info = nullptr;
