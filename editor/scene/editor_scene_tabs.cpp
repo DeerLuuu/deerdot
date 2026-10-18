@@ -45,6 +45,7 @@
 #include "editor/run/game_view_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
+#include "editor/themes/editor_theme_manager.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/menu_button.h"
@@ -57,7 +58,16 @@
 void EditorSceneTabs::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_THEME_CHANGED: {
-			tabbar_panel->add_theme_style_override(SceneStringName(panel), get_theme_stylebox(SNAME("tabbar_background"), SNAME("TabContainer")));
+			// Reserve the same room above the scene tab strip as the Expressive tab lift, so the lifted
+			// selected tab is not clipped by the panel. Subtle (0) and disabled animations keep the old
+			// panel, and the content margin shifts the whole strip (tabs and buttons) together.
+			Ref<StyleBox> tabbar_style = get_theme_stylebox(SNAME("tabbar_background"), SNAME("TabContainer"));
+			const int tab_lift = EDITOR_GET("interface/theme/ui_animations") ? EditorThemeManager::get_tab_lift_px() : 0;
+			if (tab_lift > 0 && tabbar_style.is_valid()) {
+				tabbar_style = tabbar_style->duplicate();
+				tabbar_style->set_content_margin(SIDE_TOP, tabbar_style->get_content_margin(SIDE_TOP) + tab_lift * EDSCALE);
+			}
+			tabbar_panel->add_theme_style_override(SceneStringName(panel), tabbar_style);
 			scene_tabs->add_theme_constant_override("icon_max_width", get_theme_constant(SNAME("class_icon_size"), EditorStringName(Editor)));
 
 			scene_list->set_button_icon(get_editor_theme_icon(SNAME("GuiTabMenuHl")));
