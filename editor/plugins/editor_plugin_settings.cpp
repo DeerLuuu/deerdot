@@ -38,7 +38,10 @@
 #include "core/object/callable_mp.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
+#include "editor/file_system/editor_paths.h"
+#include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
+#include "scene/gui/dialogs.h"
 #include "scene/gui/separator.h"
 #include "scene/gui/texture_rect.h"
 #include "scene/gui/tree.h"
@@ -117,6 +120,7 @@ void EditorPluginSettings::update_plugins() {
 				TreeItem *item = plugin_list->create_item(root);
 				item->set_text(COLUMN_NAME, name);
 				item->set_auto_translate_mode(COLUMN_NAME, AUTO_TRANSLATE_MODE_DISABLED);
+				item->set_text(COLUMN_SOURCE, TTRC("Project"));
 				if (!is_enabled) {
 					item->set_custom_color(COLUMN_NAME, disabled_color);
 				}
@@ -138,7 +142,64 @@ void EditorPluginSettings::update_plugins() {
 		}
 	}
 
+	const String global_addons_dir = EditorPaths::get_singleton()->get_data_dir().path_join("addons");
+	const PackedStringArray global_enabled = EDITOR_GET("editor/plugins/global_enabled");
+	PackedStringArray global_dirs = DirAccess::get_directories_at(global_addons_dir);
+	global_dirs.sort();
+	for (const String &addon_name : global_dirs) {
+		const String cfg_path = global_addons_dir.path_join(addon_name).path_join("plugin.cfg");
+		if (!FileAccess::exists(cfg_path)) {
+			continue;
+		}
+		Ref<ConfigFile> cfg;
+		cfg.instantiate();
+		if (cfg->load(cfg_path) != OK) {
+			continue;
+		}
+		if (!cfg->has_section_key("plugin", "name") || !cfg->has_section_key("plugin", "script")) {
+			continue;
+		}
+		const bool shadowed = DirAccess::dir_exists_absolute("res://addons/" + addon_name);
+		const bool enabled = global_enabled.has(addon_name) && !shadowed;
+		Color disabled_color = get_theme_color(SNAME("font_disabled_color"), EditorStringName(Editor));
+		TreeItem *item = plugin_list->create_item(root);
+		item->set_text(COLUMN_NAME, cfg->get_value("plugin", "name"));
+		item->set_auto_translate_mode(COLUMN_NAME, AUTO_TRANSLATE_MODE_DISABLED);
+		item->set_text(COLUMN_SOURCE, shadowed ? TTRC("Global (shadowed by project)") : TTRC("Global"));
+		if (!enabled) {
+			item->set_custom_color(COLUMN_NAME, disabled_color);
+		}
+		item->set_tooltip_text(COLUMN_NAME, vformat(TTR("Path: %s\nGlobal plugins run in every project you open."), cfg_path));
+		item->set_metadata(COLUMN_NAME, cfg_path);
+		item->set_text(COLUMN_VERSION, cfg->get_value("plugin", "version"));
+		item->set_auto_translate_mode(COLUMN_VERSION, AUTO_TRANSLATE_MODE_DISABLED);
+		item->set_text(COLUMN_AUTHOR, cfg->get_value("plugin", "author"));
+		item->set_auto_translate_mode(COLUMN_AUTHOR, AUTO_TRANSLATE_MODE_DISABLED);
+		item->set_cell_mode(COLUMN_STATUS, TreeItem::CELL_MODE_CHECK);
+		item->set_text(COLUMN_STATUS, TTRC("On"));
+		item->set_checked(COLUMN_STATUS, enabled);
+		item->set_editable(COLUMN_STATUS, !shadowed);
+		item->add_button(COLUMN_EDIT, get_editor_theme_icon(SNAME("Edit")), BUTTON_PLUGIN_EDIT, false, TTRC("Edit Plugin"));
+	}
+
 	updating = false;
+	global_warning->set_visible(!global_enabled.is_empty());
+}
+
+void EditorPluginSettings::_confirm_global_plugin() {
+	if (pending_global_path.is_empty()) {
+		return;
+	}
+	PackedStringArray globals = EDITOR_GET("editor/plugins/global_enabled");
+	const String addon_name = pending_global_path.get_base_dir().get_file();
+	if (!globals.has(addon_name)) {
+		globals.push_back(addon_name);
+		EditorSettings::get_singleton()->set("editor/plugins/global_enabled", globals);
+		EditorSettings::get_singleton()->save();
+	}
+	EditorNode::get_singleton()->set_addon_plugin_enabled(pending_global_path, true, true);
+	pending_global_path.clear();
+	update_plugins();
 }
 
 void EditorPluginSettings::_plugin_activity_changed() {
@@ -150,6 +211,21 @@ void EditorPluginSettings::_plugin_activity_changed() {
 	ERR_FAIL_NULL(ti);
 	bool checked = ti->is_checked(COLUMN_STATUS);
 	String name = ti->get_metadata(COLUMN_NAME);
+
+	if (EditorNode::is_global_addon_path(name)) {
+		if (checked && !PackedStringArray(EDITOR_GET("editor/plugins/global_enabled")).has(name.get_base_dir().get_file())) {
+			updating = true;
+			ti->set_checked(COLUMN_STATUS, false);
+			updating = false;
+			pending_global_path = name;
+			global_confirmation->set_text(vformat(TTRC("Enable the global plugin at \"%s\"? It will run in every project you open, including future projects."), name));
+			global_confirmation->popup_centered();
+			return;
+		}
+		EditorNode::get_singleton()->set_addon_plugin_enabled(name, checked, true);
+		update_plugins();
+		return;
+	}
 
 	EditorNode::get_singleton()->set_addon_plugin_enabled(name, checked, true);
 
@@ -250,6 +326,17 @@ EditorPluginSettings::EditorPluginSettings() {
 	title_hb->add_child(create_plugin_button);
 	add_child(title_hb);
 
+	global_warning = memnew(Label(TTRC("Global plugins run in every project you open, including future projects.")));
+	global_warning->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	global_warning->set_visible(false);
+	add_child(global_warning);
+
+	global_confirmation = memnew(ConfirmationDialog);
+	global_confirmation->set_title(TTRC("Enable Global Plugin?"));
+	global_confirmation->set_ok_button_text(TTRC("Enable for All Projects"));
+	add_child(global_confirmation);
+	global_confirmation->connect(SceneStringName(confirmed), callable_mp(this, &EditorPluginSettings::_confirm_global_plugin));
+
 	plugin_list = memnew(Tree);
 	plugin_list->set_v_size_flags(SIZE_EXPAND_FILL);
 	plugin_list->set_theme_type_variation("TreeTable");
@@ -258,25 +345,30 @@ EditorPluginSettings::EditorPluginSettings() {
 	plugin_list->set_column_titles_visible(true);
 	plugin_list->set_column_title(COLUMN_STATUS, TTRC("Enabled"));
 	plugin_list->set_column_title(COLUMN_NAME, TTRC("Name"));
+	plugin_list->set_column_title(COLUMN_SOURCE, TTRC("Source"));
 	plugin_list->set_column_title(COLUMN_VERSION, TTRC("Version"));
 	plugin_list->set_column_title(COLUMN_AUTHOR, TTRC("Author"));
 	plugin_list->set_column_title(COLUMN_EDIT, TTRC("Edit"));
 	plugin_list->set_column_title_alignment(COLUMN_STATUS, HORIZONTAL_ALIGNMENT_LEFT);
 	plugin_list->set_column_title_alignment(COLUMN_NAME, HORIZONTAL_ALIGNMENT_LEFT);
+	plugin_list->set_column_title_alignment(COLUMN_SOURCE, HORIZONTAL_ALIGNMENT_LEFT);
 	plugin_list->set_column_title_alignment(COLUMN_VERSION, HORIZONTAL_ALIGNMENT_LEFT);
 	plugin_list->set_column_title_alignment(COLUMN_AUTHOR, HORIZONTAL_ALIGNMENT_LEFT);
 	plugin_list->set_column_title_alignment(COLUMN_EDIT, HORIZONTAL_ALIGNMENT_LEFT);
 	plugin_list->set_column_expand(COLUMN_STATUS, false);
 	plugin_list->set_column_expand(COLUMN_NAME, true);
+	plugin_list->set_column_expand(COLUMN_SOURCE, false);
 	plugin_list->set_column_expand(COLUMN_VERSION, false);
 	plugin_list->set_column_expand(COLUMN_AUTHOR, false);
 	plugin_list->set_column_expand(COLUMN_EDIT, false);
 	plugin_list->set_column_clip_content(COLUMN_STATUS, true);
 	plugin_list->set_column_clip_content(COLUMN_NAME, true);
+	plugin_list->set_column_clip_content(COLUMN_SOURCE, true);
 	plugin_list->set_column_clip_content(COLUMN_VERSION, true);
 	plugin_list->set_column_clip_content(COLUMN_AUTHOR, true);
 	plugin_list->set_column_clip_content(COLUMN_EDIT, true);
 	plugin_list->set_column_custom_minimum_width(COLUMN_STATUS, 80 * EDSCALE);
+	plugin_list->set_column_custom_minimum_width(COLUMN_SOURCE, 160 * EDSCALE);
 	plugin_list->set_column_custom_minimum_width(COLUMN_VERSION, 100 * EDSCALE);
 	plugin_list->set_column_custom_minimum_width(COLUMN_AUTHOR, 250 * EDSCALE);
 	plugin_list->set_column_custom_minimum_width(COLUMN_EDIT, 40 * EDSCALE);

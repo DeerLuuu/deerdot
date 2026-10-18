@@ -254,6 +254,9 @@
 		<member name="asset_store/use_threads" type="bool" setter="" getter="">
 			If [code]true[/code], the Asset Store uses multiple threads for its HTTP requests. This prevents the Asset Store from blocking the main thread for every loaded asset.
 		</member>
+		<member name="editor/plugins/global_enabled" type="PackedStringArray" setter="" getter="">
+			Names of addons under the editor data directory's [code]addons[/code] folder that are enabled globally. Global plugins run in every project opened with this editor installation. Disabled by default; enabling one asks for confirmation. A project addon with the same directory name shadows the global one.
+		</member>
 		<member name="debugger/auto_switch_to_remote_scene_tree" type="bool" setter="" getter="">
 			If [code]true[/code], automatically switches to the [b]Remote[/b] scene tree when running the project from the editor. If [code]false[/code], stays on the [b]Local[/b] scene tree when running the project from the editor.
 			[b]Warning:[/b] Enabling this setting can cause stuttering when running a project with a large amount of nodes (typically a few thousands of nodes or more), even if the editor window isn't focused. This is due to the remote scene tree being updated every second regardless of whether the editor is focused.

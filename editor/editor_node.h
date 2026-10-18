@@ -844,6 +844,9 @@ public:
 
 	void set_addon_plugin_enabled(const String &p_addon, bool p_enabled, bool p_config_changed = false);
 	bool is_addon_plugin_enabled(const String &p_addon) const;
+	static bool is_global_addon_path(const String &p_path);
+	// Resolves enabled global addon names to plugin.cfg paths, dropping stale and project-shadowed entries.
+	static PackedStringArray resolve_global_addons(const PackedStringArray &p_enabled, const String &p_global_addons_dir, const String &p_project_addons_dir, PackedStringArray *r_stale = nullptr);
 
 	void edit_node(Node *p_node);
 	void edit_resource(const Ref<Resource> &p_resource);

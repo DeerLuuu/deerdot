@@ -468,6 +468,9 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 	_initial_set("asset_store/use_threads", true);
 	_initial_set("asset_store/show_incompatible_assets", false);
 
+	/* Plugins */
+	_initial_set("editor/plugins/global_enabled", PackedStringArray());
+
 	Dictionary default_urls;
 	default_urls["godotengine.org (Official)"] = "https://store.godotengine.org/api/v1";
 	_initial_set("asset_store/available_urls", default_urls, true);

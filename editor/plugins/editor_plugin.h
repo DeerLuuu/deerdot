@@ -62,6 +62,7 @@ class EditorPlugin : public Node {
 
 	bool input_event_forwarding_always_enabled = false;
 	bool force_draw_over_forwarding_enabled = false;
+	bool global_plugin = false;
 
 	String last_main_screen_name;
 	String plugin_version;
@@ -180,6 +181,8 @@ public:
 
 	void set_force_draw_over_forwarding_enabled();
 	bool is_force_draw_over_forwarding_enabled() { return force_draw_over_forwarding_enabled; }
+	void set_global_plugin(bool p_global) { global_plugin = p_global; }
+	bool is_global_plugin() const { return global_plugin; }
 
 	void notify_main_screen_changed(const String &screen_name);
 	void notify_scene_changed(const Node *scn_root);

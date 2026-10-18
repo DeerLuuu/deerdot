@@ -636,6 +636,7 @@ void EditorPlugin::_notification(int p_what) {
 }
 
 void EditorPlugin::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("is_global_plugin"), &EditorPlugin::is_global_plugin);
 	ClassDB::bind_method(D_METHOD("add_dock", "dock"), &EditorPlugin::add_dock);
 	ClassDB::bind_method(D_METHOD("remove_dock", "dock"), &EditorPlugin::remove_dock);
 	ClassDB::bind_method(D_METHOD("add_control_to_container", "container", "control"), &EditorPlugin::add_control_to_container);

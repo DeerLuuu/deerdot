@@ -1296,6 +1296,27 @@ void EditorNode::init_plugins() {
 	for (const String &addon : addons) {
 		set_addon_plugin_enabled(addon, true);
 	}
+
+	PackedStringArray stale_globals;
+	const String global_addons_dir = EditorPaths::get_singleton()->get_data_dir().path_join("addons");
+	const PackedStringArray global_paths = resolve_global_addons(EDITOR_GET("editor/plugins/global_enabled"), global_addons_dir, "res://addons", &stale_globals);
+	for (const String &path : global_paths) {
+		set_addon_plugin_enabled(path, true);
+	}
+	if (!stale_globals.is_empty()) {
+		PackedStringArray remaining = EDITOR_GET("editor/plugins/global_enabled");
+		for (const String &stale : stale_globals) {
+			for (int i = 0; i < remaining.size(); i++) {
+				if (remaining[i] == stale) {
+					remaining.remove_at(i);
+					break;
+				}
+			}
+		}
+		EditorSettings::get_singleton()->set("editor/plugins/global_enabled", remaining);
+		EditorSettings::get_singleton()->save();
+		WARN_PRINT(vformat("Removed %d stale global addon entr%s from editor settings.", stale_globals.size(), stale_globals.size() == 1 ? "y" : "ies"));
+	}
 	_initializing_plugins = false;
 
 	if (!pending_addons.is_empty()) {
@@ -1317,6 +1338,20 @@ void EditorNode::_on_plugin_ready(Object *p_script, const String &p_activate_nam
 }
 
 void EditorNode::_remove_plugin_from_enabled(const String &p_name) {
+	if (is_global_addon_path(p_name)) {
+		const String addon_name = p_name.get_base_dir().get_file();
+		PackedStringArray globals = EDITOR_GET("editor/plugins/global_enabled");
+		for (int i = 0; i < globals.size(); i++) {
+			if (globals[i] == addon_name) {
+				globals.remove_at(i);
+				break;
+			}
+		}
+		EditorSettings::get_singleton()->set("editor/plugins/global_enabled", globals);
+		EditorSettings::get_singleton()->save();
+		return;
+	}
+
 	ProjectSettings *ps = ProjectSettings::get_singleton();
 	PackedStringArray enabled_plugins = ps->get("editor_plugins/enabled");
 	for (int i = 0; i < enabled_plugins.size(); ++i) {
@@ -4560,7 +4595,9 @@ void EditorNode::_update_addon_config() {
 	Vector<String> enabled_addons;
 
 	for (const KeyValue<String, EditorPlugin *> &E : addon_name_to_plugin) {
-		enabled_addons.push_back(E.key);
+		if (E.key.begins_with("res://")) {
+			enabled_addons.push_back(E.key);
+		}
 	}
 
 	if (enabled_addons.is_empty()) {
@@ -4576,7 +4613,7 @@ void EditorNode::_update_addon_config() {
 void EditorNode::set_addon_plugin_enabled(const String &p_addon, bool p_enabled, bool p_config_changed) {
 	String addon_path = p_addon;
 
-	if (!addon_path.begins_with("res://")) {
+	if (!addon_path.begins_with("res://") && !addon_path.is_absolute_path()) {
 		addon_path = "res://addons/" + addon_path + "/plugin.cfg";
 	}
 
@@ -4664,18 +4701,60 @@ void EditorNode::set_addon_plugin_enabled(const String &p_addon, bool p_enabled,
 	}
 
 	ep->set_plugin_version(plugin_version);
+	ep->set_global_plugin(is_global_addon_path(addon_path));
 	addon_name_to_plugin[addon_path] = ep;
 	add_editor_plugin(ep, p_config_changed);
+
+	if (is_global_addon_path(addon_path)) {
+		PackedStringArray globals = EDITOR_GET("editor/plugins/global_enabled");
+		const String addon_name = addon_path.get_base_dir().get_file();
+		if (!globals.has(addon_name)) {
+			globals.push_back(addon_name);
+			EditorSettings::get_singleton()->set("editor/plugins/global_enabled", globals);
+			EditorSettings::get_singleton()->save();
+		}
+	}
 
 	_update_addon_config();
 }
 
 bool EditorNode::is_addon_plugin_enabled(const String &p_addon) const {
-	if (p_addon.begins_with("res://")) {
+	if (p_addon.begins_with("res://") || p_addon.is_absolute_path()) {
 		return addon_name_to_plugin.has(p_addon);
 	}
 
 	return addon_name_to_plugin.has("res://addons/" + p_addon + "/plugin.cfg");
+}
+
+bool EditorNode::is_global_addon_path(const String &p_path) {
+	return !p_path.begins_with("res://");
+}
+
+PackedStringArray EditorNode::resolve_global_addons(const PackedStringArray &p_enabled, const String &p_global_addons_dir, const String &p_project_addons_dir, PackedStringArray *r_stale) {
+	Vector<String> names;
+	for (const String &name : p_enabled) {
+		if (!name.is_empty() && !names.has(name)) {
+			names.push_back(name);
+		}
+	}
+	names.sort();
+
+	PackedStringArray result;
+	for (const String &name : names) {
+		const String addon_dir = p_global_addons_dir.path_join(name);
+		const String cfg_path = addon_dir.path_join("plugin.cfg");
+		if (!FileAccess::exists(cfg_path)) {
+			if (r_stale) {
+				r_stale->push_back(name);
+			}
+			continue;
+		}
+		if (DirAccess::dir_exists_absolute(p_project_addons_dir.path_join(name))) {
+			continue; // Project copy shadows the global one.
+		}
+		result.push_back(cfg_path);
+	}
+	return result;
 }
 
 void EditorNode::_remove_edited_scene(bool p_change_tab) {
