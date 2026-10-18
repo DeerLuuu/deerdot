@@ -203804,7 +203804,6 @@ msgstr ""
 
 #: doc/classes/EditorSettings.xml
 msgid ""
-msgid ""
 "If [code]true[/code], transition animations are enabled on editor UI "
 "controls (buttons, tabs, trees, menus, lists, scrollbars, sliders, spin "
 "boxes). How expressive these are is set by [member "
