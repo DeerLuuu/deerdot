@@ -2435,6 +2435,20 @@ void DocumentEditorContainer::_show_highlight_overlay(const Rect2 &p_rect, const
 	_apply_drop_overlay(p_rect, p_hint, false);
 }
 
+namespace {
+// Drop overlay transition parameters. Kept together so the values can be compared with the animation
+// budget in one place instead of being scattered across the three transition helpers.
+constexpr double SPLIT_OVERLAY_FADE_IN_SUBTLE = 0.12;
+constexpr double SPLIT_OVERLAY_FADE_IN_EXPRESSIVE = 0.18;
+constexpr double SPLIT_OVERLAY_FADE_OUT_SUBTLE = 0.10;
+constexpr double SPLIT_OVERLAY_FADE_OUT_EXPRESSIVE = 0.12;
+constexpr float SPLIT_OVERLAY_SCALE_EXPRESSIVE = 0.98f;
+constexpr double SPLIT_OVERLAY_MORPH_SUBTLE = 0.14;
+constexpr double SPLIT_OVERLAY_MORPH_EXPRESSIVE = 0.18;
+constexpr float SPLIT_OVERLAY_MORPH_MAX_OVERSHOOT_PX = 4.0f; // Multiplied by EDSCALE at the use site.
+constexpr float SPLIT_OVERLAY_BACK_PEAK_OVERSHOOT = 0.1003f; // Peak overshoot of BACK with EASE_OUT.
+} // namespace
+
 void DocumentEditorContainer::_apply_drop_overlay(const Rect2 &p_rect, const String &p_hint, bool p_accept_drops) {
 	if (split_drop_overlay == nullptr) {
 		return;
@@ -2450,13 +2464,30 @@ void DocumentEditorContainer::_apply_drop_overlay(const Rect2 &p_rect, const Str
 		split_drop_box->set_alignment(BoxContainer::ALIGNMENT_CENTER);
 	}
 
+	// The animation master switch takes priority over every transition: when it is off, a morph that is
+	// still running has to stop and snap to the target rectangle instead of finishing on its own.
+	const bool animations_enabled = EDITOR_GET("interface/theme/ui_animations");
+	if (!animations_enabled) {
+		_stop_split_overlay_morph_tween();
+		split_drop_overlay->set_position(p_rect.position);
+		split_drop_overlay->set_size(p_rect.size);
+		_update_drop_overlay_pivot();
+		split_overlay_target_rect = p_rect;
+		split_overlay_target_zone = drop_overlay_zone;
+		split_drop_overlay->show();
+		_stop_split_overlay_tween();
+		split_overlay_shown = true;
+		split_drop_overlay->set_modulate(Color(1, 1, 1, 1));
+		split_drop_overlay->set_scale(Vector2(1, 1));
+		return;
+	}
+
 	// The drop zone itself is logical and updates immediately: releasing while the overlay is morphing
 	// still lands in the zone under the pointer. Only the visual rectangle is tweened, and only when the
 	// zone swaps between the right and bottom halves (a discrete change), never while the pointer moves
 	// inside one zone.
-	const bool animations_enabled = EDITOR_GET("interface/theme/ui_animations");
 	const DropZone previous_zone = split_overlay_target_zone;
-	const bool zone_changed = animations_enabled && split_overlay_shown &&
+	const bool zone_changed = split_overlay_shown &&
 			((previous_zone == DROP_ZONE_RIGHT && drop_overlay_zone == DROP_ZONE_BOTTOM) ||
 					(previous_zone == DROP_ZONE_BOTTOM && drop_overlay_zone == DROP_ZONE_RIGHT));
 	const bool same_target = split_overlay_target_zone == drop_overlay_zone && split_overlay_target_rect.is_equal_approx(p_rect);
@@ -2479,22 +2510,10 @@ void DocumentEditorContainer::_apply_drop_overlay(const Rect2 &p_rect, const Str
 	split_overlay_target_zone = drop_overlay_zone;
 	split_drop_overlay->show();
 
-	if (!animations_enabled) {
-		// Animations disabled: show instantly, with no tween and no leftover scale or alpha.
-		_stop_split_overlay_tween();
-		split_overlay_shown = true;
-		split_drop_overlay->set_modulate(Color(1, 1, 1, 1));
-		split_drop_overlay->set_scale(Vector2(1, 1));
-		return;
-	}
-
 	if (split_overlay_shown) {
 		// Already appearing (or shown) during this drag: only the target rectangle changed, which was
-		// applied above. Replaying the entrance here would make the overlay flicker while moving.
-		if (!split_overlay_tween.is_valid()) {
-			// The entrance tween already finished; release the reference instead of keeping it around.
-			split_overlay_tween = Ref<Tween>();
-		}
+		// applied above. Replaying the entrance here would make the overlay flicker while moving. The
+		// entrance tween releases its own reference once it finishes.
 		return;
 	}
 	split_overlay_shown = true;
@@ -2506,7 +2525,7 @@ void DocumentEditorContainer::_apply_drop_overlay(const Rect2 &p_rect, const Str
 	if (!expressive) {
 		split_drop_overlay->set_scale(Vector2(1, 1));
 	} else if (!was_visible) {
-		split_drop_overlay->set_scale(Vector2(0.98f, 0.98f));
+		split_drop_overlay->set_scale(Vector2(SPLIT_OVERLAY_SCALE_EXPRESSIVE, SPLIT_OVERLAY_SCALE_EXPRESSIVE));
 	}
 	_start_split_overlay_tween(true);
 }
@@ -2548,17 +2567,27 @@ void DocumentEditorContainer::_start_split_overlay_tween(bool p_show) {
 		split_overlay_tween->set_trans(expressive ? Tween::TRANS_BACK : Tween::TRANS_SINE);
 		split_overlay_tween->set_ease(Tween::EASE_OUT);
 		split_overlay_tween->set_parallel(true);
-		split_overlay_tween->tween_property(split_drop_overlay, NodePath("modulate:a"), 1.0, expressive ? 0.18 : 0.12);
+		split_overlay_tween->tween_property(split_drop_overlay, NodePath("modulate:a"), 1.0, expressive ? SPLIT_OVERLAY_FADE_IN_EXPRESSIVE : SPLIT_OVERLAY_FADE_IN_SUBTLE);
 		if (expressive) {
-			split_overlay_tween->tween_property(split_drop_overlay, NodePath("scale"), Vector2(1, 1), 0.18);
+			split_overlay_tween->tween_property(split_drop_overlay, NodePath("scale"), Vector2(1, 1), SPLIT_OVERLAY_FADE_IN_EXPRESSIVE);
 		}
+		// Release the reference when the entrance ends, so the member only points at a transition that is
+		// actually in flight (a finished Tween is kept alive by the scene tree, not by this Ref).
+		split_overlay_tween->set_parallel(false);
+		split_overlay_tween->tween_callback(callable_mp(this, &DocumentEditorContainer::_split_overlay_entrance_finished));
 	} else {
 		// Leaving always stays brisk and linear-ish, whatever the style: no overshoot on the way out.
 		split_overlay_tween->set_trans(Tween::TRANS_SINE);
 		split_overlay_tween->set_ease(Tween::EASE_OUT);
-		split_overlay_tween->tween_property(split_drop_overlay, NodePath("modulate:a"), 0.0, expressive ? 0.12 : 0.10);
+		split_overlay_tween->tween_property(split_drop_overlay, NodePath("modulate:a"), 0.0, expressive ? SPLIT_OVERLAY_FADE_OUT_EXPRESSIVE : SPLIT_OVERLAY_FADE_OUT_SUBTLE);
 		split_overlay_tween->tween_callback(callable_mp(this, &DocumentEditorContainer::_split_overlay_fade_out_finished));
 	}
+}
+
+void DocumentEditorContainer::_split_overlay_entrance_finished() {
+	// The entrance tween ends here; drop the reference so it does not look like a transition is still
+	// running. The scene tree keeps the finished tween alive until its cleanup pass.
+	split_overlay_tween = Ref<Tween>();
 }
 
 void DocumentEditorContainer::_stop_split_overlay_morph_tween() {
@@ -2594,13 +2623,13 @@ void DocumentEditorContainer::_start_split_overlay_morph_tween(const Rect2 &p_re
 		// few pixels while keeping the BACK curve shape.
 		const real_t max_delta = MAX(MAX(Math::abs(p_rect.position.x - from.position.x), Math::abs(p_rect.position.y - from.position.y)),
 				MAX(Math::abs(p_rect.size.x - from.size.x), Math::abs(p_rect.size.y - from.size.y)));
-		const real_t max_overshoot = 4.0f * EDSCALE;
-		back_amplitude = CLAMP(max_overshoot / (0.1003f * MAX(max_delta, 1.0f)), 0.0f, 1.0f);
+		const real_t max_overshoot = SPLIT_OVERLAY_MORPH_MAX_OVERSHOOT_PX * EDSCALE;
+		back_amplitude = CLAMP(max_overshoot / (SPLIT_OVERLAY_BACK_PEAK_OVERSHOOT * MAX(max_delta, 1.0f)), 0.0f, 1.0f);
 	}
 
 	// Both the position and the size (and the fitting pivot) are driven by the same progress value, so the
 	// overlay changes shape and place as one motion.
-	split_overlay_morph_tween->tween_method(callable_mp(this, &DocumentEditorContainer::_set_split_overlay_morph_progress).bind(from, p_rect, back_amplitude), 0.0, 1.0, expressive ? 0.18 : 0.14);
+	split_overlay_morph_tween->tween_method(callable_mp(this, &DocumentEditorContainer::_set_split_overlay_morph_progress).bind(from, p_rect, back_amplitude), 0.0, 1.0, expressive ? SPLIT_OVERLAY_MORPH_EXPRESSIVE : SPLIT_OVERLAY_MORPH_SUBTLE);
 }
 
 void DocumentEditorContainer::_set_split_overlay_morph_progress(real_t p_progress, const Rect2 &p_from, const Rect2 &p_to, real_t p_back_amplitude) {
@@ -2635,6 +2664,9 @@ void DocumentEditorContainer::_split_overlay_fade_out_finished() {
 		split_drop_overlay->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 		split_drop_overlay->hide();
 	}
+	// The fade is over: release the reference instead of keeping a finished Tween around. The scene tree
+	// still owns it until its cleanup pass.
+	split_overlay_tween = Ref<Tween>();
 }
 
 void DocumentEditorContainer::_hide_split_overlay() {

@@ -488,6 +488,7 @@ class DocumentEditorContainer : public MarginContainer {
 	void _update_drop_overlay_pivot();
 	void _stop_split_overlay_tween();
 	void _start_split_overlay_tween(bool p_show);
+	void _split_overlay_entrance_finished();
 	void _split_overlay_fade_out_finished();
 	void _stop_split_overlay_morph_tween();
 	void _start_split_overlay_morph_tween(const Rect2 &p_rect);
