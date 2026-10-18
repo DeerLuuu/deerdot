@@ -30,10 +30,11 @@
 
 #pragma once
 
-#include "core/templates/local_vector.h"
+#include "scene/animation/tween.h"
 #include "scene/main/window.h"
 
 class Panel;
+class Control;
 
 class Popup : public Window {
 	GDCLASS(Popup, Window);
@@ -42,6 +43,20 @@ class Popup : public Window {
 	bool popped_up = false;
 
 public:
+	// Opening animation parameters (Expressive style; Subtle only fades). Public so the editor-side
+	// regression test can keep them inside the perceptibility budget.
+	static constexpr double OPEN_ANIMATION_DURATION_SUBTLE = 0.10;
+	static constexpr double OPEN_ANIMATION_DURATION_EXPRESSIVE = 0.14;
+	static constexpr float OPEN_ANIMATION_SCALE_EXPRESSIVE = 0.92f;
+	static constexpr double TOOLTIP_ANIMATION_DURATION_SUBTLE = 0.08;
+	static constexpr double TOOLTIP_ANIMATION_DURATION_EXPRESSIVE = 0.10;
+	static constexpr float TOOLTIP_ANIMATION_SCALE_EXPRESSIVE = 0.96f;
+	static constexpr uint64_t TOOLTIP_REPLAY_WINDOW_MSEC = 300;
+
+	// The editor enables this at startup (or on theme rebuild) from the ui_animations settings. Disabled by
+	// default so the engine itself keeps its old behavior.
+	static void set_ui_open_animation(bool p_enabled, bool p_expressive);
+
 	enum HideReason {
 		HIDE_REASON_NONE,
 		HIDE_REASON_CANCELED, // E.g., because of rupture of UI flow (app unfocused). Includes closed programmatically.
@@ -51,8 +66,23 @@ public:
 private:
 	HideReason hide_reason = HIDE_REASON_NONE;
 
+	Ref<Tween> open_tween;
+	bool tooltip_animation_played = false;
+	Vector2 open_base_scale = Vector2(1, 1);
+	Color open_base_modulate = Color(1, 1, 1, 1);
+	bool open_values_saved = false;
+
 	void _initialize_visible_parents();
 	void _deinitialize_visible_parents();
+	void _play_open_animation();
+	void _stop_open_animation();
+	void _restore_open_values();
+	Control *_get_popup_content() const;
+	bool _is_tooltip_popup() const;
+	String _get_tooltip_signature() const;
+
+	static bool ui_open_animation_enabled;
+	static bool ui_open_animation_expressive;
 
 protected:
 	void _close_pressed();

@@ -32,6 +32,9 @@
 
 #include "core/config/engine.h"
 #include "core/object/callable_mp.h"
+#include "core/os/time.h"
+#include "scene/gui/control.h"
+#include "scene/gui/label.h"
 #include "scene/gui/panel.h"
 #include "scene/resources/style_box_flat.h"
 #include "scene/theme/theme_db.h"
@@ -40,6 +43,17 @@
 #ifdef TOOLS_ENABLED
 #include "core/config/project_settings.h"
 #endif
+
+bool Popup::ui_open_animation_enabled = false;
+bool Popup::ui_open_animation_expressive = false;
+
+static uint64_t tooltip_last_hide_msec = 0;
+static String tooltip_last_signature;
+
+void Popup::set_ui_open_animation(bool p_enabled, bool p_expressive) {
+	ui_open_animation_enabled = p_enabled;
+	ui_open_animation_expressive = p_expressive;
+}
 
 void Popup::_input_from_window(const Ref<InputEvent> &p_event) {
 	if (get_flag(FLAG_POPUP) && p_event->is_action_pressed(SNAME("ui_cancel"), false, true)) {
@@ -76,6 +90,122 @@ void Popup::_deinitialize_visible_parents() {
 	}
 }
 
+void Popup::_stop_open_animation() {
+	if (open_tween.is_valid()) {
+		open_tween->kill();
+		open_tween = Ref<Tween>();
+	}
+	_restore_open_values();
+}
+
+void Popup::_restore_open_values() {
+	if (!open_values_saved) {
+		return;
+	}
+	if (Control *content = _get_popup_content()) {
+		content->set_scale(open_base_scale);
+		content->set_modulate(open_base_modulate);
+	}
+	open_values_saved = false;
+}
+
+Control *Popup::_get_popup_content() const {
+	// PopupMenu keeps its panel as an internal child, so internal children must be included here.
+	for (int i = 0; i < get_child_count(true); i++) {
+		if (Control *control = Object::cast_to<Control>(get_child(i, true))) {
+			return control;
+		}
+	}
+	return nullptr;
+}
+
+bool Popup::_is_tooltip_popup() const {
+	// Tooltip popups are PopupPanels with this variation (created by Viewport::_gui_show_tooltip()).
+	return get_theme_type_variation() == SNAME("TooltipPanel");
+}
+
+String Popup::_get_tooltip_signature() const {
+	// Prefer the actual text of the tooltip label; custom tooltip contents fall back to their size.
+	for (int i = 0; i < get_child_count(true); i++) {
+		Control *content = Object::cast_to<Control>(get_child(i, true));
+		if (content == nullptr) {
+			continue;
+		}
+		if (Label *label = Object::cast_to<Label>(content)) {
+			return label->get_text();
+		}
+		for (int j = 0; j < content->get_child_count(true); j++) {
+			if (Label *label = Object::cast_to<Label>(content->get_child(j, true))) {
+				return label->get_text();
+			}
+		}
+	}
+	return itos(get_child_count()) + ":" + itos(get_size().x) + "x" + itos(get_size().y);
+}
+
+void Popup::_play_open_animation() {
+	if (!ui_open_animation_enabled) {
+		return;
+	}
+	Control *content = _get_popup_content();
+	if (content == nullptr) {
+		return;
+	}
+	const bool tooltip = _is_tooltip_popup();
+	const uint64_t now = Time::get_singleton()->get_ticks_msec();
+	if (tooltip) {
+		if (tooltip_animation_played) {
+			// Tooltips are re-positioned with popup() while following the mouse; do not replay then.
+			return;
+		}
+		const String signature = _get_tooltip_signature();
+		if (tooltip_last_hide_msec != 0 && now - tooltip_last_hide_msec < TOOLTIP_REPLAY_WINDOW_MSEC && signature == tooltip_last_signature) {
+			tooltip_animation_played = true;
+			return;
+		}
+		tooltip_last_signature = signature;
+	}
+
+	_stop_open_animation();
+	open_base_scale = content->get_scale();
+	open_base_modulate = content->get_modulate();
+	open_values_saved = true;
+
+	// Grow from the interaction point, clamped inside the popup so it never appears to fly in from outside.
+	const Vector2 size = content->get_size();
+	Vector2 pivot = size * 0.5f;
+	if (is_inside_tree()) {
+		pivot = content->get_global_transform().affine_inverse().xform(get_mouse_position());
+	}
+	pivot.x = CLAMP(pivot.x, size.x * 0.15f, size.x * 0.85f);
+	pivot.y = CLAMP(pivot.y, size.y * 0.15f, size.y * 0.85f);
+	content->set_pivot_offset(pivot);
+
+	const float start_scale = tooltip ? TOOLTIP_ANIMATION_SCALE_EXPRESSIVE : OPEN_ANIMATION_SCALE_EXPRESSIVE;
+	if (ui_open_animation_expressive) {
+		content->set_scale(open_base_scale * start_scale);
+	}
+	content->set_modulate(Color(open_base_modulate.r, open_base_modulate.g, open_base_modulate.b, 0.0f));
+
+	open_tween = Ref<Tween>(create_tween());
+	if (open_tween.is_null()) {
+		_restore_open_values();
+		return;
+	}
+	if (tooltip) {
+		tooltip_animation_played = true;
+	}
+	const double duration = tooltip ? (ui_open_animation_expressive ? TOOLTIP_ANIMATION_DURATION_EXPRESSIVE : TOOLTIP_ANIMATION_DURATION_SUBTLE)
+									: (ui_open_animation_expressive ? OPEN_ANIMATION_DURATION_EXPRESSIVE : OPEN_ANIMATION_DURATION_SUBTLE);
+	open_tween->set_parallel(true);
+	open_tween->set_trans((!tooltip && ui_open_animation_expressive) ? Tween::TRANS_BACK : Tween::TRANS_SINE);
+	open_tween->set_ease(Tween::EASE_OUT);
+	if (ui_open_animation_expressive) {
+		open_tween->tween_property(content, NodePath("scale"), open_base_scale, duration);
+	}
+	open_tween->tween_property(content, NodePath("modulate:a"), open_base_modulate.a, duration);
+}
+
 void Popup::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_VISIBILITY_CHANGED: {
@@ -86,6 +216,11 @@ void Popup::_notification(int p_what) {
 					hide_reason = HIDE_REASON_NONE;
 				} else {
 					_deinitialize_visible_parents();
+					_stop_open_animation();
+					if (_is_tooltip_popup()) {
+						tooltip_last_hide_msec = Time::get_singleton()->get_ticks_msec();
+						tooltip_animation_played = false;
+					}
 					if (hide_reason == HIDE_REASON_NONE) {
 						hide_reason = HIDE_REASON_CANCELED;
 					}
@@ -142,6 +277,7 @@ void Popup::_close_pressed() {
 void Popup::_post_popup() {
 	Window::_post_popup();
 	popped_up = true;
+	_play_open_animation();
 }
 
 void Popup::_validate_property(PropertyInfo &p_property) const {

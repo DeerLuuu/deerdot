@@ -44,6 +44,7 @@
 #include "editor/themes/editor_theme.h"
 #include "editor/themes/theme_classic.h"
 #include "editor/themes/theme_modern.h"
+#include "scene/gui/popup.h"
 #include "scene/resources/style_box_flat.h"
 #include "scene/resources/style_box_line.h"
 #include "scene/resources/style_box_texture.h"
@@ -874,6 +875,10 @@ void EditorThemeManager::_reset_dirty_flag() {
 Ref<EditorTheme> EditorThemeManager::generate_theme(const Ref<EditorTheme> &p_old_theme) {
 	OS::get_singleton()->benchmark_begin_measure(get_benchmark_key(), "Generate Theme");
 
+	// Keep the engine-level popup opening animation in sync with the editor settings. The theme is rebuilt
+	// whenever interface/theme/ui_animations* changes, so this also covers switching style at runtime.
+	Popup::set_ui_open_animation(EDITOR_GET("interface/theme/ui_animations"), get_animation_style() == ANIMATION_STYLE_EXPRESSIVE);
+
 	Ref<EditorTheme> theme = _create_base_theme(p_old_theme);
 
 	OS::get_singleton()->benchmark_begin_measure(get_benchmark_key(), "Merge Custom Theme");
@@ -943,6 +948,9 @@ bool EditorThemeManager::is_dark_icon_and_font() {
 void EditorThemeManager::initialize() {
 	EditorColorMap::create();
 	EditorTheme::initialize();
+	// Popups are engine-level Windows, so the editor turns their opening animation on here (and refreshes it
+	// whenever the theme is rebuilt, which happens on animation setting changes).
+	Popup::set_ui_open_animation(EDITOR_GET("interface/theme/ui_animations"), get_animation_style() == ANIMATION_STYLE_EXPRESSIVE);
 }
 
 void EditorThemeManager::finalize() {
