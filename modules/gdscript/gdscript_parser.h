@@ -128,6 +128,7 @@ public:
 		bool is_constant = false;
 		bool is_read_only = false;
 		bool is_meta_type = false;
+		bool is_nullable = false; // Explicit `T?`; false also means the legacy UNKNOWN state.
 		bool is_pseudo_type = false; // For global names that can't be used standalone.
 		bool is_coroutine = false; // For function calls.
 
@@ -251,6 +252,7 @@ public:
 			is_read_only = p_other.is_read_only;
 			is_constant = p_other.is_constant;
 			is_meta_type = p_other.is_meta_type;
+			is_nullable = p_other.is_nullable;
 			is_pseudo_type = p_other.is_pseudo_type;
 			is_coroutine = p_other.is_coroutine;
 			builtin_type = p_other.builtin_type;
@@ -1374,6 +1376,7 @@ public:
 		LocalVector<TypeNode *> container_types;
 
 		DataType resolved_type;
+		bool is_nullable = false;
 
 		TypeNode *get_container_type_or_null(uint32_t p_index) const {
 			return p_index < container_types.size() ? container_types[p_index] : nullptr;

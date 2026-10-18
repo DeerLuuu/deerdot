@@ -178,6 +178,8 @@ String GDScriptWarning::get_message() const {
 			return vformat(R"(The member "%s" from trait "%s" is not copied because the class already has a member with that name.)", symbols[0], symbols[1]);
 		case UNNECESSARY_SAFE_NAVIGATION:
 			return R"(Safe navigation ("?.") is unnecessary on a non-nullable value type.)";
+		case NULLABLE_DEREFERENCE:
+			return R"(Dereferencing a nullable value without checking for null first.)";
 #ifndef DISABLE_DEPRECATED
 		// Never produced. These warnings migrated from 3.x by mistake.
 		case PROPERTY_USED_AS_FUNCTION: // There is already an error.
@@ -259,6 +261,7 @@ String GDScriptWarning::get_name_from_code(Code p_code) {
 		PNAME("ONREADY_WITH_CAST"),
 		PNAME("SHADOWED_TRAIT_MEMBER"),
 		PNAME("UNNECESSARY_SAFE_NAVIGATION"),
+		PNAME("NULLABLE_DEREFERENCE"),
 #ifndef DISABLE_DEPRECATED
 		"PROPERTY_USED_AS_FUNCTION",
 		"CONSTANT_USED_AS_FUNCTION",

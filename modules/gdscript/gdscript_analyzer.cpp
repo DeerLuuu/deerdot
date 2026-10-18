@@ -907,6 +907,7 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 
 	GDScriptParser::DataType result;
 	result.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
+	result.is_nullable = p_type->is_nullable;
 
 	if (p_type->type_chain.is_empty()) {
 		// void.
@@ -1219,6 +1220,8 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 	}
 
 	p_type->resolved_type = result;
+	result.is_nullable = p_type->is_nullable;
+	p_type->resolved_type.is_nullable = p_type->is_nullable;
 	return result;
 }
 
@@ -2780,7 +2783,9 @@ void GDScriptAnalyzer::resolve_assignable(GDScriptParser::AssignableNode *p_assi
 					downgrade_node_type_source(p_assignable->initializer);
 				}
 			} else if (!is_type_compatible(specified_type, initializer_type, true, p_assignable->initializer)) {
-				if (!is_constant && is_type_compatible(initializer_type, specified_type)) {
+				if (initializer_type.is_nullable && !specified_type.is_nullable) {
+					push_error(vformat(R"(Cannot assign a nullable value of type %s to non-nullable %s "%s"; check for null first or declare it as "%s?".)", initializer_type.to_string(), p_kind, p_assignable->identifier->name, specified_type.to_string()), p_assignable->initializer);
+				} else if (!is_constant && is_type_compatible(initializer_type, specified_type)) {
 					mark_node_unsafe(p_assignable->initializer);
 					p_assignable->use_conversion_assign = true;
 				} else {
@@ -3276,6 +3281,7 @@ void GDScriptAnalyzer::reduce_expression(GDScriptParser::ExpressionNode *p_expre
 			}
 			reduce_expression(safe->chain);
 			safe->type_constraint = safe->chain->type_constraint;
+			safe->type_constraint.is_nullable = true;
 			safe->is_constant = safe->chain->is_constant;
 		} break;
 		case GDScriptParser::Node::PLACEHOLDER:
@@ -3368,6 +3374,10 @@ void GDScriptAnalyzer::update_const_expression_builtin_type(GDScriptParser::Expr
 	}
 
 	GDScriptParser::DataType value_type = type_from_variant(p_expression->reduced_value, p_expression);
+	if (p_type.is_nullable && value_type.kind == GDScriptParser::DataType::BUILTIN && value_type.builtin_type == Variant::NIL) {
+		p_expression->type_constraint = p_type;
+		return;
+	}
 	if (expression_type.is_variant() && !is_enum_cast && !is_type_compatible(p_type, value_type, true, p_expression)) {
 		push_error(vformat(R"(Cannot %s a value of type "%s" as "%s".)", p_usage, value_type.to_string(), p_type.to_string()), p_expression);
 		return;
@@ -5468,6 +5478,12 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 		reduce_expression(p_subscript->base);
 	}
 
+	if (p_subscript->base->type_constraint.is_nullable &&
+			p_subscript->base->type != GDScriptParser::Node::PLACEHOLDER &&
+			p_subscript->base->type != GDScriptParser::Node::SAFE_NAVIGATION) {
+		parser->push_warning(p_subscript, GDScriptWarning::NULLABLE_DEREFERENCE);
+	}
+
 	GDScriptParser::DataType result_type;
 
 	if (p_subscript->is_attribute) {
@@ -7176,6 +7192,15 @@ bool GDScriptAnalyzer::check_type_compatibility(const GDScriptParser::DataType &
 	if (p_source.kind == GDScriptParser::DataType::VARIANT) {
 		// TODO: This is acceptable but unsafe. Make sure unsafe line is set.
 		return true;
+	}
+
+	if (p_target.is_nullable && p_source.kind == GDScriptParser::DataType::BUILTIN && p_source.builtin_type == Variant::NIL) {
+		// Explicit nullable targets accept `null` even for value types (`int?`).
+		return true;
+	}
+	if (p_source.is_nullable && !p_target.is_nullable) {
+		// Tightening is only armed by an explicit `T?` source; legacy types stay UNKNOWN.
+		return false;
 	}
 
 	if (p_target.kind == GDScriptParser::DataType::BUILTIN) {

@@ -29,5 +29,5 @@ func test() -> void:
 	evaluations = 0
 	print(get_null_thing()?.value, " ", evaluations)
 	print(nil_thing?.inner.value)
-	var typed: int = get_thing()?.value
+	var typed: int? = get_thing()?.value
 	print(typed)

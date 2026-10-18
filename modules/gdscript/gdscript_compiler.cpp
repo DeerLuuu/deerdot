@@ -93,6 +93,11 @@ GDScriptDataType GDScriptCompiler::_gdtype_from_datatype(const GDScriptParser::D
 		return GDScriptDataType();
 	}
 
+	if (p_datatype.is_nullable) {
+		// Nullable values are stored as Variant at runtime: no new representation, and NIL is allowed.
+		return GDScriptDataType();
+	}
+
 	GDScriptDataType result;
 
 	switch (p_datatype.kind) {

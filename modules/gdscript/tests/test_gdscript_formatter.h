@@ -4323,4 +4323,17 @@ TEST_CASE("[Modules][GDScript][GDScriptFormatter] Safe navigation survives the t
 	CHECK(found);
 }
 
+TEST_CASE("[Modules][GDScript][GDScriptFormatter] Nullable type suffixes round-trip") {
+	CHECK_FORMAT(GDSCRIPT(R"(
+var node: Node?
+var number: int? = null
+var list: Array[int]?
+)"),
+			GDSCRIPT(R"(
+var node: Node?
+var number: int? = null
+var list: Array[int]?
+)"));
+}
+
 } //namespace GDScriptTests

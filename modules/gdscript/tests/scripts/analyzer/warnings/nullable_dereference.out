@@ -1,0 +1,2 @@
+GDTEST_OK
+~~ WARNING at line 7: (NULLABLE_DEREFERENCE) Dereferencing a nullable value without checking for null first.

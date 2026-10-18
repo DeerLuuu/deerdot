@@ -4299,7 +4299,7 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_attribute(ExpressionNode *
 
 GDScriptParser::ExpressionNode *GDScriptParser::parse_safe_navigation(ExpressionNode *p_previous_operand, bool p_can_assign) {
 	if (p_previous_operand == nullptr) {
-		push_error(R"(Unexpected "?." — safe navigation needs an expression before it.)");
+		push_error(R"(Unexpected "?." —safe navigation needs an expression before it.)");
 		return nullptr;
 	}
 	SafeNavigationNode *safe = alloc_node<SafeNavigationNode>();
@@ -4807,7 +4807,7 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_invalid_token(ExpressionNo
 
 	switch (invalid) {
 		case GDScriptTokenizer::Token::QUESTION_MARK:
-			push_error(R"(Unexpected "?" in source. If you want a ternary operator, use "truthy_value if true_condition else falsy_value".)");
+			push_error(R"(Invalid character "?" (U+003F).)");
 			break;
 		default:
 			return nullptr; // Unreachable.
@@ -4859,6 +4859,9 @@ GDScriptParser::TypeNode *GDScriptParser::parse_type(bool p_allow_void) {
 		} while (match(GDScriptTokenizer::Token::COMMA));
 		consume(GDScriptTokenizer::Token::BRACKET_CLOSE, R"(Expected closing "]" after collection type.)");
 		if (type != nullptr) {
+			if (match(GDScriptTokenizer::Token::QUESTION_MARK)) {
+				type->is_nullable = true;
+			}
 			complete_extents(type);
 		}
 		return type;
@@ -4874,6 +4877,9 @@ GDScriptParser::TypeNode *GDScriptParser::parse_type(bool p_allow_void) {
 	}
 
 	complete_extents(type);
+	if (match(GDScriptTokenizer::Token::QUESTION_MARK)) {
+		type->is_nullable = true;
+	}
 	return type;
 }
 

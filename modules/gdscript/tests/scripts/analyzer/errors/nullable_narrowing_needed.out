@@ -1,0 +1,2 @@
+GDTEST_ANALYZER_ERROR
+>> ERROR at line 8: Cannot assign a nullable value of type Node to non-nullable variable "node"; check for null first or declare it as "Node?".

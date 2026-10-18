@@ -660,6 +660,9 @@ String GDScriptFormat::parse_type(const GDP::TypeNode *p_node) {
 	} else {
 		output += "void";
 	}
+	if (p_node->is_nullable) {
+		output += "?";
+	}
 
 	return output;
 }
