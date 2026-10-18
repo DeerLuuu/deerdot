@@ -93,6 +93,28 @@ void EditorSettingsDialog::_settings_property_edited() {
 	} else if (full_name == "editors/3d/navigation/navigation_scheme") {
 		update_3d_navigation_preset();
 		_update_shortcuts();
+	} else if (full_name.begins_with("interface/theme/ui_animations/")) {
+		// Any animation knob diverges from the stored preset: report Custom. The manager derives this too,
+		// this only keeps the enum display in sync.
+		EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations_style", "Custom");
+	} else if (full_name == "interface/theme/ui_animations_style") {
+		const String style = EDITOR_GET("interface/theme/ui_animations_style");
+		if (style == "Subtle" || style == "Expressive") {
+			// Picking a preset writes the knobs, then the preset itself last (all set_manually, no signal),
+			// so the last-changed setting is never the knob our own downgrade would react to.
+			const EditorThemeManager::AnimationParams &preset = EditorThemeManager::PRESET_PARAMS[style == "Expressive" ? 1 : 0];
+			EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/speed_scale", preset.speed_scale);
+			EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/motion_amount", preset.motion_amount);
+			EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/button_bloom_px", preset.bloom_px);
+			EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/button_press_squash_px", preset.press_squash_px);
+			EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/row_highlight_slide_px", preset.row_slide_px);
+			EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/menu_highlight_slide_px", preset.menu_slide_px);
+			EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/tab_lift_px", preset.tab_lift_px);
+			EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/popup_open_scale", preset.popup_open_scale);
+			EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/popup_open_ms", preset.popup_open_ms);
+			EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations/script_reveal_line_delay_ms", preset.reveal_delay_ms);
+			EditorSettings::get_singleton()->set_manually("interface/theme/ui_animations_style", style);
+		}
 	} else if (full_name == "interface/editor/appearance/custom_display_scale") {
 		// The "Custom" display scale is index 7 in the setting's enum hint.
 		EditorSettings::get_singleton()->set_manually("interface/editor/appearance/display_scale", 7);
