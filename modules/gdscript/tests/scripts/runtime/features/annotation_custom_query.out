@@ -1,0 +1,7 @@
+GDTEST_OK
+true
+{ "name": &"Author", "args": ["deer"], "named": {  } }
+3
+ABA
+{ "name": &"Route", "args": ["/m"], "named": { &"method": "POST" } }
+["", "Inner/method", "Inner/ping", "Inner/value", "dup"]

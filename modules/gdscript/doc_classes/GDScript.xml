@@ -23,5 +23,34 @@
 				[/codeblock]
 			</description>
 		</method>
+		<method name="has_annotation">
+			<return type="bool" />
+			<param index="0" name="symbol" type="StringName" />
+			<param index="1" name="annotation" type="StringName" />
+			<description>
+				Returns [code]true[/code] if the given member has a custom annotation with this name. Use an empty [param symbol] for the script itself; inner class members use [code]"Inner/member"[/code].
+			</description>
+		</method>
+		<method name="get_annotation">
+			<return type="Dictionary" />
+			<param index="0" name="symbol" type="StringName" />
+			<param index="1" name="annotation" type="StringName" />
+			<description>
+				Returns the first matching custom annotation as a dictionary with [code]name[/code], [code]args[/code] and [code]named[/code] entries, or an empty dictionary.
+			</description>
+		</method>
+		<method name="get_annotations">
+			<return type="Array" />
+			<param index="0" name="symbol" type="StringName" />
+			<description>
+				Returns all custom annotations of the given member in source order (duplicates included).
+			</description>
+		</method>
+		<method name="get_annotation_symbols">
+			<return type="Array" />
+			<description>
+				Returns the symbols (script [code]""[/code], member names, or [code]"Inner/member"[/code] paths) that have at least one custom annotation.
+			</description>
+		</method>
 	</methods>
 </class>

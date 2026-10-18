@@ -1,0 +1,2 @@
+GDTEST_PARSER_ERROR
+Unknown annotation "@Tool": did you mean "@tool"? Custom annotations cannot shadow built-in names (case-insensitive).
