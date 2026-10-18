@@ -164,6 +164,32 @@ Ref<StyleBoxLine> EditorThemeManager::make_line_stylebox(Color p_color, int p_th
 	return style;
 }
 
+void EditorThemeManager::animate_stylebox(const Ref<StyleBox> &p_style, double p_duration,
+		Tween::TransitionType p_transition, Tween::EaseType p_ease, bool p_animate_rect, double p_exit_duration) {
+	if (p_style.is_null()) {
+		return;
+	}
+	// Disabling the setting leaves every duration at 0, which is the same as a fully static editor UI.
+	if (!EDITOR_GET("interface/theme/ui_animations")) {
+		return;
+	}
+	if (p_duration > 0.0) {
+		p_style->set_animation_duration(StyleBox::PHASE_NORMAL, p_duration);
+		p_style->set_animation_transition(StyleBox::PHASE_NORMAL, p_transition);
+		p_style->set_animation_ease(StyleBox::PHASE_NORMAL, p_ease);
+		p_style->set_animating_rect(p_animate_rect);
+	}
+	// Always write the exit duration, otherwise styleboxes duplicated from an animated one would inherit
+	// a fade-out they were not meant to have.
+	p_style->set_animation_duration(StyleBox::PHASE_EXIT, p_exit_duration);
+	if (p_exit_duration > 0.0) {
+		p_style->set_animation_transition(StyleBox::PHASE_EXIT, p_transition);
+		p_style->set_animation_ease(StyleBox::PHASE_EXIT, p_ease);
+		// Only fade the background out, transforms would desync it from text and icons.
+		p_style->set_transform_modulate(Color(1, 1, 1, 0));
+	}
+}
+
 // Theme generation and population routines.
 
 Ref<EditorTheme> EditorThemeManager::_create_base_theme(const Ref<EditorTheme> &p_old_theme) {
@@ -183,6 +209,20 @@ Ref<EditorTheme> EditorThemeManager::_create_base_theme(const Ref<EditorTheme> &
 	} else {
 		ThemeClassic::populate_shared_styles(theme, config);
 	}
+
+	// Shared StyleBox animations, used by both theme styles.
+	// Hover-in speed comes from the hovered stylebox, hover-out speed from the normal one: the stylebox
+	// that is currently drawn determines the duration. Exit durations are only used by styleboxes that are
+	// drawn conditionally (hover highlights, focus rings), and fade out via modulate to avoid desyncing text.
+	animate_stylebox(config.button_style, 0.10);
+	animate_stylebox(config.button_style_hover, 0.12);
+	animate_stylebox(config.button_style_pressed, 0.08, Tween::TRANS_QUAD);
+	animate_stylebox(config.button_style_disabled, 0.12);
+	animate_stylebox(config.focus_style, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.10);
+	animate_stylebox(config.button_style_focus, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.10);
+	animate_stylebox(config.flat_button_hover, 0.12, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.10);
+	animate_stylebox(config.flat_button_pressed, 0.08, Tween::TRANS_QUAD, Tween::EASE_OUT, false, 0.10);
+	animate_stylebox(config.flat_button_hover_pressed, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.10);
 
 	// Register icons.
 	{

@@ -700,6 +700,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 
 			Ref<StyleBoxFlat> style_tree_hover = p_config.flat_button_hover->duplicate();
 			style_tree_hover->set_content_margin_all(0);
+			EditorThemeManager::animate_stylebox(style_tree_hover, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.10);
 
 			p_theme->set_stylebox("button_hover", "Tree", style_tree_hover);
 			p_theme->set_stylebox("hovered", "Tree", style_tree_hover);
@@ -708,12 +709,14 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 
 			Ref<StyleBoxFlat> style_tree_selected = p_config.flat_button_pressed->duplicate();
 			style_tree_selected->set_content_margin_all(0);
+			EditorThemeManager::animate_stylebox(style_tree_selected, 0.12, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.14);
 
 			p_theme->set_stylebox("selected", "Tree", style_tree_selected);
 			p_theme->set_stylebox("selected_focus", "Tree", p_config.focus_style);
 
 			Ref<StyleBoxFlat> style_tree_hovered_selected = p_config.flat_button_hover_pressed->duplicate();
 			style_tree_hovered_selected->set_content_margin_all(0);
+			EditorThemeManager::animate_stylebox(style_tree_hovered_selected, 0.10);
 
 			p_theme->set_stylebox("hovered_selected", "Tree", style_tree_hovered_selected);
 			p_theme->set_stylebox("hovered_selected_focus", "Tree", p_config.focus_style);
@@ -721,6 +724,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			// Cursor is drawn on top of the item so it needs to be transparent.
 			Ref<StyleBoxFlat> style_tree_cursor = p_config.base_style->duplicate();
 			style_tree_cursor->set_bg_color(p_config.mono_color * Color(1, 1, 1, 0.04));
+			EditorThemeManager::animate_stylebox(style_tree_cursor, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.08);
 
 			Ref<StyleBoxFlat> style_tree_title = p_config.base_style->duplicate();
 			style_tree_title->set_bg_color(p_config.surface_lower_color);
@@ -763,6 +767,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			style_itemlist_bg->set_content_margin_all(EDSCALE_RND(p_config.base_margin * 2));
 			Ref<StyleBoxFlat> style_itemlist_cursor = p_config.base_style->duplicate();
 			style_itemlist_cursor->set_bg_color(p_config.mono_color * Color(1, 1, 1, 0.04));
+			EditorThemeManager::animate_stylebox(style_itemlist_cursor, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.08);
 
 			p_theme->set_stylebox(SceneStringName(panel), "ItemList", style_itemlist_bg);
 			p_theme->set_stylebox("focus", "ItemList", p_config.focus_style);
@@ -810,6 +815,11 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		Ref<StyleBoxFlat> style_tab_hovered = style_tab_unselected->duplicate();
 		style_tab_hovered->set_bg_color(p_config.surface_base_color * Color(1, 1, 1, 0.6));
 
+		// Tabs animate their rect along with the text position, so closing a tab slides the remaining ones smoothly.
+		EditorThemeManager::animate_stylebox(style_tab_selected, 0.12, Tween::TRANS_SINE, Tween::EASE_OUT, true);
+		EditorThemeManager::animate_stylebox(style_tab_hovered, 0.12, Tween::TRANS_SINE, Tween::EASE_OUT, true);
+		EditorThemeManager::animate_stylebox(style_tab_unselected, 0.12, Tween::TRANS_SINE, Tween::EASE_OUT, true);
+
 		Color drop_mark_color = p_config.dark_color_2.lerp(p_config.accent_color, 0.75);
 
 		Ref<StyleBoxFlat> style_tabbar_background = p_config.base_style->duplicate();
@@ -817,6 +827,11 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		style_tabbar_background->set_corner_radius(CORNER_BOTTOM_LEFT, 0);
 		style_tabbar_background->set_corner_radius(CORNER_BOTTOM_RIGHT, 0);
 		style_tabbar_background->set_content_margin_individual(0, 0, EDSCALE_RND(p_config.base_margin * 0.25), 0);
+
+		// Small buttons on the right side of tabs (close button, tab list button).
+		Ref<StyleBoxFlat> style_tab_button = p_config.panel_container_style->duplicate();
+
+		EditorThemeManager::animate_stylebox(style_tab_button, 0.08, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.08);
 
 		p_theme->set_stylebox("tabbar_background", "TabContainer", style_tabbar_background);
 		p_theme->set_stylebox(SceneStringName(panel), "TabContainer", p_config.tab_container_style);
@@ -831,8 +846,8 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		p_theme->set_stylebox("tab_unselected", "TabBar", style_tab_unselected);
 		p_theme->set_stylebox("tab_disabled", "TabBar", style_tab_unselected);
 		p_theme->set_stylebox("tab_focus", "TabBar", p_config.focus_style);
-		p_theme->set_stylebox("button_pressed", "TabBar", p_config.panel_container_style);
-		p_theme->set_stylebox("button_highlight", "TabBar", p_config.panel_container_style);
+		p_theme->set_stylebox("button_pressed", "TabBar", style_tab_button);
+		p_theme->set_stylebox("button_highlight", "TabBar", style_tab_button);
 
 		p_theme->set_color("font_selected_color", "TabContainer", p_config.font_color);
 		p_theme->set_color("font_hovered_color", "TabContainer", p_config.font_hover_color);
@@ -1094,6 +1109,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 
 			Ref<StyleBoxFlat> style_popup_hover = p_config.flat_button_hover->duplicate();
 			style_popup_hover->set_bg_color(_get_base_color(p_config, -0.5, 0.75));
+			EditorThemeManager::animate_stylebox(style_popup_hover, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.08);
 
 			p_theme->set_stylebox(SceneStringName(hover), "PopupMenu", style_popup_hover);
 
@@ -1140,9 +1156,12 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 
 		Ref<StyleBoxFlat> grabber_style = p_config.base_style->duplicate();
 		grabber_style->set_bg_color(p_config.mono_color * Color(1, 1, 1, 0.225));
+		// Scrolling must stay 1:1 with the pointer, so only the color is animated.
+		EditorThemeManager::animate_stylebox(grabber_style, 0.10);
 
 		Ref<StyleBoxFlat> grabber_hl_style = p_config.base_style->duplicate();
 		grabber_hl_style->set_bg_color(p_config.mono_color * Color(1, 1, 1, 0.5));
+		EditorThemeManager::animate_stylebox(grabber_hl_style, 0.10);
 
 		int scroll_margin = EDSCALE_RND(p_config.enable_touch_optimizations ? 13 : 3);
 
@@ -1199,8 +1218,13 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		p_theme->set_icon("grabber_highlight", "HSlider", p_theme->get_icon(SNAME("GuiSliderGrabberHl"), EditorStringName(EditorIcons)));
 		p_theme->set_icon("grabber", "HSlider", p_theme->get_icon(SNAME("GuiSliderGrabber"), EditorStringName(EditorIcons)));
 		p_theme->set_stylebox("slider", "HSlider", style_h_slider);
-		p_theme->set_stylebox("grabber_area", "HSlider", EditorThemeManager::make_flat_stylebox(p_config.contrast_color_1, 0, background_margin, 0, background_margin, p_config.corner_radius));
-		p_theme->set_stylebox("grabber_area_highlight", "HSlider", EditorThemeManager::make_flat_stylebox(p_config.contrast_color_1, 0, background_margin, 0, background_margin));
+		Ref<StyleBoxFlat> style_h_slider_grabber_area = EditorThemeManager::make_flat_stylebox(p_config.contrast_color_1, 0, background_margin, 0, background_margin, p_config.corner_radius);
+		Ref<StyleBoxFlat> style_h_slider_grabber_area_highlight = EditorThemeManager::make_flat_stylebox(p_config.contrast_color_1, 0, background_margin, 0, background_margin);
+		// Dragging must stay 1:1 with the pointer, so only the color is animated.
+		EditorThemeManager::animate_stylebox(style_h_slider_grabber_area, 0.10);
+		EditorThemeManager::animate_stylebox(style_h_slider_grabber_area_highlight, 0.10);
+		p_theme->set_stylebox("grabber_area", "HSlider", style_h_slider_grabber_area);
+		p_theme->set_stylebox("grabber_area_highlight", "HSlider", style_h_slider_grabber_area_highlight);
 		p_theme->set_constant("center_grabber", "HSlider", 0);
 		p_theme->set_constant("grabber_offset", "HSlider", 0);
 
@@ -1211,8 +1235,12 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		p_theme->set_icon("grabber", "VSlider", p_theme->get_icon(SNAME("GuiSliderGrabber"), EditorStringName(EditorIcons)));
 		p_theme->set_icon("grabber_highlight", "VSlider", p_theme->get_icon(SNAME("GuiSliderGrabberHl"), EditorStringName(EditorIcons)));
 		p_theme->set_stylebox("slider", "VSlider", style_v_slider);
-		p_theme->set_stylebox("grabber_area", "VSlider", EditorThemeManager::make_flat_stylebox(p_config.contrast_color_1, background_margin, 0, background_margin, 0, p_config.corner_radius));
-		p_theme->set_stylebox("grabber_area_highlight", "VSlider", EditorThemeManager::make_flat_stylebox(p_config.contrast_color_1, background_margin, 0, background_margin, 0));
+		Ref<StyleBoxFlat> style_v_slider_grabber_area = EditorThemeManager::make_flat_stylebox(p_config.contrast_color_1, background_margin, 0, background_margin, 0, p_config.corner_radius);
+		Ref<StyleBoxFlat> style_v_slider_grabber_area_highlight = EditorThemeManager::make_flat_stylebox(p_config.contrast_color_1, background_margin, 0, background_margin, 0);
+		EditorThemeManager::animate_stylebox(style_v_slider_grabber_area, 0.10);
+		EditorThemeManager::animate_stylebox(style_v_slider_grabber_area_highlight, 0.10);
+		p_theme->set_stylebox("grabber_area", "VSlider", style_v_slider_grabber_area);
+		p_theme->set_stylebox("grabber_area_highlight", "VSlider", style_v_slider_grabber_area_highlight);
 		p_theme->set_constant("center_grabber", "VSlider", 0);
 		p_theme->set_constant("grabber_offset", "VSlider", 0);
 	}
@@ -1281,13 +1309,19 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 		p_theme->set_icon("down_pressed", "SpinBox", p_theme->get_icon(SNAME("GuiSpinboxDown"), EditorStringName(EditorIcons)));
 		p_theme->set_icon("down_disabled", "SpinBox", p_theme->get_icon(SNAME("GuiSpinboxDown"), EditorStringName(EditorIcons)));
 
+		// SpinBox arrows are only drawn while hovered or pressed, so they need their own copies with a fade-out.
+		Ref<StyleBoxFlat> style_spinbox_hover = p_config.button_style_hover->duplicate();
+		EditorThemeManager::animate_stylebox(style_spinbox_hover, 0.10, Tween::TRANS_SINE, Tween::EASE_OUT, false, 0.10);
+		Ref<StyleBoxFlat> style_spinbox_pressed = p_config.button_style_pressed->duplicate();
+		EditorThemeManager::animate_stylebox(style_spinbox_pressed, 0.08, Tween::TRANS_QUAD);
+
 		p_theme->set_stylebox("up_background", "SpinBox", EditorThemeManager::make_empty_stylebox());
-		p_theme->set_stylebox("up_background_hovered", "SpinBox", p_config.button_style_hover);
-		p_theme->set_stylebox("up_background_pressed", "SpinBox", p_config.button_style_pressed);
+		p_theme->set_stylebox("up_background_hovered", "SpinBox", style_spinbox_hover);
+		p_theme->set_stylebox("up_background_pressed", "SpinBox", style_spinbox_pressed);
 		p_theme->set_stylebox("up_background_disabled", "SpinBox", EditorThemeManager::make_empty_stylebox());
 		p_theme->set_stylebox("down_background", "SpinBox", EditorThemeManager::make_empty_stylebox());
-		p_theme->set_stylebox("down_background_hovered", "SpinBox", p_config.button_style_hover);
-		p_theme->set_stylebox("down_background_pressed", "SpinBox", p_config.button_style_pressed);
+		p_theme->set_stylebox("down_background_hovered", "SpinBox", style_spinbox_hover);
+		p_theme->set_stylebox("down_background_pressed", "SpinBox", style_spinbox_pressed);
 		p_theme->set_stylebox("down_background_disabled", "SpinBox", EditorThemeManager::make_empty_stylebox());
 
 		p_theme->set_color("up_icon_modulate", "SpinBox", p_config.icon_normal_color);

@@ -224,6 +224,12 @@ public:
 	static Ref<StyleBoxEmpty> make_empty_stylebox(float p_margin_left = -1, float p_margin_top = -1, float p_margin_right = -1, float p_margin_bottom = -1);
 	static Ref<StyleBoxTexture> make_stylebox(Ref<Texture2D> p_texture, float p_left, float p_top, float p_right, float p_bottom, float p_margin_left = -1, float p_margin_top = -1, float p_margin_right = -1, float p_margin_bottom = -1, bool p_draw_center = true);
 	static Ref<StyleBoxLine> make_line_stylebox(Color p_color, int p_thickness = 1, float p_grow_begin = 1, float p_grow_end = 1, bool p_vertical = false);
+	// Sets up animation parameters for an editor StyleBox. Does nothing if the `interface/theme/ui_animations`
+	// setting is disabled, so the editor stays fully static in that case. `p_exit_duration` > 0 also sets up
+	// a fade-out for styleboxes that are only drawn conditionally (hover highlights, selection, focus, etc.).
+	static void animate_stylebox(const Ref<StyleBox> &p_style, double p_duration,
+			Tween::TransitionType p_transition = Tween::TRANS_SINE, Tween::EaseType p_ease = Tween::EASE_OUT,
+			bool p_animate_rect = false, double p_exit_duration = 0.0);
 
 	static Ref<EditorTheme> generate_theme(const Ref<EditorTheme> &p_old_theme = nullptr);
 	static bool is_generated_theme_outdated();
