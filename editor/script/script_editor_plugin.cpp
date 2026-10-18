@@ -5496,6 +5496,12 @@ void DocumentEditorContainer::set_window_layout(Ref<ConfigFile> p_layout) {
 			_restore_split_offsets(p_layout);
 			_update_filenames();
 			document_list->update_list();
+			// Restoring the pane layout skips the usual edit()/tab_selected selection path (both early-out
+			// while restoring_layout is true), so the outline would stay empty until another tab was
+			// clicked. Select the restored current script, then repeat on idle so the freshly created
+			// editors have finished setting up their outline data.
+			ensure_select_current();
+			callable_mp(this, &DocumentEditorContainer::ensure_select_current).call_deferred();
 			return;
 		}
 	}
