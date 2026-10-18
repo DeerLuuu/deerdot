@@ -1,0 +1,4 @@
+GDTEST_OK
+true
+{ "name": &"tag", "args": [1], "named": {  } }
+{ "name": &"tag", "args": ["x"], "named": { &"named": 2 } }

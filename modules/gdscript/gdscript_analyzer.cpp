@@ -2213,6 +2213,9 @@ void GDScriptAnalyzer::resolve_annotation(GDScriptParser::AnnotationNode *p_anno
 
 	if (p_annotation->info == nullptr) {
 		// Custom annotation: every positional and named argument must reduce to a constant.
+		// Rebuild the resolved arrays from scratch so re-entrant resolution cannot accumulate duplicates.
+		p_annotation->resolved_arguments.clear();
+		p_annotation->resolved_named_arguments.clear();
 		for (uint32_t i = 0; i < p_annotation->arguments.size(); i++) {
 			GDScriptParser::ExpressionNode *argument = p_annotation->arguments[i];
 			reduce_expression(argument);
