@@ -1210,12 +1210,22 @@ void DocumentEditorContainer::_setup_pane(TabContainer *p_pane) {
 void DocumentEditorContainer::_update_tab_bar_settings() {
 	const TabBar::CloseButtonDisplayPolicy close_policy = (TabBar::CloseButtonDisplayPolicy)EDITOR_GET("interface/scene_tabs/display_close_button").operator int();
 	const int max_width = int(EDITOR_GET("interface/scene_tabs/maximum_width")) * EDSCALE;
-	const int icon_max_width = get_theme_constant(SNAME("class_icon_size"), EditorStringName(Editor));
+	int icon_max_width = get_theme_constant(SNAME("class_icon_size"), EditorStringName(Editor));
+	if (icon_max_width <= 0) {
+		// The editor theme may not be applied yet when the first pane is created, so the theme lookup can
+		// return 0. class_icon_size is a constant in the theme configuration (16 * EDSCALE); use that until
+		// the real theme answers, and refresh again in NOTIFICATION_READY/on theme changes.
+		icon_max_width = 16 * EDSCALE;
+	}
 	for (TabContainer *pane : panes) {
 		if (TabBar *bar = pane->get_tab_bar()) {
 			bar->set_tab_close_display_policy(close_policy);
 			bar->set_max_tab_width(max_width);
 			bar->add_theme_constant_override("icon_max_width", icon_max_width);
+			// TabContainer re-applies its own theme_cache.icon_max_width to the internal TabBar on every
+			// theme change, so the override has to live on the TabContainer as well; otherwise the bar
+			// silently falls back to the theme's 0 on the next rebuild.
+			pane->add_theme_constant_override("icon_max_width", icon_max_width);
 		}
 	}
 }
@@ -1224,10 +1234,10 @@ void DocumentEditorContainer::_update_pane_top_spacing() {
 	if (pane_top_spacer == nullptr) {
 		return;
 	}
-	// The Expressive tab lift draws five pixels above the tab, so leave the same room above the panes.
-	// Subtle and disabled animations keep a zero-height spacer (pixel-identical layout).
-	const int spacing = EditorThemeManager::is_expressive_animation_style() ? 5 * EDSCALE : 0;
-	pane_top_spacer->set_custom_minimum_size(Size2(0, spacing));
+	// Keep "padding == lift" with the same parameter the scene tab strip uses, so the Custom style gets the
+	// same room in both places. Animations disabled or a zero lift keep a zero-height spacer.
+	const int tab_lift = EDITOR_GET("interface/theme/ui_animations") ? EditorThemeManager::get_tab_lift_px() : 0;
+	pane_top_spacer->set_custom_minimum_size(Size2(0, tab_lift * EDSCALE));
 }
 
 void DocumentEditorContainer::_pane_tab_selected(int p_tab, TabContainer *p_pane) {
@@ -1885,6 +1895,7 @@ Control *DocumentEditorContainer::_split_control(Control *p_target, DropZone p_z
 	panes.push_back(new_pane);
 	_setup_pane(new_pane);
 	active_pane = (int)panes.size() - 1;
+	_update_tab_bar_settings();
 
 	_update_filenames();
 	document_list->update_list();
@@ -3995,6 +4006,10 @@ void DocumentEditorContainer::_notification(int p_what) {
 		} break;
 
 		case NOTIFICATION_READY: {
+			// The theme is applied by now; refresh the tab bar constants that may have used fallbacks while
+			// the panes were created.
+			_update_tab_bar_settings();
+			_update_pane_top_spacing();
 			if (is_main_editor) {
 				InspectorDock::get_singleton()->connect("request_help", callable_mp(this, &DocumentEditorContainer::_help_class_open));
 				EditorNode::get_singleton()->connect("request_help_search", callable_mp(this, &DocumentEditorContainer::_help_search));
