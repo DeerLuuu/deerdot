@@ -920,6 +920,11 @@ String GDScriptFormat::parse_cast(const GDP::CastNode *p_node, const int p_inden
 String GDScriptFormat::parse_expression(const GDP::ExpressionNode *p_node, const int p_indent_level, const BreakType p_break_type) {
 	const bool skip_grouping_now = skip_grouping;
 	skip_grouping = false;
+	// f-strings are desugared into string concatenation for analysis, but the formatter must emit the original
+	// source byte for byte, so the root node carries the raw text.
+	if (!p_node->fstring_raw.is_empty()) {
+		return p_node->fstring_raw;
+	}
 	String expression = "";
 	switch (p_node->type) {
 		case GDP::Node::Type::ASSIGNMENT:

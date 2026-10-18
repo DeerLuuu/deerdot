@@ -49,6 +49,7 @@ static const char *token_names[] = {
 	"Annotation", // ANNOTATION
 	"Identifier", // IDENTIFIER,
 	"Literal", // LITERAL,
+	"FString", // FSTRING,
 	"Comment", // COMMENT,
 	// Comparison
 	"<", // LESS,
@@ -1146,6 +1147,198 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 	return make_literal(string);
 }
 
+GDScriptTokenizer::Token GDScriptTokenizerText::fstring() {
+	// The leading `f` and the opening `"` were already consumed/observed by scan(). The literal is kept as
+	// one FSTRING token carrying the raw text plus a list of literal/expression segments; the parser desugars
+	// it, so the token stream never switches modes (which keeps raw source available for the formatter).
+	const int token_start_line = start_line;
+	const int token_start_column = start_column;
+	_advance(); // Opening double quote.
+
+	String literal;
+	Array segments;
+
+	auto flush_literal = [&]() {
+		Dictionary segment;
+		segment["literal"] = literal;
+		segments.push_back(segment);
+		literal = String();
+	};
+
+	for (;;) {
+		if (_is_at_end()) {
+			return make_error("Unterminated f-string.");
+		}
+		const char32_t ch = _peek();
+		if (ch == '"') {
+			_advance();
+			break;
+		}
+		if (ch == '\n' || ch == '\r') {
+			return make_error("Unterminated f-string.");
+		}
+		if (ch == '\\') {
+			_advance();
+			if (_is_at_end()) {
+				return make_error("Unterminated f-string.");
+			}
+			const char32_t escaped = _peek();
+			_advance();
+			switch (escaped) {
+				case '\\':
+					literal += "\\";
+					break;
+				case '"':
+					literal += "\"";
+					break;
+				case '\'':
+					literal += "'";
+					break;
+				case 'n':
+					literal += "\n";
+					break;
+				case 't':
+					literal += "\t";
+					break;
+				case 'r':
+					literal += "\r";
+					break;
+				case '0':
+					literal += String::chr(0);
+					break;
+				case 'u': {
+					char32_t value = 0;
+					for (int i = 0; i < 4; i++) {
+						if (_is_at_end()) {
+							return make_error("Unterminated f-string.");
+						}
+						const char32_t digit = _peek();
+						int hex = -1;
+						if (digit >= '0' && digit <= '9') {
+							hex = digit - '0';
+						} else if (digit >= 'a' && digit <= 'f') {
+							hex = digit - 'a' + 10;
+						} else if (digit >= 'A' && digit <= 'F') {
+							hex = digit - 'A' + 10;
+						}
+						if (hex < 0) {
+							return make_error("Invalid hexadecimal digit in unicode escape sequence.");
+						}
+						value = (value << 4) | hex;
+						_advance();
+					}
+					literal += String::chr(value);
+				} break;
+				default:
+					return make_error("Invalid escape in string.");
+			}
+			continue;
+		}
+		if (ch == '{') {
+			if (_peek(1) == '{') {
+				_advance();
+				_advance();
+				literal += "{";
+				continue;
+			}
+			if (!literal.is_empty()) {
+				flush_literal();
+			}
+			_advance(); // Opening brace.
+			const int expression_line = line;
+			const int expression_column = column;
+			String expression;
+			int depth = 0;
+			bool closed = false;
+			for (;;) {
+				if (_is_at_end()) {
+					return make_error("Unterminated interpolation in f-string: missing \"}\".");
+				}
+				const char32_t ec = _peek();
+				if (ec == '\n' || ec == '\r') {
+					return make_error("Line breaks are not allowed inside an f-string expression.");
+				}
+				if (ec == '"' || ec == '\'') {
+					// Copy a complete nested string literal verbatim; braces inside it do not count.
+					const char32_t quote = ec;
+					expression += String::chr(_advance());
+					while (!_is_at_end() && _peek() != quote) {
+						if (_peek() == '\n' || _peek() == '\r') {
+							return make_error("Line breaks are not allowed inside an f-string expression.");
+						}
+						if (_peek() == '\\') {
+							expression += String::chr(_advance());
+							if (_is_at_end()) {
+								return make_error("Unterminated interpolation in f-string: missing \"}\".");
+							}
+						}
+						expression += String::chr(_advance());
+					}
+					if (_is_at_end()) {
+						return make_error("Unterminated interpolation in f-string: missing \"}\".");
+					}
+					expression += String::chr(_advance());
+					continue;
+				}
+				if (ec == 'f' && _peek(1) == '"') {
+					return make_error("Nested f-strings are not supported.");
+				}
+				if (ec == '(' || ec == '[' || ec == '{') {
+					depth++;
+				} else if (ec == ')' || ec == ']' || ec == '}') {
+					if (ec == '}' && depth == 0) {
+						_advance();
+						closed = true;
+						break;
+					}
+					if (depth > 0) {
+						depth--;
+					}
+				} else if (ec == ':' && depth == 0) {
+					return make_error("Format specifiers are not supported in f-strings. Use \"%.2f\" % x, x.toFixed(2), String.num(), or String.format inside the interpolation.");
+				}
+				expression += String::chr(ec);
+				_advance();
+			}
+			if (!closed) {
+				return make_error("Unterminated interpolation in f-string: missing \"}\".");
+			}
+			if (expression.strip_edges().is_empty()) {
+				return make_error("Empty expression in f-string.");
+			}
+			Dictionary segment;
+			segment["expression"] = expression;
+			segment["line"] = expression_line;
+			segment["column"] = expression_column;
+			segments.push_back(segment);
+			continue;
+		}
+		if (ch == '}') {
+			if (_peek(1) == '}') {
+				_advance();
+				_advance();
+				literal += "}";
+				continue;
+			}
+			return make_error("Unexpected '}' in f-string; use '}}' for a literal brace.");
+		}
+		literal += String::chr(ch);
+		_advance();
+	}
+	if (!literal.is_empty() || segments.is_empty()) {
+		flush_literal();
+	}
+
+	Token token = make_token(Token::FSTRING);
+	token.start_line = token_start_line;
+	token.start_column = token_start_column;
+	Dictionary data;
+	data["raw"] = token.source;
+	data["segments"] = segments;
+	token.literal = data;
+	return token;
+}
+
 void GDScriptTokenizerText::check_indent() {
 	ERR_FAIL_COND_MSG(column != 1, "Checking tokenizer indentation in the middle of a line.");
 
@@ -1415,6 +1608,13 @@ GDScriptTokenizer::Token GDScriptTokenizerText::scan() {
 
 	if (is_digit(c)) {
 		return number();
+	} else if (c == 'r' && _peek() == 'f' && _peek(1) == '"') {
+		return make_error("Unknown string prefix \"rf\"; only \"f\" (lowercase, attached) is supported.");
+	} else if (c == 'f' && _peek() == 'r' && _peek(1) == '"') {
+		return make_error("Unknown string prefix \"fr\"; only \"f\" (lowercase, attached) is supported.");
+	} else if (c == 'f' && _peek() == '"') {
+		// f-string literal: only lowercase f tightly attached to a double quote.
+		return fstring();
 	} else if (c == 'r' && (_peek() == '"' || _peek() == '\'')) {
 		// Raw string literals.
 		return string();

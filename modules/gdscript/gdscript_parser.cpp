@@ -237,7 +237,7 @@ void GDScriptParser::push_error(const String &p_message, const Node *p_origin) {
 	// TODO: Errors might point at more than one place at once (e.g. show previous declaration).
 	panic_mode = true;
 	ParserError err;
-	err.message = p_message;
+	err.message = parsing_fstring_expression ? "In f-string expression: " + p_message : p_message;
 
 	if (p_origin == nullptr) {
 		err.start_line = previous.start_line;
@@ -3542,6 +3542,144 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_literal(ExpressionNode *p_
 	return literal;
 }
 
+GDScriptParser::ExpressionNode *GDScriptParser::parse_fstring(ExpressionNode *p_previous_operand, bool p_can_assign) {
+	if (previous.type != GDScriptTokenizer::Token::FSTRING) {
+		push_error("Parser bug: parsing f-string node without f-string token.");
+		return nullptr;
+	}
+	const GDScriptTokenizer::Token fstring_token = previous;
+	const Dictionary data = previous.literal;
+	const String raw = data.get("raw", String());
+	const Array segments = data.get("segments", Array());
+
+	ExpressionNode *root = nullptr;
+	auto append_piece = [&](ExpressionNode *p_piece) {
+		if (p_piece == nullptr) {
+			return;
+		}
+		if (root == nullptr) {
+			root = p_piece;
+			return;
+		}
+		BinaryOpNode *addition = alloc_node<BinaryOpNode>();
+		addition->operation = BinaryOpNode::OP_ADDITION;
+		addition->variant_op = Variant::OP_ADD;
+		addition->left_operand = root;
+		addition->right_operand = p_piece;
+		addition->start_line = root->start_line;
+		addition->start_column = root->start_column;
+		addition->end_line = p_piece->end_line;
+		addition->end_column = p_piece->end_column;
+		complete_extents(addition);
+		root = addition;
+	};
+
+	for (const Variant &segment_variant : segments) {
+		const Dictionary segment = segment_variant;
+		if (segment.has("literal")) {
+			LiteralNode *literal = alloc_node<LiteralNode>();
+			literal->value = segment["literal"];
+			literal->source = "\"" + String(segment["literal"]).c_escape() + "\"";
+			literal->start_line = fstring_token.start_line;
+			literal->start_column = fstring_token.start_column;
+			literal->end_line = fstring_token.end_line;
+			literal->end_column = fstring_token.end_column;
+			complete_extents(literal);
+			append_piece(literal);
+			continue;
+		}
+		if (!segment.has("expression")) {
+			continue;
+		}
+		const String expression_source = segment["expression"];
+		const int expression_line = segment["line"];
+		const int expression_column = segment["column"];
+
+		// Parse the interpolation with a nested tokenizer whose leading newlines/spaces put every token at its
+		// real file position, so analyzer and parser errors point at the original line/column.
+		GDScriptTokenizer *saved_tokenizer = tokenizer;
+		const GDScriptTokenizer::Token saved_previous = previous;
+		const GDScriptTokenizer::Token saved_current = current;
+		const bool saved_fstring_state = parsing_fstring_expression;
+
+		String padded;
+		for (int i = 1; i < expression_line; i++) {
+			padded += "\n";
+		}
+		for (int i = 1; i < expression_column; i++) {
+			padded += " ";
+		}
+		padded += expression_source;
+
+		GDScriptTokenizerText nested;
+		nested.set_source_code(padded);
+		tokenizer = &nested;
+		previous = GDScriptTokenizer::Token();
+		current = tokenizer->scan();
+		previous = current;
+		while (current.type == GDScriptTokenizer::Token::NEWLINE || current.type == GDScriptTokenizer::Token::INDENT || current.type == GDScriptTokenizer::Token::DEDENT) {
+			current = tokenizer->scan();
+			previous = current;
+		}
+		parsing_fstring_expression = true;
+		ExpressionNode *expression = parse_expression(false);
+		while (current.type == GDScriptTokenizer::Token::NEWLINE || current.type == GDScriptTokenizer::Token::DEDENT) {
+			advance();
+		}
+		if (expression != nullptr && current.type != GDScriptTokenizer::Token::TK_EOF) {
+			push_error("Unexpected token in f-string expression.", current);
+		}
+		parsing_fstring_expression = saved_fstring_state;
+		tokenizer = saved_tokenizer;
+		previous = saved_previous;
+		current = saved_current;
+
+		if (expression == nullptr) {
+			continue;
+		}
+
+		// Wrap in the built-in str() utility; the flag makes the analyzer skip user scope (shadow-proof).
+		IdentifierNode *callee = alloc_node<IdentifierNode>();
+		callee->name = SNAME("str");
+		callee->start_line = expression->start_line;
+		callee->start_column = expression->start_column;
+		callee->end_line = expression->end_line;
+		callee->end_column = expression->end_column;
+		complete_extents(callee);
+		CallNode *str_call = alloc_node<CallNode>();
+		str_call->callee = callee;
+		str_call->function_name = SNAME("str");
+		str_call->is_implicit_utility = true;
+		str_call->arguments.push_back(expression);
+		str_call->start_line = expression->start_line;
+		str_call->start_column = expression->start_column;
+		str_call->end_line = expression->end_line;
+		str_call->end_column = expression->end_column;
+		complete_extents(str_call);
+		append_piece(str_call);
+	}
+
+	if (root == nullptr) {
+		// An all-literal f-string still has a literal segment, but be defensive.
+		LiteralNode *literal = alloc_node<LiteralNode>();
+		literal->value = String();
+		literal->source = "\"\"";
+		literal->start_line = fstring_token.start_line;
+		literal->start_column = fstring_token.start_column;
+		literal->end_line = fstring_token.end_line;
+		literal->end_column = fstring_token.end_column;
+		complete_extents(literal);
+		root = literal;
+	}
+	root->fstring_raw = raw;
+	root->start_line = fstring_token.start_line;
+	root->start_column = fstring_token.start_column;
+	root->end_line = fstring_token.end_line;
+	root->end_column = fstring_token.end_column;
+	root->is_grouped = false;
+	return root;
+}
+
 GDScriptParser::ExpressionNode *GDScriptParser::parse_self(ExpressionNode *p_previous_operand, bool p_can_assign) {
 	if (current_function && current_function->is_static) {
 		push_error(R"(Cannot use "self" inside a static function.)");
@@ -4981,6 +5119,7 @@ GDScriptParser::ParseRule *GDScriptParser::get_rule(GDScriptTokenizer::Token::Ty
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // ANNOTATION,
 		{ &GDScriptParser::parse_identifier,             	nullptr,                                        PREC_NONE }, // IDENTIFIER,
 		{ &GDScriptParser::parse_literal,                	nullptr,                                        PREC_NONE }, // LITERAL,
+		{ &GDScriptParser::parse_fstring,                	nullptr,                                        PREC_NONE }, // FSTRING,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // COMMENT,
 		// Comparison
 		{ nullptr,                                          &GDScriptParser::parse_binary_operator,      	PREC_COMPARISON }, // LESS,

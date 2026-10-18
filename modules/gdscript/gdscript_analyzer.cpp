@@ -3582,6 +3582,16 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 		// Call to name directly.
 		StringName function_name = p_call->function_name;
 
+		if (p_call->is_implicit_utility) {
+			// The implicit str() of an f-string interpolation must ignore user scope (shadow-proof).
+			if (GDScriptUtilityFunctions::function_exists(function_name)) {
+				MethodInfo function_info = GDScriptUtilityFunctions::get_function_info(function_name);
+				validate_call_arg(function_info, p_call);
+				p_call->type_constraint = type_from_property(function_info.return_val, false, p_call);
+				return;
+			}
+		}
+
 		if (function_name == SNAME("Object")) {
 			push_error(R"*(Invalid constructor "Object()", use "Object.new()" instead.)*", p_call);
 			p_call->type_constraint = call_type;

@@ -36,6 +36,7 @@
 
 #include "modules/gdscript/gdscript_format.h"
 #include "modules/gdscript/gdscript_parser.h"
+#include "modules/gdscript/gdscript_tokenizer_buffer.h"
 
 namespace GDScriptTests {
 
@@ -4240,5 +4241,47 @@ var _MAX_FILE_SIZE = 1 << 20 # 1 MiB
 		CHECK_FORMAT(code, pre_formatted);
 	}
 } // TEST_SUITE("[Modules][GDScript][GDScriptFormatter][Misc]")
+
+TEST_SUITE("[Modules][GDScript][GDScriptFormatter][FString]") {
+	TEST_CASE("F-strings round-trip byte for byte") {
+		const String code = GDSCRIPT(R"(
+func test():
+	var x := 1
+	var s := f"a{x}b {{brace}} {x + 2}"
+	var t := f"plain"
+)");
+		const String pre_formatted = code;
+		CHECK_FORMAT(code, pre_formatted);
+	}
+
+	TEST_CASE("F-string token survives the token buffer") {
+		const String code = "var s := f\"a{1}b\"\n";
+		const Vector<uint8_t> buffer = GDScriptTokenizerBuffer::parse_code_string(code, GDScriptTokenizerBuffer::COMPRESS_NONE);
+		CHECK_FALSE(buffer.is_empty());
+
+		GDScriptTokenizerBuffer tokenizer;
+		REQUIRE(tokenizer.set_code_buffer(buffer) == OK);
+
+		bool found = false;
+		for (;;) {
+			const GDScriptTokenizer::Token token = tokenizer.scan();
+			if (token.type == GDScriptTokenizer::Token::TK_EOF) {
+				break;
+			}
+			if (token.type != GDScriptTokenizer::Token::FSTRING) {
+				continue;
+			}
+			found = true;
+			const Dictionary data = token.literal;
+			CHECK(data.has("raw"));
+			CHECK(String(data["raw"]) == "f\"a{1}b\"");
+			const Array segments = data["segments"];
+			CHECK(segments.size() == 3);
+			CHECK(Dictionary(segments[1]).has("expression"));
+			CHECK(String(Dictionary(segments[1])["expression"]) == "1");
+		}
+		CHECK(found);
+	}
+} // TEST_SUITE("[Modules][GDScript][GDScriptFormatter][FString]")
 
 } //namespace GDScriptTests

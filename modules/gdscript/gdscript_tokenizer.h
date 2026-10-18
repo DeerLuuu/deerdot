@@ -52,6 +52,7 @@ public:
 			ANNOTATION,
 			IDENTIFIER,
 			LITERAL,
+			FSTRING,
 			COMMENT,
 			// Comparison
 			LESS,
@@ -342,6 +343,7 @@ private:
 	Token number();
 	Token potential_identifier();
 	Token string();
+	Token fstring();
 	Token annotation();
 
 	void push_state();

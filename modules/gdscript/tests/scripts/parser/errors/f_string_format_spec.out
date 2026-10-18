@@ -1,0 +1,2 @@
+GDTEST_PARSER_ERROR
+Format specifiers are not supported in f-strings. Use "%.2f" % x, x.toFixed(2), String.num(), or String.format inside the interpolation.

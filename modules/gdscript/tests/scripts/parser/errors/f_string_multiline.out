@@ -1,0 +1,2 @@
+GDTEST_PARSER_ERROR
+Line breaks are not allowed inside an f-string expression.

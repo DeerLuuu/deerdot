@@ -378,6 +378,9 @@ public:
 		bool is_constant = false;
 		bool is_grouped = false;
 		Variant reduced_value;
+		// Raw source of an f-string; only set on the root expression produced by desugaring. The formatter
+		// prints this verbatim so f-strings round-trip byte for byte.
+		String fstring_raw;
 
 		DataType type_constraint;
 
@@ -529,6 +532,9 @@ public:
 		StringName function_name;
 		bool is_super = false;
 		bool is_static = false;
+		// Set for the implicit str() wrapper of an f-string interpolation: the analyzer must resolve the
+		// built-in utility even if the user shadows `str`.
+		bool is_implicit_utility = false;
 		Vector<String> params_footer_comment;
 
 		CallNode() {
@@ -1484,6 +1490,8 @@ private:
 	bool for_completion = false;
 	bool parse_body = true;
 	bool panic_mode = false;
+	// While parsing an f-string interpolation, errors are prefixed so the message points at the expression.
+	bool parsing_fstring_expression = false;
 	bool can_break = false;
 	bool can_continue = false;
 	List<bool> multiline_stack;
@@ -1753,6 +1761,7 @@ private:
 	ExpressionNode *parse_precedence(Precedence p_precedence, bool p_can_assign, bool p_stop_on_assign = false);
 	ExpressionNode *parse_literal(ExpressionNode *p_previous_operand, bool p_can_assign);
 	LiteralNode *parse_literal();
+	ExpressionNode *parse_fstring(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_self(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_identifier(ExpressionNode *p_previous_operand, bool p_can_assign);
 	IdentifierNode *parse_identifier();
