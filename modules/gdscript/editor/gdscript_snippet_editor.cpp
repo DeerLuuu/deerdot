@@ -345,6 +345,13 @@ void GDScriptSnippetEditor::_refresh_tab(int p_index) {
 		tab.dirty = false;
 		tab.code_edit->set_text(String());
 		tab.save_button->set_disabled(true);
+
+		// Opening the panel (or refreshing after the selected file disappeared) with no active
+		// snippet should show the first available one instead of an empty editor.
+		if (tab.file_list->get_item_count() > 0) {
+			tab.file_list->select(0);
+			_load_file(p_index, tab.dir_path.path_join(tab.file_list->get_item_text(0)));
+		}
 	}
 
 	if (!DirAccess::exists(tab.dir_path)) {
