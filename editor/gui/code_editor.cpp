@@ -1167,6 +1167,8 @@ void fragment() {
 		float blend = clamp((t - 0.62) / 0.38, 0.0, 1.0);
 		float cross = 1.0 - (1.0 - blend) * (1.0 - blend);
 		COLOR.rgb = mix(ghost_color.rgb, COLOR.rgb, cross);
+		// Match the end of phase A (alpha 0.9 away from the front) and fade it back to 1.
+		COLOR.a *= mix(0.9, 1.0, blend);
 	}
 }
 )";
