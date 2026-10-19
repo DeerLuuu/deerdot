@@ -1299,6 +1299,12 @@ void EditorNode::init_plugins() {
 
 	PackedStringArray stale_globals;
 	const String global_addons_dir = EditorPaths::get_singleton()->get_data_dir().path_join("addons");
+	if (!DirAccess::dir_exists_absolute(global_addons_dir)) {
+		const Error err = DirAccess::make_dir_recursive_absolute(global_addons_dir);
+		if (err != OK) {
+			WARN_PRINT(vformat("Could not create the global addons directory at \"%s\". Global plugins will not be available.", global_addons_dir));
+		}
+	}
 	const PackedStringArray global_paths = resolve_global_addons(EDITOR_GET("editor/plugins/global_enabled"), global_addons_dir, "res://addons", &stale_globals);
 	for (const String &path : global_paths) {
 		set_addon_plugin_enabled(path, true);
