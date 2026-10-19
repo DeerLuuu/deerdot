@@ -637,6 +637,7 @@ private:
 	String config_section;
 
 	HashSet<String> handled_resource_types;
+	bool allow_text_files = true;
 	List<String> _get_recognized_extensions();
 	HashSet<String> textfile_extensions;
 	Ref<TextFile> _load_text_file(const String &p_path, Error *r_error) const;
@@ -666,6 +667,7 @@ public:
 	void ensure_select_current();
 
 	void set_handled_resource_types(const HashSet<String> &p_file_types) { handled_resource_types = p_file_types; }
+	void set_allow_text_files(bool p_allow) { allow_text_files = p_allow; }
 
 	_FORCE_INLINE_ bool edit(const Ref<Resource> &p_resource, bool p_grab_focus = true) { return edit(p_resource, -1, 0, p_grab_focus); }
 	bool edit(const Ref<Resource> &p_resource, int p_line, int p_col, bool p_grab_focus = true);

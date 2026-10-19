@@ -3707,8 +3707,11 @@ void DocumentEditorContainer::_menu_option(int p_option) {
 				}
 
 				if (text_file.is_valid()) {
-					edit(text_file);
-					file_dialog_option = -1;
+					if (edit(text_file)) {
+						file_dialog_option = -1;
+					} else {
+						EditorNode::get_singleton()->show_warning(TTR("This editor cannot open this file type."), TTR("Error!"));
+					}
 				}
 			}
 		} break;
@@ -4395,6 +4398,9 @@ bool DocumentEditorContainer::edit(const Ref<Resource> &p_resource, int p_line, 
 	if (p_resource.is_null()) {
 		return false;
 	}
+	if (!allow_text_files && !handled_resource_types.has(p_resource->get_class())) {
+		return false;
+	}
 
 	Ref<Script> scr = p_resource;
 
@@ -4900,7 +4906,13 @@ Ref<Resource> DocumentEditorContainer::open_file(const String &p_file) {
 	}
 
 	Error error;
-	Ref<TextFile> text_file = _load_text_file(p_file, &error);
+	Ref<TextFile> text_file;
+	if (allow_text_files) {
+		text_file = _load_text_file(p_file, &error);
+	} else {
+		EditorNode::get_singleton()->show_warning(TTR("This editor cannot open this file type."), TTR("Error!"));
+		return Ref<Resource>();
+	}
 	if (error != OK) {
 		EditorNode::get_singleton()->show_warning(TTR("Could not load file at:") + "\n\n" + p_file, TTR("Error!"));
 		return Ref<Resource>();
@@ -4923,7 +4935,7 @@ bool DocumentEditorContainer::can_open_file(const String &p_file) const {
 		return true;
 	}
 
-	if (is_main_editor && textfile_extensions.has(p_file.get_extension())) {
+	if (is_main_editor && allow_text_files && textfile_extensions.has(p_file.get_extension())) {
 		Error err;
 		Ref<TextFile> text_file = _load_text_file(p_file, &err);
 		if (text_file.is_valid() && err == OK) {

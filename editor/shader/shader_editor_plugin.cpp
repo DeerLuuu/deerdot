@@ -165,6 +165,7 @@ ShaderEditorPlugin::ShaderEditorPlugin() {
 
 	shader_container = memnew(DocumentEditorContainer(false, config_section, "shader_editor_cache.cfg"));
 	shader_container->set_handled_resource_types({ "Shader", "VisualShader", "ShaderInclude" });
+	shader_container->set_allow_text_files(false);
 
 	shader_dock->add_child(shader_container);
 	shader_dock->connect("_focused", callable_mp(shader_container, &DocumentEditorContainer::focus_active_editor));
