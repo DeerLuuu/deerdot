@@ -1093,6 +1093,14 @@ void TabBar::set_current_tab(int p_current) {
 	_update_cache();
 	if (scroll_to_selected) {
 		ensure_tab_visible(current);
+		if (current >= 0) {
+			// If the bar has not been laid out yet, ensure_tab_visible() cannot compute a valid
+			// offset. Retry once after the layout pass so the newly current tab is visible.
+			const Rect2 tab_rect = get_tab_rect(current);
+			if (tab_rect.position.x < 0 || tab_rect.position.x + tab_rect.size.x > get_size().width) {
+				callable_mp(this, &TabBar::ensure_tab_visible).call_deferred(current);
+			}
+		}
 	}
 	queue_accessibility_update();
 	queue_redraw();
