@@ -261,6 +261,7 @@ private:
 
 	bool updating_tree = false;
 	int tree_update_id;
+	String last_tree_selected_path;
 	FileSystemTree *tree = nullptr;
 	FileSystemList *files = nullptr;
 	bool import_dock_needs_update = false;

@@ -390,6 +390,7 @@ Vector<String> FileSystemDock::get_uncollapsed_paths() const {
 
 void FileSystemDock::_update_tree(const Vector<String> &p_uncollapsed_paths, bool p_uncollapse_root, bool p_scroll_to_selected, const Vector<String> &p_override_selection) {
 	const Vector<String> previous_selection = p_override_selection.is_empty() ? _tree_get_selected(false) : p_override_selection;
+	last_tree_selected_path.clear();
 
 	// Recreate the tree.
 	tree->clear();
@@ -734,6 +735,14 @@ void FileSystemDock::_tree_multi_selected(Object *p_item, int p_column, bool p_s
 	if (!selected) {
 		return;
 	}
+
+	const String selected_path = selected->get_metadata(0);
+	if (!updating_tree && selected_path == last_tree_selected_path) {
+		// Re-selecting the current item emits the signal again. Rebuilding the file list and pushing
+		// history in that case makes the dock redraw continuously when the item is scrolled into view.
+		return;
+	}
+	last_tree_selected_path = selected_path;
 
 	if (selected->get_parent() == favorites_item && !String(selected->get_metadata(0)).ends_with("/")) {
 		// Go to the favorites if we click in the favorites and the path has changed.
