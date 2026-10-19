@@ -1139,6 +1139,8 @@ uniform float line_duration;
 uniform float max_lines;
 uniform float reveal_width;
 uniform float wipe_soft;
+uniform vec4 ghost_color;
+uniform vec4 accent_color;
 
 varying vec2 local_pos;
 
@@ -1150,12 +1152,22 @@ void fragment() {
 	float row = floor(max(local_pos.y, 0.0) / max(line_height, 1.0));
 	float row_delay = min(row, max_lines) * line_stagger;
 	float t = clamp((TIME - start_time - row_delay) / max(line_duration, 0.001), 0.0, 1.0);
-	float ease = 1.0 - (1.0 - t) * (1.0 - t);
 	float x = clamp(local_pos.x / max(reveal_width, 1.0), 0.0, 1.0);
-	float p = clamp(t / 0.6, 0.0, 1.0);
-	float edge = 1.1 - 1.2 * p;
-	float wipe = smoothstep(edge, edge + wipe_soft, x);
-	COLOR.a *= ease * wipe;
+
+	// Phase A: a flat ghost silhouette sweeps in from the right. Syntax colors are ignored.
+	// Phase B: per-pixel crossfade from that silhouette to the real syntax-colored text.
+	if (t < 0.62) {
+		float p = clamp(t / 0.62, 0.0, 1.0);
+		float edge = 1.1 - 1.2 * p;
+		float wipe = smoothstep(edge, edge + wipe_soft, x);
+		float front = smoothstep(0.0, 0.06, 1.0 - abs(x - edge) / 0.06);
+		COLOR.rgb = mix(ghost_color.rgb, accent_color.rgb, front);
+		COLOR.a *= wipe * mix(0.9, 1.0, front);
+	} else {
+		float blend = clamp((t - 0.62) / 0.38, 0.0, 1.0);
+		float cross = 1.0 - (1.0 - blend) * (1.0 - blend);
+		COLOR.rgb = mix(ghost_color.rgb, COLOR.rgb, cross);
+	}
 }
 )";
 
@@ -1189,6 +1201,10 @@ void CodeTextEditor::play_intro_reveal() {
 	reveal_material->set_shader_parameter("max_lines", (double)INTRO_MAX_LINES);
 	reveal_material->set_shader_parameter("reveal_width", (double)MAX(text_editor->get_size().x, 1.0f));
 	reveal_material->set_shader_parameter("wipe_soft", 0.08);
+	const Color font_color = text_editor->get_theme_color(SNAME("font_color"), SNAME("TextEdit"));
+	const Color accent_color = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
+	reveal_material->set_shader_parameter("ghost_color", font_color.lerp(accent_color, 0.35f));
+	reveal_material->set_shader_parameter("accent_color", accent_color);
 
 	intro_material = reveal_material;
 	// Remember the editor's own material (if any) so the reveal can put it back instead of clearing it.

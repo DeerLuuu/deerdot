@@ -289,8 +289,8 @@ public:
 	CodeEdit *get_text_editor() { return text_editor; }
 	// One-shot line reveal parameters (Expressive only). Public so the budget regression test can check
 	// them without duplicating the numbers.
-	static constexpr double INTRO_LINE_DURATION = 0.16;
-	static constexpr double INTRO_LINE_STAGGER = 0.010;
+	static constexpr double INTRO_LINE_DURATION = 0.22;
+	static constexpr double INTRO_LINE_STAGGER = 0.009;
 	static constexpr int INTRO_MAX_LINES = 24;
 	static constexpr double INTRO_MAX_TOTAL = 0.45;
 	// Plays the one-shot line-by-line reveal of a freshly opened script (Expressive only). No-op if the
