@@ -33,8 +33,11 @@
 TEST_FORCE_LINK(test_editor_theme_animations)
 
 #include "editor/gui/code_editor.h"
+#include "editor/settings/editor_settings.h"
+#include "editor/themes/editor_scale.h"
 #include "editor/themes/editor_theme_manager.h"
 #include "scene/gui/popup.h"
+#include "scene/resources/style_box_flat.h"
 
 namespace TestEditorThemeAnimations {
 
@@ -291,6 +294,72 @@ TEST_CASE("[Editor][Theme] Animation parameter reads prefer file values after a 
 	CHECK(custom.duration == doctest::Approx(expressive_base.duration));
 	CHECK(custom.duration == doctest::Approx(CLAMP(table.duration * 1.4, 0.06, 0.26)));
 	CHECK(custom.scale == expressive_base.scale);
+}
+
+TEST_CASE("[Editor][Theme] Tab lift and outline follow the UI animation gate") {
+	EditorSettings *settings = EditorSettings::get_singleton();
+	ERR_FAIL_NULL(settings);
+	const Variant old_animations = settings->get_setting("interface/theme/ui_animations");
+	const Variant old_style = settings->get_setting("interface/theme/ui_animations_style");
+	const Variant old_lift = settings->get_setting("interface/theme/ui_animations/tab_lift_px");
+
+	auto generate_tab_theme = [&](bool p_animations, const String &p_style, int p_lift) {
+		settings->set_setting("interface/theme/ui_animations", p_animations);
+		settings->set_setting("interface/theme/ui_animations_style", p_style);
+		settings->set_setting("interface/theme/ui_animations/tab_lift_px", p_lift);
+		EditorThemeManager::set_theme_outdated();
+		return EditorThemeManager::generate_theme();
+	};
+
+	const char *tab_types[] = { "TabContainer", "TabBar", "TabContainerOdd", "TabContainerInner", "TabBarInner" };
+
+	// Expressive with the tab lift on: the selected tab grows upwards by 5 px and draws the 2/1/1 outline.
+	{
+		Ref<EditorTheme> theme = generate_tab_theme(true, "Expressive", 5);
+		CHECK(EditorThemeManager::get_tab_lift_px() == 5);
+		for (const char *type : tab_types) {
+			Ref<StyleBoxFlat> selected = theme->get_stylebox(SNAME("tab_selected"), StringName(type));
+			REQUIRE(selected.is_valid());
+			CHECK(selected->get_expand_margin(SIDE_TOP) == doctest::Approx(5 * EDSCALE));
+			CHECK(selected->get_border_width(SIDE_TOP) == EDSCALE_RND(2));
+			CHECK(selected->get_border_width(SIDE_LEFT) == EDSCALE_RND(1));
+			CHECK(selected->get_border_width(SIDE_RIGHT) == EDSCALE_RND(1));
+		}
+	}
+
+	// Subtle never lifts or outlines (its preset stores a zero lift).
+	{
+		Ref<EditorTheme> theme = generate_tab_theme(true, "Subtle", 0);
+		CHECK(EditorThemeManager::get_tab_lift_px() == 0);
+		for (const char *type : tab_types) {
+			Ref<StyleBoxFlat> selected = theme->get_stylebox(SNAME("tab_selected"), StringName(type));
+			REQUIRE(selected.is_valid());
+			CHECK(selected->get_expand_margin(SIDE_TOP) == 0);
+			CHECK(selected->get_border_width(SIDE_TOP) == 0);
+			CHECK(selected->get_border_width(SIDE_LEFT) == 0);
+			CHECK(selected->get_border_width(SIDE_RIGHT) == 0);
+		}
+	}
+
+	// Animations disabled: same zero outline/lift as Subtle, and the effective lift used by the pane spacer
+	// and the scene tab strip is zero as well.
+	{
+		Ref<EditorTheme> theme = generate_tab_theme(false, "Expressive", 5);
+		CHECK(EditorThemeManager::get_tab_lift_px() == 0);
+		for (const char *type : tab_types) {
+			Ref<StyleBoxFlat> selected = theme->get_stylebox(SNAME("tab_selected"), StringName(type));
+			REQUIRE(selected.is_valid());
+			CHECK(selected->get_expand_margin(SIDE_TOP) == 0);
+			CHECK(selected->get_border_width(SIDE_TOP) == 0);
+			CHECK(selected->get_border_width(SIDE_LEFT) == 0);
+			CHECK(selected->get_border_width(SIDE_RIGHT) == 0);
+		}
+	}
+
+	settings->set_setting("interface/theme/ui_animations", old_animations);
+	settings->set_setting("interface/theme/ui_animations_style", old_style);
+	settings->set_setting("interface/theme/ui_animations/tab_lift_px", old_lift);
+	EditorThemeManager::set_theme_outdated();
 }
 
 } // namespace TestEditorThemeAnimations

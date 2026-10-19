@@ -455,6 +455,9 @@ int EditorThemeManager::get_button_press_squash_px() {
 }
 
 int EditorThemeManager::get_tab_lift_px() {
+	if (!EDITOR_GET("interface/theme/ui_animations")) {
+		return 0;
+	}
 	return get_user_animation_params().tab_lift_px;
 }
 
