@@ -41,6 +41,7 @@
 #include "core/object/class_db.h"
 #include "core/os/keyboard.h"
 #include "core/os/os.h"
+#include "core/os/time.h"
 #include "core/templates/list.h"
 #include "editor/docks/editor_dock_manager.h"
 #include "editor/docks/import_dock.h"
@@ -74,8 +75,11 @@
 #include "scene/gui/line_edit.h"
 #include "scene/gui/progress_bar.h"
 #include "scene/gui/slider.h"
+#include "scene/main/scene_tree.h"
 #include "scene/main/timer.h"
+#include "scene/resources/material.h"
 #include "scene/resources/packed_scene.h"
+#include "scene/resources/shader.h"
 #include "servers/display/display_server.h"
 
 #ifdef WEB_ENABLED
@@ -388,7 +392,125 @@ Vector<String> FileSystemDock::get_uncollapsed_paths() const {
 	return uncollapsed_paths;
 }
 
-void FileSystemDock::_update_tree(const Vector<String> &p_uncollapsed_paths, bool p_uncollapse_root, bool p_scroll_to_selected, const Vector<String> &p_override_selection) {
+static const char *FILESYSTEM_REVEAL_SHADER = R"(
+shader_type canvas_item;
+
+uniform float start_time = 0.0;
+uniform float item_height = 24.0;
+uniform float item_duration = 0.14;
+uniform float row_stagger = 0.008;
+uniform float max_rows = 30.0;
+uniform float reveal_width = 1.0;
+uniform float wipe_soft = 0.15;
+
+varying vec2 local_pos;
+
+void vertex() {
+	local_pos = VERTEX;
+}
+
+void fragment() {
+	float row = floor(local_pos.y / max(item_height, 1.0));
+	float delay = min(row, max_rows) * row_stagger;
+	float t = clamp((TIME - start_time - delay) / item_duration, 0.0, 1.0);
+	float ease = 1.0 - (1.0 - t) * (1.0 - t);
+	float x = local_pos.x / max(reveal_width, 1.0);
+	float edge = 1.15 - 1.2 * t;
+	float wipe = smoothstep(edge, edge + wipe_soft, x);
+	wipe = mix(wipe, 1.0, step(1.0, t));
+	COLOR.a *= ease * wipe;
+}
+)";
+
+static constexpr double FILESYSTEM_REVEAL_ITEM_DURATION = 0.14;
+static constexpr double FILESYSTEM_REVEAL_ROW_STAGGER = 0.008;
+static constexpr int FILESYSTEM_REVEAL_MAX_ROWS = 30;
+
+void FileSystemDock::_start_filesystem_reveal(Object *p_target, float p_item_height, int p_row_count) {
+	CanvasItem *target = Object::cast_to<CanvasItem>(p_target);
+	Control *target_control = Object::cast_to<Control>(p_target);
+	if (!target || !target_control || !target->is_visible_in_tree() || p_item_height <= 0.0f) {
+		return;
+	}
+	if (!EDITOR_GET("interface/theme/ui_animations") || EditorThemeManager::get_animation_style() == EditorThemeManager::ANIMATION_STYLE_SUBTLE) {
+		return;
+	}
+
+	Ref<Shader> shader;
+	shader.instantiate();
+	shader->set_code(FILESYSTEM_REVEAL_SHADER);
+	Ref<ShaderMaterial> material;
+	material.instantiate();
+	material->set_shader(shader);
+	material->set_shader_parameter("start_time", (double)Time::get_singleton()->get_ticks_msec() / 1000.0);
+	material->set_shader_parameter("item_height", p_item_height);
+	material->set_shader_parameter("item_duration", FILESYSTEM_REVEAL_ITEM_DURATION);
+	material->set_shader_parameter("row_stagger", FILESYSTEM_REVEAL_ROW_STAGGER);
+	material->set_shader_parameter("max_rows", (double)FILESYSTEM_REVEAL_MAX_ROWS);
+	material->set_shader_parameter("reveal_width", (double)MAX(target_control->get_size().x, 1.0f));
+	material->set_shader_parameter("wipe_soft", 0.15);
+
+	// Keep the editor's own material across fast navigation; only replace the reveal material.
+	if (!target->has_meta(SNAME("_fs_reveal_original_material"))) {
+		target->set_meta(SNAME("_fs_reveal_original_material"), target->get_material());
+	}
+	++filesystem_reveal_id;
+	const int reveal_id = filesystem_reveal_id;
+	target->set_meta(SNAME("_fs_reveal_id"), reveal_id);
+	target->set_material(material);
+
+	// Scrollbars inherit the parent material; keep them out of the row wipe.
+	auto exempt_scrollbar = [](CanvasItem *p_scrollbar) {
+		if (!p_scrollbar) {
+			return;
+		}
+		if (!p_scrollbar->has_meta(SNAME("_fs_reveal_original_use_parent_material"))) {
+			p_scrollbar->set_meta(SNAME("_fs_reveal_original_use_parent_material"), p_scrollbar->get_use_parent_material());
+		}
+		p_scrollbar->set_use_parent_material(false);
+	};
+	if (ItemList *item_list = Object::cast_to<ItemList>(target)) {
+		exempt_scrollbar(item_list->get_v_scroll_bar());
+		exempt_scrollbar(item_list->get_h_scroll_bar());
+	} else if (Tree *tree_control = Object::cast_to<Tree>(target)) {
+		exempt_scrollbar(tree_control->get_vscroll_bar());
+	}
+
+	const int rows = CLAMP(p_row_count, 1, FILESYSTEM_REVEAL_MAX_ROWS);
+	const double total = MIN(FILESYSTEM_REVEAL_ITEM_DURATION + rows * FILESYSTEM_REVEAL_ROW_STAGGER + 0.05, 0.45);
+	Ref<SceneTreeTimer> timer = get_tree()->create_timer(total);
+	timer->connect(SNAME("timeout"), callable_mp(this, &FileSystemDock::_finish_filesystem_reveal).bind((uint64_t)target->get_instance_id(), reveal_id));
+}
+
+void FileSystemDock::_finish_filesystem_reveal(uint64_t p_target_id, int p_reveal_id) {
+	CanvasItem *target = Object::cast_to<CanvasItem>(ObjectDB::get_instance(ObjectID(p_target_id)));
+	if (!target || !target->has_meta(SNAME("_fs_reveal_id")) || (int)target->get_meta(SNAME("_fs_reveal_id")) != p_reveal_id) {
+		return;
+	}
+
+	if (target->has_meta(SNAME("_fs_reveal_original_material"))) {
+		target->set_material(target->get_meta(SNAME("_fs_reveal_original_material")));
+		target->remove_meta(SNAME("_fs_reveal_original_material"));
+	} else {
+		target->set_material(Ref<Material>());
+	}
+	target->remove_meta(SNAME("_fs_reveal_id"));
+
+	auto restore_scrollbar = [](CanvasItem *p_scrollbar) {
+		if (p_scrollbar && p_scrollbar->has_meta(SNAME("_fs_reveal_original_use_parent_material"))) {
+			p_scrollbar->set_use_parent_material((bool)p_scrollbar->get_meta(SNAME("_fs_reveal_original_use_parent_material")));
+			p_scrollbar->remove_meta(SNAME("_fs_reveal_original_use_parent_material"));
+		}
+	};
+	if (ItemList *item_list = Object::cast_to<ItemList>(target)) {
+		restore_scrollbar(item_list->get_v_scroll_bar());
+		restore_scrollbar(item_list->get_h_scroll_bar());
+	} else if (Tree *tree_control = Object::cast_to<Tree>(target)) {
+		restore_scrollbar(tree_control->get_vscroll_bar());
+	}
+}
+
+void FileSystemDock::_update_tree(const Vector<String> &p_uncollapsed_paths, bool p_uncollapse_root, bool p_scroll_to_selected, const Vector<String> &p_override_selection, bool p_reveal) {
 	const Vector<String> previous_selection = p_override_selection.is_empty() ? _tree_get_selected(false) : p_override_selection;
 	last_tree_selected_path.clear();
 
@@ -492,6 +614,13 @@ void FileSystemDock::_update_tree(const Vector<String> &p_uncollapsed_paths, boo
 	}
 
 	updating_tree = false;
+
+	if (p_reveal && tree->is_visible_in_tree()) {
+		const int font_height = tree->get_theme_font(SNAME("font"))->get_height(tree->get_theme_font_size(SNAME("font_size")));
+		const int row_height = font_height + tree->get_theme_constant(SNAME("v_separation"));
+		// Defer one frame so the rebuild is complete before the reveal starts.
+		callable_mp(this, &FileSystemDock::_start_filesystem_reveal).call_deferred((Object *)tree, (float)row_height, FILESYSTEM_REVEAL_MAX_ROWS);
+	}
 }
 
 void FileSystemDock::set_display_mode(DisplayMode p_display_mode) {
@@ -863,7 +992,7 @@ void FileSystemDock::_navigate_to_path(const String &p_path, bool p_select_in_fa
 		}
 	} else {
 		(*directory_ptr)->select(0);
-		_update_file_list(false);
+		_update_file_list(false, Vector<String>(), true);
 		if (p_grab_focus) {
 			files->grab_focus(true);
 		}
@@ -1033,7 +1162,7 @@ void FileSystemDock::_search(EditorFileSystemDirectory *p_path, List<FileInfo> *
 	}
 }
 
-void FileSystemDock::_update_file_list(bool p_keep_selection, const Vector<String> &p_override_selection) {
+void FileSystemDock::_update_file_list(bool p_keep_selection, const Vector<String> &p_override_selection, bool p_reveal) {
 	// Register the previously selected items.
 	Vector<String> previous_selection;
 	if (p_keep_selection) {
@@ -1302,6 +1431,13 @@ void FileSystemDock::_update_file_list(bool p_keep_selection, const Vector<Strin
 	if (files->get_current() == -1 && !valid_selection.is_empty()) {
 		files->set_current(*valid_selection.begin());
 	}
+
+	if (p_reveal && !use_thumbnails && files->is_visible_in_tree()) {
+		const int font_height = files->get_theme_font(SNAME("font"))->get_height(files->get_theme_font_size(SNAME("font_size")));
+		const int row_height = MAX(font_height, files->get_fixed_icon_size().y) + files->get_theme_constant(SNAME("v_separation"));
+		// Defer one frame so the rebuild is complete before the reveal starts.
+		callable_mp(this, &FileSystemDock::_start_filesystem_reveal).call_deferred((Object *)files, (float)row_height, MIN(files->get_item_count(), FILESYSTEM_REVEAL_MAX_ROWS));
+	}
 }
 
 HashSet<String> FileSystemDock::_get_valid_conversions_for_file_paths(const Vector<String> &p_paths) {
@@ -1451,7 +1587,7 @@ void FileSystemDock::_fs_changed() {
 	scanning_vb->hide();
 	split_box->show();
 
-	update_all();
+	update_all(true);
 
 	if (!select_after_scan.is_empty()) {
 		_navigate_to_path(select_after_scan);
@@ -3013,13 +3149,13 @@ void FileSystemDock::fix_dependencies(const String &p_for_file) {
 	deps_editor->edit(p_for_file);
 }
 
-void FileSystemDock::update_all() {
+void FileSystemDock::update_all(bool p_reveal) {
 	if (tree->is_visible()) {
-		_update_tree(get_uncollapsed_paths(), false, false);
+		_update_tree(get_uncollapsed_paths(), false, false, Vector<String>(), p_reveal);
 	}
 
 	if (file_list_vb->is_visible()) {
-		_update_file_list(true);
+		_update_file_list(true, Vector<String>(), p_reveal);
 	}
 }
 

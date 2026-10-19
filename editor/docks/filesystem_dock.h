@@ -55,6 +55,7 @@ class LineEdit;
 class ProgressBar;
 class SceneCreateDialog;
 class ShaderCreateDialog;
+class ShaderMaterial;
 class Timer;
 class DirectoryCreateDialog;
 class EditorResourceTooltipPlugin;
@@ -262,6 +263,11 @@ private:
 	bool updating_tree = false;
 	int tree_update_id;
 	String last_tree_selected_path;
+
+	int filesystem_reveal_id = 0;
+	void _start_filesystem_reveal(Object *p_target, float p_item_height, int p_row_count);
+	void _finish_filesystem_reveal(uint64_t p_target_id, int p_reveal_id);
+
 	FileSystemTree *tree = nullptr;
 	FileSystemList *files = nullptr;
 	bool import_dock_needs_update = false;
@@ -286,7 +292,7 @@ private:
 
 	Ref<Texture2D> _get_tree_item_icon(bool p_is_valid, const String &p_file_type, const String &p_icon_path);
 	void _create_tree(TreeItem *p_parent, EditorFileSystemDirectory *p_dir, const Vector<String> &p_uncollapsed_paths, const Vector<String> &p_selected_paths);
-	void _update_tree(const Vector<String> &p_uncollapsed_paths = Vector<String>(), bool p_uncollapse_root = false, bool p_scroll_to_selected = true, const Vector<String> &p_override_selection = Vector<String>());
+	void _update_tree(const Vector<String> &p_uncollapsed_paths = Vector<String>(), bool p_uncollapse_root = false, bool p_scroll_to_selected = true, const Vector<String> &p_override_selection = Vector<String>(), bool p_reveal = false);
 	void _navigate_to_path(const String &p_path, bool p_select_in_favorites = false, bool p_grab_focus = false);
 	bool _update_filtered_items(TreeItem *p_tree_item = nullptr);
 	void _append_favorite_items();
@@ -297,7 +303,7 @@ private:
 
 	HashSet<String> _get_valid_conversions_for_file_paths(const Vector<String> &p_paths);
 
-	void _update_file_list(bool p_keep_selection, const Vector<String> &p_override_selection = Vector<String>());
+	void _update_file_list(bool p_keep_selection, const Vector<String> &p_override_selection = Vector<String>(), bool p_reveal = false);
 	void _toggle_file_display();
 	void _set_file_display(bool p_active);
 	void _fs_changed();
@@ -444,7 +450,7 @@ public:
 	ScriptCreateDialog *get_script_create_dialog() const;
 
 	void fix_dependencies(const String &p_for_file);
-	void update_all();
+	void update_all(bool p_reveal = false);
 
 	int get_h_split_offset() const { return split_box_offset_h; }
 	void set_h_split_offset(int p_offset) { split_box_offset_h = p_offset; }
