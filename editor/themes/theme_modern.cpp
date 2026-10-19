@@ -848,6 +848,11 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			// Extend the selected tab's background upwards by the configured lift, so switching tabs reads
 			// as a lift. Only drawing changes; layout and the hit area are unaffected.
 			style_tab_selected->set_expand_margin(SIDE_TOP, tab_lift * EDSCALE);
+			// A neutral outline separates the lifted tab from the equally dark editor background.
+			style_tab_selected->set_border_width(SIDE_TOP, EDSCALE_RND(2));
+			style_tab_selected->set_border_width(SIDE_LEFT, EDSCALE_RND(1));
+			style_tab_selected->set_border_width(SIDE_RIGHT, EDSCALE_RND(1));
+			style_tab_selected->set_border_color(p_config.contrast_color_1);
 		}
 
 		Color drop_mark_color = p_config.dark_color_2.lerp(p_config.accent_color, 0.75);

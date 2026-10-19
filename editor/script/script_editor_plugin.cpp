@@ -1236,10 +1236,11 @@ void DocumentEditorContainer::_update_pane_top_spacing() {
 	if (pane_top_spacer == nullptr) {
 		return;
 	}
-	// Keep "padding == lift" with the same parameter the scene tab strip uses, so the Custom style gets the
-	// same room in both places. Animations disabled or a zero lift keep a zero-height spacer.
+	// Keep "padding == lift + 3" with the same parameter the scene tab strip uses, so the Custom style gets
+	// the same room in both places. Animations disabled or a zero lift keep a zero-height spacer.
 	const int tab_lift = EDITOR_GET("interface/theme/ui_animations") ? EditorThemeManager::get_tab_lift_px() : 0;
-	pane_top_spacer->set_custom_minimum_size(Size2(0, tab_lift * EDSCALE));
+	const int pane_top_padding = tab_lift > 0 ? tab_lift + 3 : 0;
+	pane_top_spacer->set_custom_minimum_size(Size2(0, pane_top_padding * EDSCALE));
 }
 
 void DocumentEditorContainer::_pane_tab_selected(int p_tab, TabContainer *p_pane) {
