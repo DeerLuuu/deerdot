@@ -58,11 +58,6 @@ Comment: Linux AppStream Metadata File
 Copyright: 2017-2022, Rémi Verschelde
 License: CC0-1.0
 
-Files: misc/logo/*
-Comment: Godot Engine logo
-Copyright: 2017, Andrea Calabró
-License: CC-BY-4.0
-
 Files: modules/betsy/alpha_stitch.glsl
  modules/betsy/bc1.glsl
  modules/betsy/bc4.glsl
